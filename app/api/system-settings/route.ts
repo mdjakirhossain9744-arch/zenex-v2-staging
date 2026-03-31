@@ -11,12 +11,12 @@ export async function GET() {
       throw new Error("Database connection is missing");
     }
 
-    // 💥 TypeScript Error Fix: ': any' যোগ করা হয়েছে 💥
-    let settings: any = await db.collection("system_settings").findOne({ type: "global" });
+    // ডাটাবেস থেকে সেটিংস আনা হচ্ছে
+    const settings = await db.collection("system_settings").findOne({ type: "global" });
     
+    // যদি না থাকে, তবে ডিফল্ট রেসপন্স দিবে (ডাটাবেসে Insert করার দরকার নেই, Admin panel থেকে Save দিলে তখন তৈরি হবে)
     if (!settings) {
-      settings = { type: "global", maintenance: false, globalRate: 0.50 };
-      await db.collection("system_settings").insertOne(settings);
+      return NextResponse.json({ type: "global", maintenance: false, globalRate: 0.50 });
     }
     
     return NextResponse.json(settings);
