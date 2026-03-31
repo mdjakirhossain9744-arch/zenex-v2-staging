@@ -220,7 +220,8 @@ export default function Console() {
                       <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} tickCount={6} />
                       <Tooltip cursor={{fill: '#334155', opacity: 0.2}} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} />
                       <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                        <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={11} fontWeight="bold" formatter={(val: number) => `${val} OTP`} />
+                        {/* 💥 এখানে val: any করে টাইপ এরর ফিক্স করা হয়েছে 💥 */}
+                        <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={11} fontWeight="bold" formatter={(val: any) => `${val} OTP`} />
                         {graphData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
                         ))}
@@ -345,7 +346,6 @@ export default function Console() {
                       <span className="md:hidden text-[#334155] font-black">↳</span>
                       <div className="flex-1 bg-[#1E293B]/50 border border-[#334155] p-2.5 rounded-lg text-[#94A3B8] text-sm break-words border-l-2 border-l-[#10B981]/50 group-hover:border-l-[#10B981] transition-colors">
                         <span className="text-[#10B981] font-black mr-2">&lt;#&gt;</span>
-                        {/* 💥 এখানে OTP হাইড হয়ে দেখাবে 💥 */}
                         {maskFullMessage(extractedMsg)}
                       </div>
                     </div>
