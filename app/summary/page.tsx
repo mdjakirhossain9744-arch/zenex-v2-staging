@@ -279,7 +279,8 @@ export default function Summary() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                       <XAxis dataKey="displayDate" stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => val.substring(0, 6)} />
                       <YAxis stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(value: number) => [`৳ ${value.toFixed(2)}`, 'Revenue']} />
+                      {/* 💥 এখানে Type Error ফিক্স করা হয়েছে (val: any) 💥 */}
+                      <Tooltip contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(value: any) => [`৳ ${Number(value).toFixed(2)}`, 'Revenue']} />
                       <Line type="monotone" dataKey="amount" name="Revenue" stroke="#3B82F6" strokeWidth={3} dot={{r: 4, fill: '#3B82F6', strokeWidth: 2}} activeDot={{r: 6}} />
                     </LineChart>
                   </ResponsiveContainer>
