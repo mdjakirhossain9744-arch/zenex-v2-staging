@@ -7,18 +7,16 @@ export async function GET() {
     await connectToDatabase();
     const db = mongoose.connection.db;
     
-    // 💥 Vercel Error Fix: TypeScript কে নিশ্চিত করা হচ্ছে যে db খালি নেই 💥
     if (!db) {
       throw new Error("Database connection is missing");
     }
 
-    // ডাটাবেস থেকে সেটিংস বের করে আনবে
-    let settings = await db.collection("system_settings").findOne({ type: "global" });
+    // 💥 TypeScript Error Fix: ': any' যোগ করা হয়েছে 💥
+    let settings: any = await db.collection("system_settings").findOne({ type: "global" });
     
     if (!settings) {
       settings = { type: "global", maintenance: false, globalRate: 0.50 };
-      // TypeScript error এড়ানোর জন্য 'as any' ব্যবহার করা হলো
-      await db.collection("system_settings").insertOne(settings as any);
+      await db.collection("system_settings").insertOne(settings);
     }
     
     return NextResponse.json(settings);
@@ -33,7 +31,6 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const db = mongoose.connection.db;
 
-    // 💥 Vercel Error Fix 💥
     if (!db) {
       throw new Error("Database connection is missing");
     }
