@@ -86,6 +86,11 @@ export default function UsersManagementPage() {
 
   const handleSaveUser = async (e: React.FormEvent, makeRole: string) => {
     e.preventDefault();
+    
+    const storedUser = localStorage.getItem("user");
+    const adminEmail = storedUser ? JSON.parse(storedUser).email : "";
+    const adminRole = storedUser ? JSON.parse(storedUser).role : "";
+
     const res = await fetch("/api/update-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -98,7 +103,9 @@ export default function UsersManagementPage() {
         customMail: makeRole === "agent" ? customMail : "",   
         contactLink: makeRole === "agent" ? contactLink : "",
         maxLimit: makeRole === "agent" ? maxLimit : 100,
-        isApiActive: newApiStatus // 💥 নতুন API পারমিশন পাঠানো হচ্ছে 💥
+        isApiActive: newApiStatus, // 💥 নতুন API পারমিশন পাঠানো হচ্ছে 💥
+        requesterEmail: adminEmail,
+        requesterRole: adminRole
       })
     });
     const data = await res.json();
@@ -244,6 +251,7 @@ export default function UsersManagementPage() {
           </table>
         </div>
 
+        {/* 💥 MANAGE MODAL 💥 */}
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
