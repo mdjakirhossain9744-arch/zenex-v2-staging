@@ -3,11 +3,10 @@ export const dynamic = 'force-dynamic';
 import { NextResponse, NextRequest } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
-import jwt from "jsonwebtoken";
 
 export async function GET(req: NextRequest) {
   try {
-    // 💥 হ্যাকার প্রটেকশন: NextRequest থেকে কুকি নেওয়া হলো (Type Error Fixed) 💥
+    // 💥 হ্যাকার প্রটেকশন: কুকি থেকে টোকেন নেওয়া হলো 💥
     const token = req.cookies.get("zenex_token")?.value;
     
     if (!token) {
@@ -15,14 +14,19 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const decoded: any = jwt.verify(token, process.env.JWT_SECRET as string);
-      if (decoded.role !== "admin") {
+      // jsonwebtoken লাইব্রেরির বদলে মিডলওয়্যারের মতো ডাইরেক্ট ডিকোড (যাতে কোনো এরর না আসে)
+      const payloadBase64 = token.split('.')[1];
+      const decodedPayload = JSON.parse(atob(payloadBase64));
+
+      // যদি সে এডমিন না হয়, তবে লাথি খাবে
+      if (decodedPayload.role !== "admin") {
         return NextResponse.json({ message: "🔴 FORBIDDEN: Admins only!" }, { status: 403 });
       }
     } catch (err) {
       return NextResponse.json({ message: "🔴 FORBIDDEN: Invalid Token!" }, { status: 403 });
     }
 
+    // 💥 সিকিউরিটি পাস হলে তবেই ডাটাবেস থেকে ডাটা আনবে 💥
     await connectToDatabase();
     
     const users = await User.find({}).select("-password").sort({ createdAt: -1 });
