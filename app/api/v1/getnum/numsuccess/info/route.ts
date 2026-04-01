@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-// 💥 পাথ ফিক্স করা হয়েছে 💥
 import connectToDatabase from "../../../../../lib/mongodb"; 
 import User from "../../../../../../models/User";
 import Order from "../../../../../../models/Order";
@@ -32,7 +31,9 @@ export async function GET(req: Request) {
     const data = await response.json();
 
     if (data.meta?.status === "success" && data.data?.otps) {
-      const liveOtps = data.data.otps;
+      const liveOtps = Array.isArray(data.data.otps) ? data.data.otps : [];
+      if (liveOtps.length === 0) return NextResponse.json(data, { status: response.status });
+
       const pendingOrders = await Order.find({ userEmail: user.email, status: "WAIT" });
 
       for (const order of pendingOrders) {
@@ -45,12 +46,41 @@ export async function GET(req: Request) {
         });
 
         if (matchedOtpObj) {
-           order.status = "DONE";
-           order.otp = matchedOtpObj.otp;
-           await order.save();
+           // 💥 ১. Atomic Status Update (Double Spending হ্যাক প্রটেকশন) 💥
+           const updatedOrder = await Order.findOneAndUpdate(
+             { _id: order._id, status: "WAIT" },
+             { $set: { status: "DONE", otp: matchedOtpObj.otp, fullMessage: matchedOtpObj.otp } },
+             { new: true }
+           );
 
-           user.balance += user.otpRate; 
-           await user.save();
+           // যদি আপডেট সফল হয় (অর্থাৎ আগে DONE হয়নি)
+           if (updatedOrder) {
+              const incomingMsg = (matchedOtpObj.otp || "").toLowerCase();
+              const isFreeService = incomingMsg.includes("whatsapp") || incomingMsg.includes("wa.me") || incomingMsg.includes("telegram") || incomingMsg.includes("t.me");
+
+              // 💥 ২. WhatsApp/Telegram জিরো লস প্রটেকশন 💥
+              if (!isFreeService) {
+                 const userRate = Number(user.otpRate) || 0.50;
+                 
+                 // ইউজারের ব্যালেন্স অ্যাড (Atomic)
+                 await User.findByIdAndUpdate(user._id, { $inc: { balance: userRate } });
+
+                 // 💥 ৩. Agent Auto-Commission (Bot User দের জন্যও কমিশন পাবে) 💥
+                 if (user.agentEmail) {
+                    const agent = await User.findOne({
+                      $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
+                      role: "agent"
+                    });
+                    if (agent) {
+                       const agentRate = Number(agent.agentMaxRate) || 0.70;
+                       const commission = Number((agentRate - userRate).toFixed(2));
+                       if (commission > 0) {
+                          await User.findByIdAndUpdate(agent._id, { $inc: { agentEarning: commission } });
+                       }
+                    }
+                 }
+              }
+           }
         }
       }
     }

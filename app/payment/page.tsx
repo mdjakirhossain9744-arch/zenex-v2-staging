@@ -11,14 +11,18 @@ export default function Payment() {
   const [toastMessage, setToastMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // 💥 গ্লোবাল এবং মেথড কন্ট্রোলার (ডাটাবেস থেকে আসবে) 💥
+  // 💥 গ্লোবাল এবং মেথড কন্ট্রোলার 💥
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(true);
   const [methodConfig, setMethodConfig] = useState({
     bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true
   });
 
-  const [activeAdminTab, setActiveAdminTab] = useState("PENDING");
   const [dbRequests, setDbRequests] = useState<any[]>([]);
+
+  // 💥 Admin Filter States 💥
+  const [activeAdminTab, setActiveAdminTab] = useState("PENDING");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [timeFilter, setTimeFilter] = useState("ALL");
 
   const [selectedMethod, setSelectedMethod] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
@@ -47,7 +51,6 @@ export default function Payment() {
     fetchPaymentSettings();
   }, []);
 
-  // 💥 ডাটাবেস থেকে সেটিংস আনা 💥
   const fetchPaymentSettings = async () => {
     try {
       const res = await fetch("/api/payment-settings", {
@@ -74,7 +77,10 @@ export default function Payment() {
         body: JSON.stringify({ action: "FETCH", email, role: userRole })
       });
       const data = await res.json();
-      if (data.success) setDbRequests(data.data);
+      if (data.success) {
+        // নতুন ডাটাগুলো উপরে দেখানোর জন্য রিভার্স করা হলো
+        setDbRequests(data.data.reverse());
+      }
 
       if (userRole !== "admin") {
          const userRes = await fetch("/api/get-user-details", {
@@ -98,21 +104,40 @@ export default function Payment() {
   };
 
   // ==========================================
-  // 📊 ரியেল-টাইম অ্যাডমিন কার্ড স্ট্যাটাস ক্যালকুলেশন 📊
+  // 📊 Admin Stats Calculation 
   // ==========================================
   const totalUsersRequested = dbRequests.length;
   const totalAmountRequested = dbRequests.reduce((sum, req) => sum + Number(req.amount), 0);
   const totalAmountPaid = dbRequests.filter(r => r.status === "PAID").reduce((sum, req) => sum + Number(req.amount), 0);
   const totalAmountPending = dbRequests.filter(r => r.status === "PENDING").reduce((sum, req) => sum + Number(req.amount), 0);
 
-  // 📊 Admin List Filtering
+  // 💥 Smart Filtering Logic 💥
   const displayedRequests = dbRequests.filter(req => {
-    if (activeAdminTab === "PENDING") return req.status === "PENDING";
-    return req.status !== "PENDING"; 
+    // ১. Tab Filter
+    if (activeAdminTab === "PENDING" && req.status !== "PENDING") return false;
+    if (activeAdminTab === "HISTORY" && req.status === "PENDING") return false;
+
+    // ২. Search Filter (Name, Email or Account Number)
+    const q = searchQuery.toLowerCase();
+    if (q && !req.name?.toLowerCase().includes(q) && !req.email?.toLowerCase().includes(q) && !req.accountNumber?.toLowerCase().includes(q)) {
+      return false;
+    }
+
+    // ৩. Time Filter
+    if (timeFilter !== "ALL") {
+      const reqDate = new Date(req.createdAt || req.date || Date.now());
+      const diffDays = Math.ceil(Math.abs(Date.now() - reqDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (timeFilter === "TODAY" && diffDays > 1) return false;
+      if (timeFilter === "7DAYS" && diffDays > 7) return false;
+      if (timeFilter === "30DAYS" && diffDays > 30) return false;
+    }
+
+    return true;
   });
 
   // ==========================================
-  // 👑 ADMIN ACTIONS: ON/OFF SETTINGS
+  // 👑 ADMIN ACTIONS
   // ==========================================
   const toggleGlobalWithdraw = async () => {
     const newState = !isWithdrawOpen;
@@ -219,7 +244,7 @@ export default function Payment() {
                 <p className="text-[#94A3B8] mt-1 text-sm font-medium">Control payment gates and process requests.</p>
               </div>
 
-              {/* 💥 Admin Toggles (Real Database Integrated) 💥 */}
+              {/* Admin Toggles */}
               <div className="flex flex-wrap items-center gap-4 bg-[#0F172A] p-2 rounded-2xl border border-[#334155]">
                 <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                    <span className="text-[10px] text-[#94A3B8] uppercase font-black">Main System</span>
@@ -239,11 +264,11 @@ export default function Payment() {
               </div>
             </div>
 
-            {/* 📊 Admin Payment Stats Chart (Real Data) */}
+            {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#3B82F6]">
                 <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Total Requests</p>
-                <p className="text-2xl font-black text-white">{totalUsersRequested} Users</p>
+                <p className="text-2xl font-black text-white">{totalUsersRequested}</p>
               </div>
               <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#EAB308]">
                 <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Pending Amount</p>
@@ -259,16 +284,39 @@ export default function Payment() {
               </div>
             </div>
 
-            {/* Tabs & Table */}
-            <div className="flex items-center gap-2 mb-4 bg-[#0F172A] p-1.5 rounded-xl w-max border border-[#334155]">
-               <button onClick={() => setActiveAdminTab("PENDING")} className={`px-6 py-2 rounded-lg text-sm font-black transition-all ${activeAdminTab === "PENDING" ? "bg-[#3B82F6] text-white" : "text-[#64748B]"}`}>
-                 Live Pending
-               </button>
-               <button onClick={() => setActiveAdminTab("HISTORY")} className={`px-6 py-2 rounded-lg text-sm font-black transition-all ${activeAdminTab === "HISTORY" ? "bg-[#3B82F6] text-white" : "text-[#64748B]"}`}>
-                 Resolved History
-               </button>
+            {/* 💥 Smart Filter Toolbar 💥 */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 bg-[#1E293B]/80 p-4 rounded-2xl border border-[#334155]">
+               <div className="flex items-center gap-2 bg-[#0F172A] p-1.5 rounded-xl border border-[#334155]">
+                 <button onClick={() => setActiveAdminTab("PENDING")} className={`px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-black transition-all ${activeAdminTab === "PENDING" ? "bg-[#3B82F6] text-white shadow-md" : "text-[#64748B] hover:text-white"}`}>
+                   Live Pending
+                 </button>
+                 <button onClick={() => setActiveAdminTab("HISTORY")} className={`px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-black transition-all ${activeAdminTab === "HISTORY" ? "bg-[#3B82F6] text-white shadow-md" : "text-[#64748B] hover:text-white"}`}>
+                   Resolved History
+                 </button>
+               </div>
+
+               <div className="flex w-full md:w-auto items-center gap-3">
+                 <input 
+                   type="text" 
+                   placeholder="Search user or account..." 
+                   value={searchQuery}
+                   onChange={(e) => setSearchQuery(e.target.value)}
+                   className="w-full md:w-64 bg-[#0F172A] border border-[#334155] text-white text-sm px-4 py-2.5 rounded-xl focus:outline-none focus:border-[#3B82F6]"
+                 />
+                 <select 
+                   value={timeFilter} 
+                   onChange={(e) => setTimeFilter(e.target.value)}
+                   className="bg-[#0F172A] border border-[#334155] text-white text-sm font-bold px-4 py-2.5 rounded-xl focus:outline-none focus:border-[#3B82F6]"
+                 >
+                   <option value="ALL">All Time</option>
+                   <option value="TODAY">Today</option>
+                   <option value="7DAYS">Last 7 Days</option>
+                   <option value="30DAYS">This Month</option>
+                 </select>
+               </div>
             </div>
 
+            {/* Admin Data Table */}
             <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[300px]">
               <table className="w-full text-left whitespace-nowrap">
                 <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
@@ -282,13 +330,13 @@ export default function Payment() {
                 </thead>
                 <tbody className="divide-y divide-[#334155]/50">
                   {loading ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-[#3B82F6]">Loading Real Data...</td></tr>
+                    <tr><td colSpan={5} className="p-8 text-center text-[#3B82F6] font-bold">Loading Database...</td></tr>
                   ) : displayedRequests.length === 0 ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-[#64748B] font-bold">No requests found.</td></tr>
+                    <tr><td colSpan={5} className="p-8 text-center text-[#64748B] font-bold">No requests found matching your filter.</td></tr>
                   ) : (
                     displayedRequests.map((req) => (
                       <tr key={req._id} className={`transition-colors ${req.status !== "PENDING" ? 'bg-[#0F172A]/40 opacity-70' : 'hover:bg-[#334155]/20'}`}>
-                        <td className="p-4 pl-6"><span className="text-xs font-black text-[#94A3B8] bg-[#334155]/50 px-2 py-1 rounded">{req.date}</span></td>
+                        <td className="p-4 pl-6"><span className="text-xs font-black text-[#94A3B8] bg-[#334155]/50 px-2 py-1 rounded">{req.date || new Date(req.createdAt).toLocaleDateString()}</span></td>
                         <td className="p-4">
                           <p className="font-bold text-[#E2E8F0]">{req.name}</p>
                           <p className="text-[10px] text-[#64748B]">{req.email}</p>
@@ -368,7 +416,7 @@ export default function Payment() {
                         <div className="relative">
                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-black text-[#64748B]">৳</span>
                           <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder="100.00" className="w-full bg-[#0F172A] border border-[#334155] rounded-xl pl-10 pr-20 py-4 text-white text-xl font-black focus:outline-none focus:border-[#10B981] transition-all" />
-                          <button onClick={() => setWithdrawAmount(balance)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#334155] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg">MAX</button>
+                          <button onClick={() => setWithdrawAmount(balance)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#334155] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-[#3B82F6] transition-colors">MAX</button>
                         </div>
                      </div>
 
@@ -383,14 +431,17 @@ export default function Payment() {
                   <div className="p-6 border-b border-[#334155] bg-[#0F172A]/50">
                     <h3 className="text-sm font-black text-white uppercase tracking-widest">My Recent Transactions</h3>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-6">
+                  <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                      {dbRequests.length === 0 ? (
                        <p className="text-[#64748B] text-center font-bold mt-10">No history found.</p>
                      ) : (
                        dbRequests.map((item) => (
                          <div key={item._id} className="bg-[#0F172A] border border-[#334155] p-4 rounded-xl mb-4 flex items-center justify-between">
                             <div className="flex flex-col gap-1">
-                              <span className="text-sm font-bold text-white">{item.method}</span>
+                              <span className="text-sm font-bold text-white flex items-center gap-2">
+                                {item.method} 
+                                <span className="text-[9px] text-[#64748B] font-normal">{item.date || new Date(item.createdAt).toLocaleDateString()}</span>
+                              </span>
                               <span className="text-[10px] text-[#A855F7] font-mono">{item.accountNumber}</span>
                             </div>
                             <div className="flex flex-col items-end gap-1">
