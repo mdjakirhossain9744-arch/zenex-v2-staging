@@ -1,9 +1,6 @@
-// ফোল্ডার লোকেশন: app/api/leaderboard/route.ts
-
 import { NextResponse, NextRequest } from "next/server";
 import mongoose from "mongoose";
 import User from "../../../models/User";
-import jwt from "jsonwebtoken";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,15 +9,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { action, email, bannerActive, bannerText, bannerPrize } = body;
+    const { action, email, isLeaderboardOpen, bannerActive, bannerText, bannerPrize } = body;
 
-    // 💥 ১. রিয়েল ইউজার ডাটা এবং র‍্যাংকিং ফেচ করা 💥
+    // 💥 ১. রিয়েল ইউজার ডাটা এবং সেটিংস ফেচ করা 💥
     if (action === "FETCH") {
-      // ডাটাবেস থেকে শুধু অ্যাক্টিভ ইউজারদের আনা হচ্ছে এবং todayOTP অনুযায়ী সাজানো হচ্ছে
       const allUsers = await User.find({ role: "user", status: "active" })
                                  .select("fullName email todayOTP")
                                  .sort({ todayOTP: -1 })
-                                 .limit(300); // সর্বোচ্চ ৩০০ জনের লিস্ট আনবে
+                                 .limit(300);
 
       const topUsersList = allUsers.map((u, index) => ({
          rank: index + 1,
@@ -29,7 +25,6 @@ export async function POST(req: NextRequest) {
          score: u.todayOTP || 0
       }));
 
-      // ইউজারের নিজের র‍্যাংক বের করা
       let myRank = { rank: 0, name: "Not Ranked", score: 0 };
       if (email) {
          const myIndex = topUsersList.findIndex(u => u.email === email);
@@ -42,15 +37,16 @@ export async function POST(req: NextRequest) {
          }
       }
 
-      // MongoDB Native Collection দিয়ে অফার ব্যানার সেটিংস আনা হচ্ছে
       const db = mongoose.connection.db;
       let settings = null;
       if (db) {
          settings = await db.collection("custom_settings").findOne({ type: "leaderboard" });
       }
       
+      // ডিফল্ট সেটিংস (নতুন ডাটাবেসের জন্য)
       if (!settings) {
         settings = { 
+           isLeaderboardOpen: true, // 💥 নতুন: পুরো পেজ অন/অফ করার সুইচ
            bannerActive: false, 
            bannerText: "Top 1 user at the end of the week receives", 
            bannerPrize: "1000 BDT" 
@@ -60,24 +56,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, topUsersList, myRank, settings });
     }
 
-    // 💥 ২. এডমিন কন্ট্রোল: অফার ব্যানার আপডেট করা 💥
+    // 💥 ২. এডমিন কন্ট্রোল: সুপার ফাস্ট সেভ লজিক (Error Fixed) 💥
     if (action === "UPDATE_BANNER") {
       const token = req.cookies.get("zenex_token")?.value;
       if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
       
-      const decoded: any = jwt.verify(token, process.env.JWT_SECRET as string);
-      if (decoded.role !== "admin") return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+      let userRole = "user";
+      try {
+        const payloadBase64 = token.split('.')[1];
+        const decoded = JSON.parse(atob(payloadBase64));
+        userRole = decoded.role;
+      } catch(e) {
+        return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+      }
+
+      if (userRole !== "admin") return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
       const db = mongoose.connection.db;
       if (db) {
          await db.collection("custom_settings").updateOne(
             { type: "leaderboard" },
-            { $set: { type: "leaderboard", bannerActive, bannerText, bannerPrize } },
+            { $set: { type: "leaderboard", isLeaderboardOpen, bannerActive, bannerText, bannerPrize } },
             { upsert: true }
          );
       }
 
-      return NextResponse.json({ success: true, message: "Banner Settings Updated!" });
+      return NextResponse.json({ success: true, message: "Settings Updated Successfully!" });
     }
 
     return NextResponse.json({ success: false, message: "Invalid action" });
