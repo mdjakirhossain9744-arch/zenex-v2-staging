@@ -10,26 +10,16 @@ export async function POST(request: Request) {
 
     const API_KEY = "M_7VX25KAJI";
 
-    // 💥 Cloudflare / WAF Bypass Advanced Headers 💥
-    // আমরা প্রোভাইডারকে বোঝানোর চেষ্টা করছি যে রিকোয়েস্টটি রিয়েল ক্রোম ব্রাউজার থেকে আসছে
+    // 💥 Cloudflare / WAF Bypass (Android Mobile App Dalvik Trick) 💥
+    // আমরা প্রোভাইডারকে বোঝানোর চেষ্টা করছি যে রিকোয়েস্টটি একটি অ্যান্ড্রয়েড মোবাইল অ্যাপ থেকে আসছে
     const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/getnum/number", {
       method: "POST",
       headers: {
         "mapikey": API_KEY,
         "Content-Type": "application/json",
-        "Accept": "application/json, text/plain, */*",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Origin": "https://x.mnitnetwork.com",
-        "Referer": "https://x.mnitnetwork.com/",
-        "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", // ফেইক অ্যান্ড্রয়েড ডিভাইস
+        "Accept": "application/json",
+        "Connection": "keep-alive"
       },
       body: JSON.stringify({
         range: range || "23276345XXX",
