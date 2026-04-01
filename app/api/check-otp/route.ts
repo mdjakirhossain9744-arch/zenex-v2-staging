@@ -22,7 +22,6 @@ export async function GET(req: Request) {
     const ipData = ipMap.get(ip) || { count: 0, startTime: now };
 
     if (now - ipData.startTime > RATE_LIMIT_WINDOW) {
-      // সময় পার হয়ে গেলে কাউন্ট রিস্টার্ট হবে
       ipData.count = 1;
       ipData.startTime = now;
     } else {
@@ -45,32 +44,47 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
-    // ৩. Original API Fetch Logic
+    // ৩. Original API Fetch Logic (WITH BYPASS)
     // ==========================================
     const API_KEY = "M_7VX25KAJI"; 
 
+    // 💥 Cloudflare / WAF Bypass (Android Mobile App Dalvik Trick) 💥
     const response = await fetch(`https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${Date.now()}`, {
       method: "GET",
       headers: {
         "mapikey": API_KEY,
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", // 💥 ম্যাজিক হেডার: Cloudflare একে মোবাইল অ্যাপ মনে করবে 💥
+        "Accept": "application/json",
+        "Connection": "keep-alive",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache"
       },
       cache: "no-store",
     });
 
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("OTP API Blocked by Provider:", errText);
+      // যদি প্রোভাইডার ব্লক করে, তবে পুরনো সেভ করা ক্যাশ ডাটা পাঠাবে যেন সাইট ক্র্যাশ না করে
+      if (cachedData) return NextResponse.json(cachedData, { status: 200 });
+      return NextResponse.json({ success: false, error: "Provider Blocked Request" }, { status: 400 });
+    }
+
     const data = await response.json();
 
-    if (response.ok && data.meta?.status === "success") {
+    if (data.meta?.status === "success") {
+      // 💥 API থেকে আসা ডাটা Array হিসেবে আছে কি না তা নিশ্চিত করা হচ্ছে
+      const otpArray = Array.isArray(data.data) ? data.data : (data.data?.otps || []);
+      
       // নতুন ডাটা ক্যাশে সেভ করা হচ্ছে
-      cachedData = { success: true, otps: data.data.otps || [] };
+      cachedData = { success: true, otps: otpArray };
       lastFetchTime = now;
       return NextResponse.json(cachedData, { status: 200 });
     } else {
       return NextResponse.json({ success: false, error: data.message || "Failed to fetch OTPs" }, { status: 400 });
     }
-  } catch (error) {
-    console.error("OTP Fetch Error:", error);
+  } catch (error: any) {
+    console.error("OTP Fetch Error:", error.message);
     // যদি অরিজিনাল সাইট ডাউনও থাকে, আমাদের সেভ করা ক্যাশ ডাটা শো করবে
     if (cachedData) return NextResponse.json(cachedData, { status: 200 });
     
