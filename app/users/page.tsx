@@ -21,6 +21,9 @@ export default function UsersManagementPage() {
   const [contactLink, setContactLink] = useState("");
   const [maxLimit, setMaxLimit] = useState("100"); 
 
+  // 💥 API Access State 💥
+  const [newApiStatus, setNewApiStatus] = useState(false);
+
   const fetchUsers = () => {
     fetch("/api/get-all-users")
       .then(res => res.json())
@@ -54,11 +57,9 @@ export default function UsersManagementPage() {
       return 0;
     });
 
-  // 📊 অ্যাডমিন প্যানেলের স্ট্যাটস ক্যালকুলেশন 
   const totalAgents = allUsers.filter(u => u.role === 'agent').length;
   const totalUsers = allUsers.filter(u => u.role === 'user').length;
   const activeAccounts = allUsers.filter(u => u.status.toLowerCase() === 'active').length;
-  // 💥 নতুন: ব্যান হওয়া ইউজারদের কাউন্ট 💥
   const bannedAccounts = allUsers.filter(u => u.status.toLowerCase() === 'banned').length;
 
   const openManageModal = (user: any) => {
@@ -66,6 +67,7 @@ export default function UsersManagementPage() {
     setNewRate(user.rate);
     setNewStatus(user.status.toLowerCase());
     setNewPassword(""); 
+    setNewApiStatus(user.isApiActive || false); // 💥 API স্ট্যাটাস লোড করা হচ্ছে 💥
     
     if (user.role === "agent") {
       setCustomMail(user.customAgentMail || ""); 
@@ -95,7 +97,8 @@ export default function UsersManagementPage() {
         newRole: makeRole, 
         customMail: makeRole === "agent" ? customMail : "",   
         contactLink: makeRole === "agent" ? contactLink : "",
-        maxLimit: makeRole === "agent" ? maxLimit : 100 
+        maxLimit: makeRole === "agent" ? maxLimit : 100,
+        isApiActive: newApiStatus // 💥 নতুন API পারমিশন পাঠানো হচ্ছে 💥
       })
     });
     const data = await res.json();
@@ -106,7 +109,6 @@ export default function UsersManagementPage() {
     } else alert(data.message);
   };
 
-  // 💥 নতুন: এক ক্লিকে আনব্যান করার ম্যাজিক ফাংশন 💥
   const handleQuickUnban = async (user: any) => {
     if (!confirm(`Are you sure you want to UNBAN ${user.name}?`)) return;
     
@@ -120,7 +122,8 @@ export default function UsersManagementPage() {
         newRate: user.rate || user.otpRate,
         customMail: user.customAgentMail || "",
         contactLink: user.telegramLink || "",
-        maxLimit: user.agentMaxUsers || 100
+        maxLimit: user.agentMaxUsers || 100,
+        isApiActive: user.isApiActive || false
       })
     });
     
@@ -143,7 +146,7 @@ export default function UsersManagementPage() {
             <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent uppercase tracking-wider">
               Global Users Directory
             </h2>
-            <p className="text-sm text-[#94A3B8] mt-1">Manage accounts, monitor spam, and set limits.</p>
+            <p className="text-sm text-[#94A3B8] mt-1">Manage accounts, API access, and set limits.</p>
           </div>
           <div className="relative w-full lg:w-auto">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -157,7 +160,6 @@ export default function UsersManagementPage() {
           </div>
         </div>
 
-        {/* 💥 4 Dynamic Stats Cards + Banned Stats 💥 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#8B5CF6]">
             <p className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest mb-1">Total Agents</p>
@@ -178,7 +180,6 @@ export default function UsersManagementPage() {
           </div>
         </div>
 
-        {/* Users Table */}
         <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-2xl shadow-lg overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
@@ -203,6 +204,10 @@ export default function UsersManagementPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className={`font-bold ${u.status.toLowerCase() === 'banned' ? 'text-red-400 line-through' : 'text-[#E2E8F0]'}`}>{u.name}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#3B82F6]/20 text-[#3B82F6] border border-[#3B82F6]/30">{u.uid}</span>
+                        {/* 💥 API Badge 💥 */}
+                        {u.isApiActive && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">API</span>
+                        )}
                       </div>
                       <p className="text-[10px] text-[#64748B]">{u.email}</p>
                     </td>
@@ -223,7 +228,6 @@ export default function UsersManagementPage() {
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      {/* 💥 Banned ইউজারদের জন্য আনব্যান বাটন 💥 */}
                       {u.status.toLowerCase() === 'banned' && (
                         <button onClick={() => handleQuickUnban(u)} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg mr-2 text-xs font-black transition-colors border border-red-500/30">
                           Unban
@@ -240,10 +244,9 @@ export default function UsersManagementPage() {
           </table>
         </div>
 
-        {/* MANAGE MODAL */}
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
@@ -254,6 +257,21 @@ export default function UsersManagementPage() {
                    <h3 className="text-lg font-black text-white leading-tight">{selectedUser.name} <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser.role}</span></h3>
                    <p className="text-[10px] font-mono text-[#3B82F6] font-bold">{selectedUser.email}</p>
                  </div>
+              </div>
+              
+              {/* 💥 Developer API Access Toggle 💥 */}
+              <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex items-center justify-between">
+                 <div>
+                   <p className="text-sm font-black text-purple-400">Developer API Access</p>
+                   <p className="text-[9px] text-[#64748B] mt-1 font-bold">Allow user to generate numbers via bot/software</p>
+                 </div>
+                 <button 
+                   type="button"
+                   onClick={() => setNewApiStatus(!newApiStatus)} 
+                   className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${newApiStatus ? 'bg-[#10B981]' : 'bg-[#334155]'}`}
+                 >
+                   <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-md ${newApiStatus ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                 </button>
               </div>
               
               {selectedUser.role === 'user' && !isMakingAgent && (
@@ -273,7 +291,6 @@ export default function UsersManagementPage() {
                 </div>
               )}
 
-              {/* Edit User Form */}
               <form onSubmit={(e) => handleSaveUser(e, isMakingAgent ? "agent" : selectedUser.role)} className={isMakingAgent ? "space-y-3 border border-[#8B5CF6]/50 bg-[#0F172A] p-5 rounded-xl" : "space-y-4"}>
                 
                 {isMakingAgent && <h4 className="text-sm font-black text-[#8B5CF6] uppercase mb-1">Agent Details</h4>}
@@ -299,7 +316,6 @@ export default function UsersManagementPage() {
                       <input type="text" required placeholder="t.me/agent_username" value={contactLink} onChange={(e) => setContactLink(e.target.value)}
                         className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" />
                     </div>
-                    
                     <div>
                       <label className="block text-[10px] text-[#3B82F6] uppercase font-bold mb-1">Max Users Limit (Seat)</label>
                       <input type="number" required placeholder="e.g. 100, 200, 500" value={maxLimit} onChange={(e) => setMaxLimit(e.target.value)}

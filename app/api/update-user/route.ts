@@ -13,7 +13,8 @@ export async function POST(req: Request) {
     const { 
       userId, newPassword, newRate, newStatus, newRole, 
       customMail, contactLink, maxLimit, 
-      requesterEmail, requesterRole 
+      requesterEmail, requesterRole,
+      isApiActive // 💥 নতুন: ফ্রন্টএন্ড থেকে API স্ট্যাটাস রিসিভ করা হলো 💥
     } = body;
 
     const targetUser = await User.findById(userId);
@@ -56,6 +57,11 @@ export async function POST(req: Request) {
 
     if (newPassword && newPassword.trim() !== "") {
       updateData.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    // 💥 API Access ডাটাবেসে সেভ করার লজিক 💥
+    if (isApiActive !== undefined) {
+      updateData.isApiActive = isApiActive;
     }
 
     if (isTargetAgent) {
