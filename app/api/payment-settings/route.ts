@@ -1,14 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import mongoose from "mongoose";
 import PaymentSetting from "../../../models/PaymentSetting";
 import jwt from "jsonwebtoken";
-import { cookies } from "next/headers";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    // 💥 হ্যাকার প্রটেকশন: JWT Verification 💥
-    const cookieStore = cookies();
-    const token = cookieStore.get("zenex_token")?.value;
+    // 💥 হ্যাকার প্রটেকশন: NextRequest থেকে কুকি নেওয়া হলো 💥
+    const token = req.cookies.get("zenex_token")?.value;
     
     if (!token) return NextResponse.json({ message: "🔴 UNAUTHORIZED" }, { status: 401 });
     
@@ -27,7 +25,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { action, isWithdrawOpen, methods } = body;
 
-    // FETCH সবার জন্য অ্যালাউ করা হলো (কারণ ইউজাররাও ড্যাশবোর্ডে সেটিংস দেখতে পাবে)
+    // FETCH সবার জন্য অ্যালাউ করা হলো
     if (action === "FETCH") {
       let settings = await PaymentSetting.findOne({ type: "global" });
       if (!settings) {

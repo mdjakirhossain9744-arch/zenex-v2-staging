@@ -1,16 +1,14 @@
 export const dynamic = 'force-dynamic';
 
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
 import jwt from "jsonwebtoken";
-import { cookies } from "next/headers";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    // 💥 হ্যাকার প্রটেকশন: JWT ভেরিফিকেশন (শুধুমাত্র এডমিন এক্সেস পাবে) 💥
-    const cookieStore = cookies();
-    const token = cookieStore.get("zenex_token")?.value;
+    // 💥 হ্যাকার প্রটেকশন: NextRequest থেকে কুকি নেওয়া হলো (Type Error Fixed) 💥
+    const token = req.cookies.get("zenex_token")?.value;
     
     if (!token) {
       return NextResponse.json({ message: "🔴 UNAUTHORIZED: Token missing" }, { status: 401 });
@@ -38,7 +36,7 @@ export async function GET() {
       agentEmail: u.agentEmail || "Admin",
       balance: u.balance || 0,
       status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
-      todayOTP: 0, // এটা লাইভ হিসেব করা হবে
+      todayOTP: 0, 
       rate: u.otpRate || "0.50",
       customAgentMail: u.customAgentMail || "", 
       telegramLink: u.telegramLink || "",
