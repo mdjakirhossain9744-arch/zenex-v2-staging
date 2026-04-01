@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "../../../../lib/mongodb"; 
+// 💥 পাথ ফিক্স করা হয়েছে 💥
+import connectToDatabase from "../../../lib/mongodb"; 
 import User from "../../../../models/User";
 import Order from "../../../../models/Order";
 
