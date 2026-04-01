@@ -6,12 +6,13 @@ import DashboardLayout from "../DashboardLayout";
 export default function Profile() {
   const [toastMessage, setToastMessage] = useState("");
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const [profileData, setProfileData] = useState({
     id: "ZX-000000",
     name: "Loading...",
     email: "Loading...",
-    phone: "Loading...",
+    phone: "Not Set",
     address: "",
     lastLogin: "Just Now",
     status: "Pending"
@@ -36,17 +37,16 @@ export default function Profile() {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
-      setProfileData({
+      setProfileData(prev => ({
+        ...prev,
         id: `ZX-${parsedUser.id.substring(parsedUser.id.length - 6).toUpperCase()}`,
-        name: parsedUser.name,
+        name: parsedUser.name || parsedUser.fullName,
         email: parsedUser.email,
-        phone: parsedUser.mobile || "Not Set", 
-        address: "Dhaka, Bangladesh", 
         lastLogin: new Date().toLocaleString(),
         status: parsedUser.status === "pending" ? "Pending Approval" : "Account Active"
-      });
+      }));
 
-      // ইউজারের আসল ডাটা এবং API Key ডাটাবেস থেকে আনা হচ্ছে
+      // ডাটাবেস থেকে আসল ডাটা আনা
       fetch("/api/get-user-details", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,11 +57,17 @@ export default function Profile() {
         if (data.success && data.user) {
           setApiKey(data.user.apiKey || "");
           setIsApiActive(data.user.isApiActive || false);
+          setProfileData(prev => ({
+            ...prev,
+            phone: data.user.mobile || "Not Set",
+            address: data.user.address || "",
+            name: data.user.fullName || prev.name
+          }));
         }
       })
-      .catch(err => console.error("Failed to fetch user details:", err));
+      .catch(err => console.error("Failed to fetch user details"));
 
-      // ইউজারের এজেন্টের ডাটা আনা হচ্ছে
+      // এজেন্টের ডাটা আনা
       fetch("/api/get-all-users")
         .then(res => res.json())
         .then(data => {
@@ -88,7 +94,7 @@ export default function Profile() {
             }
           }
         })
-        .catch(err => console.error("Failed to fetch agent data:", err));
+        .catch(err => console.error("Failed to fetch agent data"));
     }
   }, []);
 
@@ -97,12 +103,39 @@ export default function Profile() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  const handleSaveProfile = () => {
-    setIsEditingProfile(false);
-    showToast("Profile changes will be saved to Database soon!");
+  // 💥 ডাটাবেসে রিয়েল আপডেট সেভ করা 💥
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/update-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: profileData.name,
+          phone: profileData.phone,
+          address: profileData.address
+        })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showToast("✅ Profile successfully updated!");
+        setIsEditingProfile(false);
+        
+        // লোকাল স্টোরেজও আপডেট করে দেওয়া হলো যাতে রিফ্রেশ করলে নতুন নাম দেখায়
+        const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+        storedUser.name = profileData.name;
+        localStorage.setItem("user", JSON.stringify(storedUser));
+      } else {
+        showToast("❌ Failed to update profile.");
+      }
+    } catch (error) {
+      showToast("❌ Server Error.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // 💥 API Key Reveal/Copy Logic 💥
   const handleToggleKey = () => {
     if (!isApiActive) {
       showToast("Access Denied! Contact your Admin to enable API.");
@@ -113,7 +146,7 @@ export default function Profile() {
 
   const handleCopyKey = () => {
     if (!isApiActive) {
-      showToast("Access Denied! Contact your Admin to enable API.");
+      showToast("Access Denied! Contact Admin to enable.");
       return;
     }
     if (apiKey) {
@@ -292,9 +325,11 @@ export default function Profile() {
                       <label className="block text-[10px] font-black text-[#64748B] uppercase tracking-widest mb-2">Phone Number</label>
                       <input type="text" value={profileData.phone} disabled={!isEditingProfile} onChange={(e) => setProfileData({...profileData, phone: e.target.value})} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 transition-colors font-bold" />
                    </div>
-                   <div className="md:col-span-2">
-                      <label className="block text-[10px] font-black text-[#64748B] uppercase tracking-widest mb-2">Email Address</label>
-                      <input type="email" value={profileData.email} disabled={!isEditingProfile} onChange={(e) => setProfileData({...profileData, email: e.target.value})} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-[#EAB308] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 transition-colors font-medium" />
+                   {/* 💥 ইমেইল চেঞ্জ করা বন্ধ করা হলো 💥 */}
+                   <div className="md:col-span-2 relative group">
+                      <label className="block text-[10px] font-black text-[#64748B] uppercase tracking-widest mb-2">Email Address (Read Only)</label>
+                      <input type="email" value={profileData.email} disabled className="w-full bg-[#0F172A]/50 border border-[#334155]/50 rounded-xl px-4 py-3 text-[#EAB308]/70 cursor-not-allowed font-medium" />
+                      <span className="absolute right-4 top-[38px] text-[10px] text-[#F43F5E] opacity-0 group-hover:opacity-100 transition-opacity">Contact Admin to change</span>
                    </div>
                    <div className="md:col-span-2">
                       <label className="block text-[10px] font-black text-[#64748B] uppercase tracking-widest mb-2">Postal Address</label>
@@ -304,8 +339,8 @@ export default function Profile() {
 
                  {isEditingProfile && (
                    <div className="mt-8 pt-6 border-t border-[#334155] flex justify-end">
-                     <button onClick={handleSaveProfile} className="bg-gradient-to-r from-[#10B981] to-[#059669] text-white px-8 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 tracking-wider">
-                       SAVE CHANGES
+                     <button onClick={handleSaveProfile} disabled={isSaving} className="bg-gradient-to-r from-[#10B981] to-[#059669] text-white px-8 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 tracking-wider disabled:opacity-50">
+                       {isSaving ? "SAVING..." : "SAVE CHANGES"}
                      </button>
                    </div>
                  )}

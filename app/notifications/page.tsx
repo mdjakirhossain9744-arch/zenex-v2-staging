@@ -29,12 +29,10 @@ export default function Notifications() {
       const data = await res.json();
       
       if (data.success) {
-        // ইউজারের লোকাল রিঅ্যাকশন হিস্ট্রি বের করা হচ্ছে
         const savedReactions = JSON.parse(localStorage.getItem("zenex_reactions") || "{}");
         const viewedNotifs = JSON.parse(localStorage.getItem("zenex_viewed") || "[]");
 
         const formatted = data.data.map((n: any) => {
-           // যদি ইউজার নোটিশটি প্রথমবার দেখে, তবে ভিউ কাউন্ট ১ বাড়িয়ে দেবে
            if (!viewedNotifs.includes(n._id)) {
               viewedNotifs.push(n._id);
               localStorage.setItem("zenex_viewed", JSON.stringify(viewedNotifs));
@@ -59,9 +57,9 @@ export default function Notifications() {
     const savedReactions = JSON.parse(localStorage.getItem("zenex_reactions") || "{}");
     const currentReaction = savedReactions[id];
 
-    let actionType = reaction;
+    // 💥 TypeScript Error Fixed Here (Added : string) 💥
+    let actionType: string = reaction;
     
-    // Optimistic UI Update (ফ্রন্টএন্ডে সাথে সাথে দেখানো)
     setNotifications(prev => prev.map(notif => {
       if (notif._id === id) {
         if (currentReaction === reaction) {
@@ -91,7 +89,6 @@ export default function Notifications() {
 
     localStorage.setItem("zenex_reactions", JSON.stringify(savedReactions));
 
-    // ব্যাকএন্ড ডাটাবেস আপডেট
     await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -112,14 +109,14 @@ export default function Notifications() {
     
     if (res.ok) {
       setNewTitle(""); setNewDesc(""); setIsPosting(false);
-      fetchNotifications(); // রিফ্রেশ লিস্ট
+      fetchNotifications(); 
     }
   };
 
   const handleDeletePost = async (id: string) => {
     const confirmDelete = window.confirm("Are you sure you want to delete this notification?");
     if (confirmDelete) {
-      setNotifications(notifications.filter(n => n._id !== id)); // সাথে সাথে মুছে যাবে
+      setNotifications(notifications.filter(n => n._id !== id)); 
       await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,7 +138,6 @@ export default function Notifications() {
       <div className="p-4 md:p-10 w-full relative z-10 pb-20">
         <div className="max-w-4xl mx-auto flex flex-col gap-6">
 
-           {/* 👑 ADMIN PUBLISH PANEL 👑 */}
            {role === "admin" && (
              <div className="mb-4">
                 <div className="flex justify-between items-center mb-4">
@@ -185,7 +181,6 @@ export default function Notifications() {
              </div>
            )}
 
-           {/* 📋 NOTIFICATIONS LIST 📋 */}
            {loading ? (
               <div className="text-center text-[#3B82F6] font-bold py-10">Loading Data...</div>
            ) : notifications.length === 0 ? (
@@ -215,7 +210,6 @@ export default function Notifications() {
                         </span>
                       </div>
 
-                      {/* Admin Delete Button */}
                       {role === "admin" && (
                         <button onClick={() => handleDeletePost(notif._id)} className="text-[#64748B] hover:text-[#F43F5E] transition-colors p-1" title="Delete Post">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
