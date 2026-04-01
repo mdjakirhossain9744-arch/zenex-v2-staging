@@ -15,6 +15,11 @@ export default function GetNumber() {
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
 
+  const getUserEmail = () => {
+    const storedUser = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
+    return storedUser ? JSON.parse(storedUser).email : "";
+  };
+
   const getTodayString = () => {
     const today = new Date();
     const year = today.getFullYear();
@@ -38,7 +43,6 @@ export default function GetNumber() {
 
   useEffect(() => {
     let lastKnownToday = getTodayString();
-    
     const checkDateChange = setInterval(() => {
       const realToday = getTodayString();
       if (lastKnownToday !== realToday) {
@@ -70,16 +74,31 @@ export default function GetNumber() {
     return dateObj.toLocaleDateString('en-GB', options);
   };
 
-  useEffect(() => {
-    const savedNumbers = localStorage.getItem("zenex_numbers_v2");
-    if (savedNumbers) setNumbersList(JSON.parse(savedNumbers));
-  }, []);
-
-  useEffect(() => {
-    if (numbersList.length > 0) {
-      localStorage.setItem("zenex_numbers_v2", JSON.stringify(numbersList));
+  // 💥 ডাটাবেস থেকে লাইভ অর্ডার সিঙ্ক করা (বট/API এর অর্ডারও এখানে আসবে) 💥
+  const fetchDbOrders = async () => {
+    const email = getUserEmail();
+    if(!email) return;
+    try {
+      const res = await fetch("/api/sync-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "FETCH", email })
+      });
+      const data = await res.json();
+      if(data.success && data.orders) {
+        setNumbersList(data.orders);
+      }
+    } catch (err) {
+      console.error("Failed to sync DB orders");
     }
-  }, [numbersList]);
+  };
+
+  // পেজ লোড হলে এবং প্রতি ১০ সেকেন্ড পরপর ডাটাবেস সিঙ্ক করবে
+  useEffect(() => {
+    fetchDbOrders();
+    const syncInterval = setInterval(fetchDbOrders, 10000); 
+    return () => clearInterval(syncInterval);
+  }, []);
 
   useEffect(() => {
     const timerInterval = setInterval(() => setCurrentTime(Date.now()), 10000); 
@@ -91,7 +110,6 @@ export default function GetNumber() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // 💥 Vercel এ যে ফাংশনটি মিসিং ছিল সেটি এখানে আবার যোগ করা হয়েছে 💥
   const getTimeAgo = (timestamp: number) => {
     const secondsPast = Math.floor((currentTime - timestamp) / 1000);
     if (secondsPast < 60) return "Just Now";
@@ -101,13 +119,12 @@ export default function GetNumber() {
   };
 
   const addBalanceToDatabase = async () => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-       const userEmail = JSON.parse(storedUser).email;
+    const email = getUserEmail();
+    if (email) {
        await fetch("/api/add-balance", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userEmail })
+          body: JSON.stringify({ userEmail: email })
        });
     }
   };
@@ -125,7 +142,13 @@ export default function GetNumber() {
           let balanceAdded = false; 
 
           updatedList = updatedList.map((item) => {
+            // 💥 টাইমআউট হলে ডাটাবেসে আপডেট পাঠানো 💥
             if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
+               fetch("/api/sync-orders", {
+                 method: "POST",
+                 headers: { "Content-Type": "application/json" },
+                 body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "FAIL", otp: "Timeout (20 mins passed)", fullMessage: "" } })
+               });
                return { ...item, status: "FAIL", otp: "Timeout (20 mins passed)" };
             }
 
@@ -150,6 +173,13 @@ export default function GetNumber() {
                   showToast(`OTP Received: ${finalCode}`);
                   balanceAdded = true; 
 
+                  // 💥 OTP পেলে ডাটাবেসে আপডেট পাঠানো 💥
+                  fetch("/api/sync-orders", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg } })
+                  });
+
                   return { 
                     ...item, 
                     status: "DONE", 
@@ -161,7 +191,17 @@ export default function GetNumber() {
                } 
                else if (item.status === "DONE") {
                   const alreadySeen = item.seenMessages || [item.fullMessage];
-                  const newMessages = apiMessages.filter((msg: string) => !alreadySeen.includes(msg));
+                  
+                  const alreadySeenCodes = alreadySeen.map((msg: string) => {
+                     const match = msg.match(/\b\d{4,8}\b/);
+                     return match ? match[0] : msg.trim();
+                  });
+
+                  const newMessages = apiMessages.filter((msg: string) => {
+                     const codeMatch = msg.match(/\b\d{4,8}\b/);
+                     const extractedCode = codeMatch ? codeMatch[0] : msg.trim();
+                     return !alreadySeenCodes.includes(extractedCode);
+                  });
 
                   if (newMessages.length > 0) {
                      newMessages.forEach((newMsg: string) => {
@@ -173,7 +213,7 @@ export default function GetNumber() {
                         
                         newDups.push({
                            ...item,
-                           id: Date.now() + Math.random(),
+                           id: Date.now() + Math.random().toString(),
                            status: "DONE",
                            otp: finalCode,
                            fullMessage: newMsg,
@@ -234,12 +274,12 @@ export default function GetNumber() {
         const todayStr = getTodayString();
 
         const newEntry = {
-          id: Date.now(),
+          id: Date.now().toString(),
           dateString: todayStr, 
           displayNumber: fullNumberDisplay, 
           searchNumber: result.data.full_number, 
-          country: result.data.country,
-          operator: result.data.operator,
+          country: result.data.country || "Unknown",
+          operator: result.data.operator || "Any",
           status: "WAIT",
           otp: "Waiting for SMS...",
           fullMessage: "",
@@ -248,8 +288,18 @@ export default function GetNumber() {
           createdAt: Date.now(),
           receivedAt: null 
         };
+        
+        // 💥 ১. সাথে সাথে স্ক্রিনে দেখানোর জন্য
         setNumbersList((prev) => [newEntry, ...prev]);
         setSelectedDate(todayStr);
+
+        // 💥 ২. ডাটাবেসে সেভ করার জন্য পাঠানো হচ্ছে 💥
+        fetch("/api/sync-orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "CREATE", email: getUserEmail(), orderData: newEntry })
+        });
+
       } else {
         showToast(result.error || "Failed to fetch number!");
       }
@@ -261,7 +311,6 @@ export default function GetNumber() {
   };
 
   const isToday = selectedDate === getTodayString();
-  
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
   const finalFilteredNumbers = dateFilteredNumbers.filter((item) => {
