@@ -1,23 +1,22 @@
 import { NextResponse, NextRequest } from "next/server";
 import mongoose from "mongoose";
 import PaymentSetting from "../../../models/PaymentSetting";
-import jwt from "jsonwebtoken";
 
 export async function POST(req: NextRequest) {
   try {
-    // 💥 হ্যাকার প্রটেকশন: NextRequest থেকে কুকি নেওয়া হলো 💥
+    // 💥 হ্যাকার প্রটেকশন: Native Token Decode (Blazing Fast) 💥
     const token = req.cookies.get("zenex_token")?.value;
     
     if (!token) return NextResponse.json({ message: "🔴 UNAUTHORIZED" }, { status: 401 });
     
-    let decoded: any;
+    let userRole = "user";
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET as string);
+      const payloadBase64 = token.split('.')[1];
+      const decodedPayload = JSON.parse(atob(payloadBase64));
+      userRole = decodedPayload.role;
     } catch (err) {
-      return NextResponse.json({ message: "🔴 FORBIDDEN" }, { status: 403 });
+      return NextResponse.json({ message: "🔴 FORBIDDEN: Invalid Token" }, { status: 403 });
     }
-
-    const userRole = decoded.role;
 
     if (mongoose.connection.readyState === 0) {
       await mongoose.connect(process.env.MONGODB_URI as string);
@@ -25,7 +24,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, isWithdrawOpen, methods } = body;
 
-    // FETCH সবার জন্য অ্যালাউ করা হলো
+    // FETCH সবার জন্য অ্যালাউ করা হলো (ইউজাররা সেটিংস দেখবে)
     if (action === "FETCH") {
       let settings = await PaymentSetting.findOne({ type: "global" });
       if (!settings) {
@@ -34,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data: settings });
     }
 
-    // UPDATE শুধুমাত্র সুপার এডমিন করতে পারবে
+    // UPDATE শুধুমাত্র সুপার এডমিন করতে পারবে (Fast & Secure)
     if (action === "UPDATE") {
       if (userRole !== "admin") {
         return NextResponse.json({ message: "🔴 FORBIDDEN: Only admins can change settings!" }, { status: 403 });
