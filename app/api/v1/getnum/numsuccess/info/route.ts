@@ -30,7 +30,6 @@ export async function GET(req: Request) {
 
     const data = await response.json();
 
-    // 💥 OTP পেলে ব্যালেন্স যোগ (Add) করার লজিক 💥
     if (data.meta?.status === "success" && data.data?.otps) {
       const liveOtps = data.data.otps;
       const pendingOrders = await Order.find({ userEmail: user.email, status: "WAIT" });
@@ -45,16 +44,12 @@ export async function GET(req: Request) {
         });
 
         if (matchedOtpObj) {
-           // ১. অর্ডার DONE করে ডাটাবেসে সেভ করো
            order.status = "DONE";
            order.otp = matchedOtpObj.otp;
            await order.save();
 
-           // ২. 💥 ইউজারের ব্যালেন্স যোগ (Add) করো 💥
-           user.balance += user.otpRate;
+           user.balance += user.otpRate; 
            await user.save();
-
-           // ৩. যদি এজেন্টের ইনকাম যোগ করার সিস্টেম থাকে, তবে এখানে এজেন্টকেও টাকা দেওয়া যায় (Optional)
         }
       }
     }

@@ -17,8 +17,6 @@ export async function POST(req: Request) {
     if (!user.isApiActive) return NextResponse.json({ meta: { status: "error" }, message: "API Access Disabled" }, { status: 403 });
     if (user.status !== "active") return NextResponse.json({ meta: { status: "error" }, message: "Account not active" }, { status: 403 });
 
-    // 💥 ব্যালেন্স চেকের লজিক রিমুভ করা হয়েছে। এখন 0 ব্যালেন্স থাকলেও বট নাম্বার নিতে পারবে! 💥
-
     const body = await req.json().catch(() => ({}));
     const REAL_API_KEY = "M_7VX25KAJI"; 
 
