@@ -10,42 +10,51 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
+    // ১. চেক করা হচ্ছে ইমেইল বা নাম্বার আগে থেকে আছে কি না
     const existingUser = await User.findOne({ $or: [{ email }, { mobile }] });
     if (existingUser) {
       return NextResponse.json({ message: "এই ইমেইল বা নাম্বার দিয়ে আগে থেকেই একাউন্ট আছে!" }, { status: 400 });
     }
 
-    // 💥 এজেন্ট ভেরিফিকেশন এবং সিট লিমিট চেক 💥
-    if (agentEmail !== "admin@zenexnetwork.com") {
-      const validAgent = await User.findOne({ 
-        $or: [{ customAgentMail: agentEmail }, { email: agentEmail }],
-        role: "agent" 
-      });
-
-      if (!validAgent) {
-        return NextResponse.json({ message: "Invalid Agent Email! Please contact an authorized agent." }, { status: 400 });
-      }
-
-      // 💥 ম্যাজিক: এজেন্টের আন্ডারে বর্তমানে কতজন ইউজার আছে সেটা গোনা হচ্ছে 💥
-      const totalAgentUsers = await User.countDocuments({
-        $or: [
-          { agentEmail: validAgent.email }, 
-          { agentEmail: validAgent.customAgentMail }
-        ],
-        role: "user"
-      });
-
-      // লিমিট চেক করা হচ্ছে (যদি লিমিট সেট করা না থাকে, তাহলে ডিফল্ট ১০০ ধরবে)
-      const maxLimit = validAgent.agentMaxUsers || 100;
-      
-      if (totalAgentUsers >= maxLimit) {
-        return NextResponse.json({ message: `দুঃখিত! এই এজেন্টের সিট ফুল হয়ে গেছে (${maxLimit}/${maxLimit})। নতুন কেউ জয়েন করতে পারবে না।` }, { status: 400 });
-      }
+    // 💥 ২. এডমিনের আন্ডারে সরাসরি একাউন্ট খোলা সম্পূর্ণ বন্ধ (Security Lock) 💥
+    if (agentEmail === "admin@zenexnetwork.com" || agentEmail.toLowerCase() === "admin") {
+      return NextResponse.json({ 
+        message: "দুঃখিত! কোনো ভেরিফাইড এজেন্টের রেফারেন্স ছাড়া একাউন্ট খোলা নিষেধ। দয়া করে একজন এজেন্টের সাথে যোগাযোগ করুন।" 
+      }, { status: 403 });
     }
 
+    // 💥 ৩. এজেন্ট ভেরিফিকেশন এবং সিট লিমিট চেক 💥
+    const validAgent = await User.findOne({ 
+      $or: [{ customAgentMail: agentEmail }, { email: agentEmail }],
+      role: "agent" 
+    });
+
+    if (!validAgent) {
+      return NextResponse.json({ message: "Invalid Agent Email! Please contact an authorized agent." }, { status: 400 });
+    }
+
+    // 💥 ৪. ম্যাজিক: এজেন্টের আন্ডারে বর্তমানে কতজন ইউজার আছে সেটা গোনা হচ্ছে 💥
+    const totalAgentUsers = await User.countDocuments({
+      $or: [
+        { agentEmail: validAgent.email }, 
+        { agentEmail: validAgent.customAgentMail }
+      ],
+      role: "user"
+    });
+
+    // লিমিট চেক করা হচ্ছে (যদি লিমিট সেট করা না থাকে, তাহলে ডিফল্ট ১০০ ধরবে)
+    const maxLimit = validAgent.agentMaxUsers || 100;
+    
+    if (totalAgentUsers >= maxLimit) {
+      return NextResponse.json({ 
+        message: `দুঃখিত! এই এজেন্টের সিট ফুল হয়ে গেছে (${maxLimit}/${maxLimit})। নতুন কেউ জয়েন করতে পারবে না।` 
+      }, { status: 400 });
+    }
+
+    // ৫. পাসওয়ার্ড সিকিউর করা হচ্ছে
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ইউজার বক্সে যা দিয়েছে (agentEmail) ঠিক সেটাই সেভ হবে
+    // ৬. নতুন ইউজার তৈরি করা হচ্ছে
     const newUser = new User({
       fullName, 
       mobile, 
@@ -55,7 +64,7 @@ export async function POST(req: Request) {
       agentEmail: agentEmail, 
       password: hashedPassword,
       role: "user", 
-      status: "pending", 
+      status: "pending", // এজেন্ট এপ্রুভ না করা পর্যন্ত Pending থাকবে
       balance: 0, 
       otpRate: 0.50, 
     });
