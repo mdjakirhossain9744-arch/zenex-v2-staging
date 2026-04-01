@@ -313,7 +313,7 @@ export default function ApiDocumentation() {
               </div>
               <div className="bg-[#1E293B] border border-[#EAB308]/30 p-4 rounded-xl flex items-center gap-3">
                  <span className="text-lg font-black text-[#EAB308]">400</span>
-                 <span className="text-xs font-bold text-[#94A3B8]">Bad Request / Low Balance</span>
+                 <span className="text-xs font-bold text-[#94A3B8]">Bad Request / Invalid Range</span>
               </div>
               <div className="bg-[#1E293B] border border-[#F43F5E]/30 p-4 rounded-xl flex items-center gap-3">
                  <span className="text-lg font-black text-[#F43F5E]">401</span>

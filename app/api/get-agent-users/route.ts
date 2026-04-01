@@ -1,61 +1,66 @@
-export const dynamic = 'force-dynamic'; 
-
 import { NextResponse } from "next/server";
-import mongoose from "mongoose";
+import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
+import Order from "../../../models/Order"; // 💥 নতুন: Order ডাটাবেস অ্যাড করা হলো
 
 export async function POST(req: Request) {
   try {
-    if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(process.env.MONGODB_URI as string);
-    }
-
     const { agentEmail } = await req.json();
 
     if (!agentEmail) {
-      return NextResponse.json({ message: "Agent Email is required!" }, { status: 400 });
-    }
-    
-    const agent = await User.findOne({ email: agentEmail });
-    
-    let searchCondition: any[] = [{ agentEmail: agentEmail }];
-    if (agent && agent.customAgentMail) {
-      searchCondition.push({ agentEmail: agent.customAgentMail });
+      return NextResponse.json({ message: "Agent email is required" }, { status: 400 });
     }
 
-    const networkUsers = await User.find({ 
-      $or: searchCondition, 
-      role: "user" 
+    await connectToDatabase();
+
+    // এজেন্টকে খুঁজে বের করা
+    const agent = await User.findOne({ 
+      $or: [{ email: agentEmail }, { customAgentMail: agentEmail }],
+      role: "agent" 
+    });
+
+    if (!agent) {
+      return NextResponse.json({ message: "Agent not found" }, { status: 404 });
+    }
+
+    // এই এজেন্টের আন্ডারে থাকা সব ইউজারদের খুঁজে বের করা
+    const users = await User.find({
+      $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }],
+      role: "user"
     }).select("-password").sort({ createdAt: -1 });
 
-    const formattedUsers = networkUsers.map(u => ({
-      id: u._id,
-      uid: `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`,
-      name: u.fullName,
-      email: u.email,
-      role: u.role,
-      agentEmail: u.agentEmail,
-      balance: u.balance || 0,
-      status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
-      todayOTP: 0,
-      rate: u.otpRate || "0.50",
-      customAgentMail: u.customAgentMail || "", 
-      telegramLink: u.telegramLink || ""
+    // আজকের তারিখ বের করা
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // 💥 ম্যাজিক: প্রতিটি ইউজারের আজকের OTP সংখ্যা ডাটাবেস থেকে গোনা হচ্ছে 💥
+    const formattedUsers = await Promise.all(users.map(async (u) => {
+      
+      // Order টেবিল থেকে এই ইউজারের আজকের DONE স্ট্যাটাস গোনা
+      const todayOtpCount = await Order.countDocuments({
+         userEmail: u.email,
+         dateString: todayStr,
+         status: "DONE"
+      });
+
+      return {
+        id: u._id,
+        uid: `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`,
+        name: u.fullName,
+        email: u.email,
+        balance: u.balance || 0,
+        status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
+        todayOTP: todayOtpCount, // 💥 রিয়েল ডাটা 💥
+        rate: u.otpRate || "0.50",
+        isApiActive: u.isApiActive || false // 💥 API স্ট্যাটাস পাঠানো হচ্ছে 💥
+      };
     }));
-
-    // 💥 মাস্টার হ্যাক: otpRate এবং agentMaxRate এর মধ্যে যেটা বড়, সেটাই লিমিট হবে 💥
-    let maxR = agent?.agentMaxRate || 0;
-    let otpR = agent?.otpRate || 0;
-    let finalLimit = Math.max(maxR, otpR);
-    if (finalLimit === 0) finalLimit = 0.70; // ডিফল্ট
-
-    const limit = agent?.agentMaxUsers || 100;
 
     return NextResponse.json({ 
       users: formattedUsers, 
-      maxLimit: limit,
-      agentRevenue: agent?.agentEarning || 0,
-      agentRate: finalLimit // 👈 রিয়েল লিমিট পাঠানো হলো
+      maxLimit: agent.agentMaxUsers || 100, 
+      agentRevenue: agent.agentEarning || 0,
+      agentRate: agent.agentMaxRate || 0.70
     }, { status: 200 });
 
   } catch (error: any) {

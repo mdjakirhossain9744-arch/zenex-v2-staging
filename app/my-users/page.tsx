@@ -6,8 +6,6 @@ import DashboardLayout from "../DashboardLayout";
 export default function AgentUsersPage() {
   const [role, setRole] = useState("user");
   const [agentMail, setAgentMail] = useState("");
-  
-  // 💥 ডাটাবেস থেকে আসা রিয়েল লিমিট 💥
   const [agentRate, setAgentRate] = useState<number>(0.70); 
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -16,7 +14,6 @@ export default function AgentUsersPage() {
 
   const [myUsers, setMyUsers] = useState<any[]>([]);
   const [agentMaxLimit, setAgentMaxLimit] = useState(100);
-  const [agentRevenue, setAgentRevenue] = useState("0.00");
   const [loading, setLoading] = useState(true);
 
   const [newRate, setNewRate] = useState("");
@@ -34,9 +31,6 @@ export default function AgentUsersPage() {
       .then(data => {
         if (data.users) setMyUsers(data.users);
         if (data.maxLimit) setAgentMaxLimit(data.maxLimit); 
-        if (data.agentRevenue) setAgentRevenue(Number(data.agentRevenue).toFixed(2));
-        
-        // 💥 ডাটাবেসের পারফেক্ট রেট এখানে সেট হচ্ছে 💥
         if (data.agentRate) setAgentRate(data.agentRate);
         
         setLoading(false);
@@ -53,6 +47,10 @@ export default function AgentUsersPage() {
       if (parsedUser.role === "agent") {
         setAgentMail(parsedUser.email); 
         fetchNetworkUsers(parsedUser.email);
+        
+        // প্রতি ১০ সেকেন্ডে লাইভ রিফ্রেশ করবে
+        const interval = setInterval(() => fetchNetworkUsers(parsedUser.email), 10000);
+        return () => clearInterval(interval);
       }
     }
   }, []);
@@ -66,6 +64,7 @@ export default function AgentUsersPage() {
   const totalUsers = myUsers.length;
   const activeUsers = myUsers.filter(u => u.status.toLowerCase() === 'active').length;
   const pendingUsers = myUsers.filter(u => u.status.toLowerCase() === 'pending').length;
+  const bannedUsers = myUsers.filter(u => u.status.toLowerCase() === 'banned').length;
   const isSeatFull = totalUsers >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
@@ -80,7 +79,6 @@ export default function AgentUsersPage() {
     e.preventDefault();
     setIsSaving(true);
 
-    // 💥 ফ্রন্টএন্ড ভ্যালিডেশন (রিয়েল ডাটাবেস লিমিট দিয়ে) 💥
     if (Number(newRate) > agentRate) {
       alert(`🔴 ERROR: You cannot give a user more than your own limit! (Your Max Limit is ৳ ${agentRate.toFixed(2)})`);
       setIsSaving(false);
@@ -166,10 +164,11 @@ export default function AgentUsersPage() {
           </div>
         </div>
 
+        {/* 💥 Updated Cards Section with Banned Card & Removed Profit Margin 💥 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg relative overflow-hidden border-t-2 border-t-[#A855F7]">
             <p className="text-[#94A3B8] text-xs font-bold uppercase tracking-wider mb-1">Total Users</p>
-            <h3 className="text-3xl font-black text-white">
+            <h3 className="text-2xl md:text-3xl font-black text-white">
               {totalUsers} <span className="text-sm text-[#64748B] font-medium">/ {agentMaxLimit}</span>
             </h3>
             {isSeatFull && (
@@ -178,17 +177,23 @@ export default function AgentUsersPage() {
               </span>
             )}
           </div>
+          
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#10B981]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981]">
             <p className="text-[#10B981] text-xs font-bold uppercase tracking-wider mb-1">Active Users</p>
-            <h3 className="text-3xl font-black text-[#10B981]">{activeUsers}</h3>
+            <h3 className="text-2xl md:text-3xl font-black text-[#10B981]">{activeUsers}</h3>
           </div>
+          
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#EAB308]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#EAB308]">
             <p className="text-[#EAB308] text-xs font-bold uppercase tracking-wider mb-1">Pending</p>
-            <h3 className="text-3xl font-black text-[#EAB308]">{pendingUsers}</h3>
+            <h3 className="text-2xl md:text-3xl font-black text-[#EAB308]">{pendingUsers}</h3>
           </div>
-          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#00C6FF]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#00C6FF]">
-            <p className="text-[#00C6FF] text-xs font-bold uppercase tracking-wider mb-1">My Profit Margin</p>
-            <h3 className="text-3xl font-black text-[#00C6FF]">৳ {agentRevenue}</h3>
+
+          <div className="bg-red-500/5 backdrop-blur-xl border border-[#F43F5E]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#F43F5E] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-[#F43F5E]/10 rounded-bl-full pointer-events-none"></div>
+            <p className="text-[#F43F5E] text-xs font-bold uppercase tracking-wider mb-1">Banned</p>
+            <h3 className="text-2xl md:text-3xl font-black text-[#F43F5E]">
+              {bannedUsers}
+            </h3>
           </div>
         </div>
 
@@ -216,6 +221,10 @@ export default function AgentUsersPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-bold text-[#E2E8F0]">{u.name}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u.uid}</span>
+                        {/* 💥 API Badge for Agents 💥 */}
+                        {u.isApiActive && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">API</span>
+                        )}
                       </div>
                       <p className="text-[10px] text-[#64748B]">{u.email}</p>
                     </td>

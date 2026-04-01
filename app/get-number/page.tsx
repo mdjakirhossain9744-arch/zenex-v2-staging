@@ -74,7 +74,7 @@ export default function GetNumber() {
     return dateObj.toLocaleDateString('en-GB', options);
   };
 
-  // 💥 ডাটাবেস থেকে লাইভ অর্ডার সিঙ্ক করা (বট/API এর অর্ডারও এখানে আসবে) 💥
+  // 💥 ডাটাবেস থেকে লাইভ অর্ডার সিঙ্ক করা 💥
   const fetchDbOrders = async () => {
     const email = getUserEmail();
     if(!email) return;
@@ -93,7 +93,6 @@ export default function GetNumber() {
     }
   };
 
-  // পেজ লোড হলে এবং প্রতি ১০ সেকেন্ড পরপর ডাটাবেস সিঙ্ক করবে
   useEffect(() => {
     fetchDbOrders();
     const syncInterval = setInterval(fetchDbOrders, 10000); 
@@ -118,17 +117,6 @@ export default function GetNumber() {
     return new Date(timestamp).toLocaleDateString();
   };
 
-  const addBalanceToDatabase = async () => {
-    const email = getUserEmail();
-    if (email) {
-       await fetch("/api/add-balance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userEmail: email })
-       });
-    }
-  };
-
   const checkOtps = async (isManual = false) => {
     if (isManual) setIsRefreshing(true);
     try {
@@ -139,10 +127,9 @@ export default function GetNumber() {
         setNumbersList((prevList) => {
           let updatedList = [...prevList];
           let newDups: any[] = [];
-          let balanceAdded = false; 
 
           updatedList = updatedList.map((item) => {
-            // 💥 টাইমআউট হলে ডাটাবেসে আপডেট পাঠানো 💥
+            // 💥 টাইমআউট লজিক 💥
             if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
                fetch("/api/sync-orders", {
                  method: "POST",
@@ -152,7 +139,7 @@ export default function GetNumber() {
                return { ...item, status: "FAIL", otp: "Timeout (20 mins passed)" };
             }
 
-            if (item.isDup) return item;
+            if (item.isDup || item.isMulti) return item;
 
             const cleanSearchNumber = String(item.searchNumber).replace(/\D/g, ""); 
             const last6Digits = cleanSearchNumber.slice(-6); 
@@ -171,9 +158,8 @@ export default function GetNumber() {
                   const finalCode = codeMatch ? codeMatch[0] : firstMsg;
 
                   showToast(`OTP Received: ${finalCode}`);
-                  balanceAdded = true; 
 
-                  // 💥 OTP পেলে ডাটাবেসে আপডেট পাঠানো 💥
+                  // 💥 ১ম OTP পেলে সিকিউর ডাটাবেস আপডেট (টাকা অ্যাড হবে ব্যাকএন্ড থেকে) 💥
                   fetch("/api/sync-orders", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -208,9 +194,15 @@ export default function GetNumber() {
                         const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
                         const finalCode = codeMatch ? codeMatch[0] : newMsg;
 
-                        showToast(`2nd OTP Received: ${finalCode}`);
-                        balanceAdded = true; 
+                        showToast(`MULTI OTP Received: ${finalCode}`);
                         
+                        // 💥 ২য়/৩য় (MULTI) OTP এর জন্যও সিকিউর ডাটাবেস আপডেট 💥
+                        fetch("/api/sync-orders", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg } })
+                        });
+
                         newDups.push({
                            ...item,
                            id: Date.now() + Math.random().toString(),
@@ -218,7 +210,7 @@ export default function GetNumber() {
                            otp: finalCode,
                            fullMessage: newMsg,
                            seenMessages: [], 
-                           isDup: true, 
+                           isMulti: true, // 💥 MULTI ফ্ল্যাগ ট্রু করা হলো 💥
                            receivedAt: Date.now()
                         });
                      });
@@ -228,10 +220,6 @@ export default function GetNumber() {
             }
             return item;
           });
-
-          if (balanceAdded) {
-             addBalanceToDatabase();
-          }
 
           return [...newDups, ...updatedList];
         });
@@ -285,15 +273,14 @@ export default function GetNumber() {
           fullMessage: "",
           seenMessages: [], 
           isDup: false,
+          isMulti: false,
           createdAt: Date.now(),
           receivedAt: null 
         };
         
-        // 💥 ১. সাথে সাথে স্ক্রিনে দেখানোর জন্য
         setNumbersList((prev) => [newEntry, ...prev]);
         setSelectedDate(todayStr);
 
-        // 💥 ২. ডাটাবেসে সেভ করার জন্য পাঠানো হচ্ছে 💥
         fetch("/api/sync-orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -454,11 +441,14 @@ export default function GetNumber() {
                        <div className="col-span-12 md:col-span-3 flex justify-between items-center">
                           <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-2 group cursor-pointer">
                             <span className="text-lg font-bold text-slate-200 tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
-                            {item.isDup && (
-                               <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-black rounded uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">
-                                 DUP
+                            
+                            {/* 💥 নতুন MULTI ব্যাজ 💥 */}
+                            {(item.isMulti || item.isDup) && (
+                               <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] font-black rounded uppercase tracking-widest shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+                                 MULTI
                                </span>
                             )}
+
                           </div>
                           <span className={`md:hidden px-2 py-0.5 border text-[9px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
                        </div>
