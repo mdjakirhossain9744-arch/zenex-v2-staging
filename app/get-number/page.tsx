@@ -124,7 +124,6 @@ export default function GetNumber() {
           let balanceAdded = false; 
 
           updatedList = updatedList.map((item) => {
-            // 💥 টাইমআউট লজিক এখানেই আছে, শুধু নিচের useEffect এ চেকারটি ঠিক করা হয়েছে 💥
             if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
                return { ...item, status: "FAIL", otp: "Timeout (20 mins passed)" };
             }
@@ -203,16 +202,15 @@ export default function GetNumber() {
     }
   };
 
-  // 💥 ফিক্সড: ২০ মিনিট পার হলেও এখন ঠিকমতো ফেইল হবে 💥
   useEffect(() => {
     const interval = setInterval(() => {
-      // আগের কোডে ২০ মিনিট পার হলে চেকার বন্ধ হয়ে যেত, এখন যতোক্ষণ "WAIT" স্ট্যাটাস থাকবে ততোক্ষণ চেকার চলবে এবং টাইমআউট হলে ফেইল করবে
       const hasActiveNumbers = numbersList.some(n => n.status === "WAIT");
       if (hasActiveNumbers) checkOtps(false);
     }, 3000); 
     return () => clearInterval(interval);
   }, [numbersList]);
 
+  // 💥 VERCEL IP BLOCK BYPASS: Directly fetching from Browser (Client-Side) 💥
   const fetchNewNumber = async () => {
     if (!rangeInput) {
       showToast("Please enter a Number Range first!");
@@ -220,28 +218,44 @@ export default function GetNumber() {
     }
     setIsLoading(true);
     try {
-      const response = await fetch("/api/getnum", {
+      // আমরা আমাদের /api/getnum এর বদলে সরাসরি প্রোভাইডারের API কল করছি
+      const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/getnum/number", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
+        headers: { 
+          "Content-Type": "application/json",
+          "mapikey": "M_7VX25KAJI" // সরাসরি API Key ব্রাউজার থেকে পাঠানো হচ্ছে
+        },
+        body: JSON.stringify({ 
+          range: rangeInput, 
+          is_national: isNational, 
+          remove_plus: removePlus 
+        }),
       });
+      
+      if (!response.ok) {
+        showToast(`Server Blocked or CORS Error (${response.status})`);
+        setIsLoading(false);
+        return;
+      }
+
       const result = await response.json();
       
-      if (response.ok && result.success) {
-        const numberToCopy = result.data.copy;
+      if (result.meta?.status === "success") {
+        const numberData = result.data;
+        const numberToCopy = numberData.copy;
         navigator.clipboard.writeText(numberToCopy);
         showToast(`Copied: ${numberToCopy}`);
 
-        const fullNumberDisplay = result.data.full_number.startsWith("+") ? result.data.full_number : `+${result.data.full_number}`;
+        const fullNumberDisplay = numberData.full_number.startsWith("+") ? numberData.full_number : `+${numberData.full_number}`;
         const todayStr = getTodayString();
 
         const newEntry = {
           id: Date.now(),
           dateString: todayStr, 
           displayNumber: fullNumberDisplay, 
-          searchNumber: result.data.full_number, 
-          country: result.data.country,
-          operator: result.data.operator,
+          searchNumber: numberData.full_number, 
+          country: numberData.country || "Unknown",
+          operator: numberData.operator || "Any",
           status: "WAIT",
           otp: "Waiting for SMS...",
           fullMessage: "",
@@ -253,19 +267,18 @@ export default function GetNumber() {
         setNumbersList((prev) => [newEntry, ...prev]);
         setSelectedDate(todayStr);
       } else {
-        showToast(result.error || "Failed to fetch number!");
+        showToast(result.message || "Failed to fetch number!");
       }
-    } catch (error) {
-      showToast("Something went wrong!");
+    } catch (error: any) {
+      console.error(error);
+      showToast("CORS or Network Error! Check Console.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const isToday = selectedDate === getTodayString();
-  
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
-    
   const finalFilteredNumbers = dateFilteredNumbers.filter((item) => {
     if (activeFilter === "ALL") return true;
     return item.status === activeFilter;
