@@ -3,6 +3,16 @@ import bcrypt from "bcryptjs";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
 
+// 💥 শক্তিশালী API Key জেনারেটর (ZNX_ + ২৪ ক্যারেক্টারের র‍্যান্ডম কোড)
+const generateApiKey = () => {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let key = "ZNX_";
+  for (let i = 0; i < 24; i++) {
+    key += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return key;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -16,14 +26,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "এই ইমেইল বা নাম্বার দিয়ে আগে থেকেই একাউন্ট আছে!" }, { status: 400 });
     }
 
-    // 💥 ২. এডমিনের আন্ডারে সরাসরি একাউন্ট খোলা সম্পূর্ণ বন্ধ (Security Lock) 💥
+    // ২. এডমিনের আন্ডারে সরাসরি একাউন্ট খোলা সম্পূর্ণ বন্ধ (Security Lock)
     if (agentEmail === "admin@zenexnetwork.com" || agentEmail.toLowerCase() === "admin") {
       return NextResponse.json({ 
         message: "দুঃখিত! কোনো ভেরিফাইড এজেন্টের রেফারেন্স ছাড়া একাউন্ট খোলা নিষেধ। দয়া করে একজন এজেন্টের সাথে যোগাযোগ করুন।" 
       }, { status: 403 });
     }
 
-    // 💥 ৩. এজেন্ট ভেরিফিকেশন এবং সিট লিমিট চেক 💥
+    // ৩. এজেন্ট ভেরিফিকেশন এবং সিট লিমিট চেক
     const validAgent = await User.findOne({ 
       $or: [{ customAgentMail: agentEmail }, { email: agentEmail }],
       role: "agent" 
@@ -33,7 +43,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid Agent Email! Please contact an authorized agent." }, { status: 400 });
     }
 
-    // 💥 ৪. ম্যাজিক: এজেন্টের আন্ডারে বর্তমানে কতজন ইউজার আছে সেটা গোনা হচ্ছে 💥
+    // ৪. ম্যাজিক: এজেন্টের আন্ডারে বর্তমানে কতজন ইউজার আছে সেটা গোনা হচ্ছে
     const totalAgentUsers = await User.countDocuments({
       $or: [
         { agentEmail: validAgent.email }, 
@@ -42,7 +52,6 @@ export async function POST(req: Request) {
       role: "user"
     });
 
-    // লিমিট চেক করা হচ্ছে (যদি লিমিট সেট করা না থাকে, তাহলে ডিফল্ট ১০০ ধরবে)
     const maxLimit = validAgent.agentMaxUsers || 100;
     
     if (totalAgentUsers >= maxLimit) {
@@ -51,10 +60,11 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // ৫. পাসওয়ার্ড সিকিউর করা হচ্ছে
     const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // 💥 ইউজারের জন্য নতুন API Key তৈরি করা হচ্ছে 💥
+    const newApiKey = generateApiKey();
 
-    // ৬. নতুন ইউজার তৈরি করা হচ্ছে
     const newUser = new User({
       fullName, 
       mobile, 
@@ -64,9 +74,11 @@ export async function POST(req: Request) {
       agentEmail: agentEmail, 
       password: hashedPassword,
       role: "user", 
-      status: "pending", // এজেন্ট এপ্রুভ না করা পর্যন্ত Pending থাকবে
+      status: "pending", 
       balance: 0, 
       otpRate: 0.50, 
+      apiKey: newApiKey,       // ডাটাবেসে API Key সেভ হলো
+      isApiActive: false,      // ডিফল্টভাবে API অফ থাকবে (এডমিন অন করবে)
     });
 
     await newUser.save();

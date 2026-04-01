@@ -22,6 +22,10 @@ const userSchema = new Schema(
     customAgentMail: { type: String, default: "" }, 
     telegramLink: { type: String, default: "" },    
     agentMaxUsers: { type: Number, default: 100 },  
+
+    // 💥 B2B SaaS API Features (New) 💥
+    apiKey: { type: String, default: "" }, // ইউজারের নিজস্ব সিক্রেট API Key (যেমন: ZNX_A1B2C3...)
+    isApiActive: { type: Boolean, default: false }, // এডমিন প্যানেল থেকে API অন/অফ করার কন্ট্রোল
   },
   { timestamps: true }
 );
