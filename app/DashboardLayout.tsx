@@ -13,6 +13,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   
+  // 💥 নোটিফিকেশন স্টেট 💥
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  
   const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
@@ -21,7 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setMounted(true);
     const storedUser = localStorage.getItem("user");
 
-    // 💥 যেহেতু এখন Middleware কুকি চেক করছে, তাই এখানে আর টাইম চেক করার দরকার নেই 💥
+    // Middleware কুকি চেক করছে
     if (!storedUser) {
       router.push("/login");
       return;
@@ -98,7 +101,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // 💥 সিকিউর লগআউট ফাংশন (সার্ভারের কুকি ডিলিট করবে) 💥
+  // সিকিউর লগআউট ফাংশন
   const handleLogout = async () => {
     try {
       await fetch("/api/logout", { method: "POST" });
@@ -186,13 +189,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/console" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/console' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>Console</Link>
 
           <Link href="/top-user" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/top-user' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>Top User</Link>
-          <Link href="/summary" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/summary' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>Summary</Link>
+          <Link href="/summary" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/summary' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>Summary</Link>
 
           <p className="px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mt-4 mb-3 uppercase">Account & Tools</p>
           
           <Link href="/payment" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/payment' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>Payment</Link>
           <Link href="/access-list" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/access-list' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Access List</Link>
           <Link href="/profile" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/profile' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Profile</Link>
+
+          {/* 💥 Notifications Link Moved Here 💥 */}
+          <Link href="/notifications" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/notifications' ? activeBlue : inactive}`}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            Notifications
+          </Link>
           
         </nav>
       </aside>
@@ -221,6 +232,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <span className="text-base md:text-lg font-black text-[#F8FAFC]">৳ {balance}</span>
               </div>
             )}
+
+            {/* 💥 Notification Bell 💥 */}
+            <div className="relative">
+              <button 
+                 onClick={() => setIsNotifOpen(!isNotifOpen)} 
+                 className="relative p-2 text-[#94A3B8] hover:text-white transition-colors"
+              >
+                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                 </svg>
+                 <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>
+              </button>
+
+              {isNotifOpen && (
+                <div className="absolute top-12 right-0 w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center">
+                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-white font-bold text-sm hover:text-[#3B82F6] transition-colors">Notifications</Link>
+                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All</Link>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
+                       <p className="text-xs text-[#E2E8F0]"><span className="text-[#3B82F6] font-bold">System:</span> Welcome to ZENEX PREMIUM V3.0! Your network is highly secured.</p>
+                       <span className="text-[9px] text-[#64748B] mt-1 block">Just now</span>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="relative">
               <div onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className="w-8 h-8 md:w-10 md:h-10 rounded-full p-[2px] bg-gradient-to-tr from-[#00C6FF] to-[#3B82F6] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center">
