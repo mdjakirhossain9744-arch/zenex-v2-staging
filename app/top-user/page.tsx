@@ -13,7 +13,7 @@ export default function TopUser() {
   const [myRank, setMyRank] = useState({ rank: 0, name: "Loading...", score: 0 });
 
   // 💥 Admin Controller States 💥
-  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(true); // 💥 নতুন: পেজ অন/অফ সুইচ
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(true); 
   const [bannerActive, setBannerActive] = useState(false);
   const [bannerText, setBannerText] = useState("Top 1 user at the end of the week receives");
   const [bannerPrize, setBannerPrize] = useState("1000 BDT");
@@ -55,25 +55,32 @@ export default function TopUser() {
     }
   };
 
+  // 💥 অটো-সেভ লজিক (সুইচ অন/অফ করার সাথে সাথে সেভ হবে) 💥
+  const handleToggleLeaderboard = async () => {
+    const newState = !isLeaderboardOpen;
+    setIsLeaderboardOpen(newState);
+    showToast(newState ? "✅ Leaderboard is now LIVE for users!" : "🔴 Leaderboard is now HIDDEN!");
+    
+    await fetch("/api/leaderboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "UPDATE_BANNER", isLeaderboardOpen: newState, bannerActive, bannerText, bannerPrize })
+    });
+  };
+
   const saveBannerSettings = async () => {
     setIsSaving(true);
     try {
       const res = await fetch("/api/leaderboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-           action: "UPDATE_BANNER", 
-           isLeaderboardOpen, // 💥 পেজ লক সেভ করা হচ্ছে
-           bannerActive, 
-           bannerText, 
-           bannerPrize 
-        })
+        body: JSON.stringify({ action: "UPDATE_BANNER", isLeaderboardOpen, bannerActive, bannerText, bannerPrize })
       });
       const data = await res.json();
       if (data.success) {
-        showToast("Leaderboard Settings Updated Successfully!");
+        showToast("✅ Offer Banner Updated Successfully!");
       } else {
-        showToast(data.message || "Error updating settings.");
+        showToast("❌ Error updating banner.");
       }
     } catch (error) {
       showToast("Network Error!");
@@ -87,7 +94,6 @@ export default function TopUser() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // Tiers Setup
   const topTier = usersList.slice(0, 100);
   const midTier = usersList.slice(100, 200);
   const baseTier = usersList.slice(200, 300);
@@ -114,7 +120,7 @@ export default function TopUser() {
                Admin Leaderboard Control
              </h3>
              
-             {/* 💥 Main Leaderboard Toggle 💥 */}
+             {/* 💥 Main Leaderboard Toggle (Auto-Save) 💥 */}
              <div className="flex items-center justify-between bg-[#0F172A] p-4 rounded-xl border border-[#334155] mb-6">
                 <div>
                    <h4 className="text-sm font-black text-white uppercase tracking-widest">Global Leaderboard Status</h4>
@@ -122,7 +128,7 @@ export default function TopUser() {
                 </div>
                 <label className="flex items-center cursor-pointer">
                    <div className="relative">
-                     <input type="checkbox" checked={isLeaderboardOpen} onChange={() => setIsLeaderboardOpen(!isLeaderboardOpen)} className="sr-only" />
+                     <input type="checkbox" checked={isLeaderboardOpen} onChange={handleToggleLeaderboard} className="sr-only" />
                      <div className={`block w-14 h-8 rounded-full transition-colors ${isLeaderboardOpen ? 'bg-[#10B981]' : 'bg-[#F43F5E]'}`}></div>
                      <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isLeaderboardOpen ? 'transform translate-x-6' : ''}`}></div>
                    </div>
@@ -133,23 +139,23 @@ export default function TopUser() {
              <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 items-end transition-opacity ${!isLeaderboardOpen ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div>
                    <label className="block text-[10px] font-bold text-[#94A3B8] mb-1.5 uppercase">Offer Banner Text</label>
-                   <input type="text" value={bannerText} onChange={(e) => setBannerText(e.target.value)} className="w-full bg-[#0F172A] border border-[#334155] px-4 py-2.5 rounded-lg text-white text-sm focus:border-[#3B82F6] outline-none" />
+                   <input type="text" value={bannerText} onChange={(e) => setBannerText(e.target.value)} className="w-full bg-[#0F172A] border border-[#334155] px-4 py-3 rounded-xl text-white font-bold focus:border-[#3B82F6] outline-none" />
                 </div>
                 <div>
                    <label className="block text-[10px] font-bold text-[#94A3B8] mb-1.5 uppercase">Prize Amount</label>
-                   <input type="text" value={bannerPrize} onChange={(e) => setBannerPrize(e.target.value)} className="w-full bg-[#0F172A] border border-[#334155] px-4 py-2.5 rounded-lg text-white text-sm focus:border-[#EAB308] outline-none" />
+                   <input type="text" value={bannerPrize} onChange={(e) => setBannerPrize(e.target.value)} className="w-full bg-[#0F172A] border border-[#334155] px-4 py-3 rounded-xl text-[#EAB308] font-black focus:border-[#EAB308] outline-none" />
                 </div>
-                <div className="flex items-center gap-4 pb-1">
+                <div className="flex items-center gap-4 pb-1.5">
                    <label className="flex items-center gap-2 cursor-pointer">
                       <div className="relative">
                         <input type="checkbox" checked={bannerActive} onChange={() => setBannerActive(!bannerActive)} className="sr-only" />
                         <div className={`block w-10 h-6 rounded-full transition-colors ${bannerActive ? 'bg-[#EAB308]' : 'bg-[#334155]'}`}></div>
                         <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${bannerActive ? 'transform translate-x-4' : ''}`}></div>
                       </div>
-                      <span className="text-[10px] font-bold text-white uppercase">{bannerActive ? "Banner ON" : "Banner OFF"}</span>
+                      <span className="text-[10px] font-black text-white uppercase">{bannerActive ? "Banner ON" : "Banner OFF"}</span>
                    </label>
-                   <button onClick={saveBannerSettings} disabled={isSaving} className="ml-auto bg-[#3B82F6] hover:bg-[#2563EB] text-white px-6 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition-all disabled:opacity-50">
-                     {isSaving ? "Saving..." : "Save All"}
+                   <button onClick={saveBannerSettings} disabled={isSaving} className="ml-auto bg-[#3B82F6] hover:bg-[#2563EB] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-50 shadow-md">
+                     {isSaving ? "Saving..." : "Save Banner"}
                    </button>
                 </div>
              </div>
@@ -170,20 +176,35 @@ export default function TopUser() {
            </div>
         ) : (
           /* 💥 NORMAL LEADERBOARD UI 💥 */
-          <div className={`${!isLeaderboardOpen && role === "admin" ? 'opacity-50 grayscale' : ''}`}>
+          <div className="relative">
             
+            {/* Admin Red Warning if page is off but Admin is viewing */}
+            {!isLeaderboardOpen && role === "admin" && (
+              <div className="absolute -top-4 left-0 w-full bg-[#F43F5E] text-white text-center py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest z-50 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.5)]">
+                ⚠️ Hidden from Users
+              </div>
+            )}
+
             {/* Header Section */}
-            <div className="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between md:items-end gap-6 border-b border-[#334155] pb-8">
-              <div>
+            <div className={`mb-10 text-center md:text-left flex flex-col md:flex-row justify-between md:items-center gap-6 border-b border-[#334155] pb-8 ${!isLeaderboardOpen && role === "admin" ? 'opacity-50 mt-4' : ''}`}>
+              <div className="w-full">
                 <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#EAB308] to-[#F59E0B] tracking-tight mb-2">
                   Daily Top Performers
                 </h2>
+                
+                {/* 💥 BOLD & ATTRACTIVE BANNER 💥 */}
                 {bannerActive ? (
-                  <p className="text-[#94A3B8] text-sm md:text-base font-medium animate-pulse">
-                    {bannerText} <span className="text-white font-bold bg-[#EAB308]/20 px-2 py-0.5 rounded ml-1">{bannerPrize}</span> 🔥
-                  </p>
+                  <div className="inline-block bg-gradient-to-r from-[#EAB308]/20 via-[#F59E0B]/10 to-transparent border border-[#EAB308]/30 rounded-xl p-3 md:p-4 mt-2 animate-pulse shadow-[0_0_20px_rgba(234,179,8,0.15)]">
+                     <p className="text-[#F8FAFC] text-sm md:text-lg font-black tracking-wide flex items-center flex-wrap gap-2">
+                       📣 {bannerText} 
+                       <span className="text-black font-black bg-gradient-to-r from-[#EAB308] to-[#F59E0B] px-3 py-1 rounded-lg shadow-lg transform -rotate-2 scale-105 inline-block mx-1">
+                         {bannerPrize}
+                       </span> 
+                       🚀
+                     </p>
+                  </div>
                 ) : (
-                  <p className="text-[#64748B] text-sm md:text-base font-medium">
+                  <p className="text-[#64748B] text-sm md:text-base font-medium mt-2">
                     Compete with other users and reach the top rank by generating more OTPs!
                   </p>
                 )}
@@ -199,7 +220,7 @@ export default function TopUser() {
                 No users have generated OTPs yet today.
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 pb-10">
+              <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 pb-10 ${!isLeaderboardOpen && role === "admin" ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
                 {/* 🥇 Top Tier */}
                 <div className="flex flex-col">
                    <div className="bg-gradient-to-r from-[#EAB308]/20 to-transparent border-l-4 border-[#EAB308] p-4 rounded-t-xl mb-4 flex items-center justify-between">
@@ -282,7 +303,6 @@ export default function TopUser() {
             )}
           </div>
         )}
-
       </div>
 
       {/* 🔥 Your Rank Bottom Floating Bar 🔥 */}

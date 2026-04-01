@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { action, email, isLeaderboardOpen, bannerActive, bannerText, bannerPrize } = body;
 
-    // 💥 ১. রিয়েল ইউজার ডাটা এবং সেটিংস ফেচ করা 💥
+    // 💥 ১. FETCH DATA 💥
     if (action === "FETCH") {
       const allUsers = await User.find({ role: "user", status: "active" })
                                  .select("fullName email todayOTP")
@@ -43,10 +43,9 @@ export async function POST(req: NextRequest) {
          settings = await db.collection("custom_settings").findOne({ type: "leaderboard" });
       }
       
-      // ডিফল্ট সেটিংস (নতুন ডাটাবেসের জন্য)
       if (!settings) {
         settings = { 
-           isLeaderboardOpen: true, // 💥 নতুন: পুরো পেজ অন/অফ করার সুইচ
+           isLeaderboardOpen: true, 
            bannerActive: false, 
            bannerText: "Top 1 user at the end of the week receives", 
            bannerPrize: "1000 BDT" 
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, topUsersList, myRank, settings });
     }
 
-    // 💥 ২. এডমিন কন্ট্রোল: সুপার ফাস্ট সেভ লজিক (Error Fixed) 💥
+    // 💥 ২. ADMIN UPDATE (Error Fixed using Buffer) 💥
     if (action === "UPDATE_BANNER") {
       const token = req.cookies.get("zenex_token")?.value;
       if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -64,7 +63,8 @@ export async function POST(req: NextRequest) {
       let userRole = "user";
       try {
         const payloadBase64 = token.split('.')[1];
-        const decoded = JSON.parse(atob(payloadBase64));
+        // 💥 স্ট্রং ডিকোড সিস্টেম (ক্র্যাশ করবে না) 💥
+        const decoded = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf-8'));
         userRole = decoded.role;
       } catch(e) {
         return NextResponse.json({ message: "Forbidden" }, { status: 403 });
