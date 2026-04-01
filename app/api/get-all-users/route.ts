@@ -23,7 +23,10 @@ export async function GET() {
       rate: u.otpRate || "0.50",
       customAgentMail: u.customAgentMail || "", 
       telegramLink: u.telegramLink || "",
-      agentMaxUsers: u.agentMaxUsers || 100        
+      agentMaxUsers: u.agentMaxUsers || 100,
+      
+      // 💥 ফিক্স: API স্ট্যাটাস ডাটাবেস থেকে ফ্রন্টএন্ডে পাঠানো হচ্ছে 💥
+      isApiActive: u.isApiActive || false        
     }));
 
     return NextResponse.json({ users: formattedUsers }, { status: 200 });
