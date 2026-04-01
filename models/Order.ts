@@ -16,5 +16,9 @@ const orderSchema = new Schema(
   { timestamps: true }
 );
 
+// 💥 Auto-Cleanup Magic (TTL Index) 💥
+// ১০ দিন পর (10 * 24 * 60 * 60 = 864000 সেকেন্ড) ডাটাবেস একা একাই এই নাম্বার/অর্ডারটি ডিলিট করে দেবে!
+orderSchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 });
+
 const Order = models.Order || mongoose.model("Order", orderSchema);
 export default Order;

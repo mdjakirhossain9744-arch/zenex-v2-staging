@@ -37,7 +37,7 @@ export default function Payment() {
   ];
 
   // ==========================================
-  // 🔄 INITIAL LOAD & FETCH DATA
+  // 🔄 INITIAL LOAD & AUTO-SYNC (Magic)
   // ==========================================
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -48,7 +48,16 @@ export default function Payment() {
       setUserName(parsed.name || parsed.fullName);
       fetchRealData(parsed.email, parsed.role);
     }
+    
+    // পেজ লোড হলে একবার সেটিংস আনবে
     fetchPaymentSettings();
+
+    // 💥 ম্যাজিক: প্রতি ১০ সেকেন্ড পরপর ব্যাকগ্রাউন্ডে চেক করবে এডমিন অফ করল কি না 💥
+    const syncSettings = setInterval(() => {
+      fetchPaymentSettings();
+    }, 10000);
+
+    return () => clearInterval(syncSettings);
   }, []);
 
   const fetchPaymentSettings = async () => {
@@ -78,7 +87,6 @@ export default function Payment() {
       });
       const data = await res.json();
       if (data.success) {
-        // নতুন ডাটাগুলো উপরে দেখানোর জন্য রিভার্স করা হলো
         setDbRequests(data.data.reverse());
       }
 
@@ -113,17 +121,14 @@ export default function Payment() {
 
   // 💥 Smart Filtering Logic 💥
   const displayedRequests = dbRequests.filter(req => {
-    // ১. Tab Filter
     if (activeAdminTab === "PENDING" && req.status !== "PENDING") return false;
     if (activeAdminTab === "HISTORY" && req.status === "PENDING") return false;
 
-    // ২. Search Filter (Name, Email or Account Number)
     const q = searchQuery.toLowerCase();
     if (q && !req.name?.toLowerCase().includes(q) && !req.email?.toLowerCase().includes(q) && !req.accountNumber?.toLowerCase().includes(q)) {
       return false;
     }
 
-    // ৩. Time Filter
     if (timeFilter !== "ALL") {
       const reqDate = new Date(req.createdAt || req.date || Date.now());
       const diffDays = Math.ceil(Math.abs(Date.now() - reqDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -244,7 +249,6 @@ export default function Payment() {
                 <p className="text-[#94A3B8] mt-1 text-sm font-medium">Control payment gates and process requests.</p>
               </div>
 
-              {/* Admin Toggles */}
               <div className="flex flex-wrap items-center gap-4 bg-[#0F172A] p-2 rounded-2xl border border-[#334155]">
                 <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                    <span className="text-[10px] text-[#94A3B8] uppercase font-black">Main System</span>
@@ -264,7 +268,6 @@ export default function Payment() {
               </div>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#3B82F6]">
                 <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Total Requests</p>
@@ -284,7 +287,6 @@ export default function Payment() {
               </div>
             </div>
 
-            {/* 💥 Smart Filter Toolbar 💥 */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 bg-[#1E293B]/80 p-4 rounded-2xl border border-[#334155]">
                <div className="flex items-center gap-2 bg-[#0F172A] p-1.5 rounded-xl border border-[#334155]">
                  <button onClick={() => setActiveAdminTab("PENDING")} className={`px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-black transition-all ${activeAdminTab === "PENDING" ? "bg-[#3B82F6] text-white shadow-md" : "text-[#64748B] hover:text-white"}`}>
@@ -316,7 +318,6 @@ export default function Payment() {
                </div>
             </div>
 
-            {/* Admin Data Table */}
             <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[300px]">
               <table className="w-full text-left whitespace-nowrap">
                 <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
@@ -426,7 +427,6 @@ export default function Payment() {
                   </div>
                </div>
 
-               {/* Withdraw History (User) */}
                <div className="bg-[#1E293B]/80 border border-[#334155] rounded-3xl shadow-lg flex flex-col h-[650px]">
                   <div className="p-6 border-b border-[#334155] bg-[#0F172A]/50">
                     <h3 className="text-sm font-black text-white uppercase tracking-widest">My Recent Transactions</h3>
