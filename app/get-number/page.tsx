@@ -38,6 +38,7 @@ export default function GetNumber() {
 
   useEffect(() => {
     let lastKnownToday = getTodayString();
+    
     const checkDateChange = setInterval(() => {
       const realToday = getTodayString();
       if (lastKnownToday !== realToday) {
@@ -90,6 +91,15 @@ export default function GetNumber() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
+  // 💥 Vercel এ যে ফাংশনটি মিসিং ছিল সেটি এখানে আবার যোগ করা হয়েছে 💥
+  const getTimeAgo = (timestamp: number) => {
+    const secondsPast = Math.floor((currentTime - timestamp) / 1000);
+    if (secondsPast < 60) return "Just Now";
+    if (secondsPast < 3600) return `${Math.floor(secondsPast / 60)} min ago`;
+    if (secondsPast < 86400) return `${Math.floor(secondsPast / 3600)} hour ago`;
+    return new Date(timestamp).toLocaleDateString();
+  };
+
   const addBalanceToDatabase = async () => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
@@ -118,6 +128,7 @@ export default function GetNumber() {
             if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
                return { ...item, status: "FAIL", otp: "Timeout (20 mins passed)" };
             }
+
             if (item.isDup) return item;
 
             const cleanSearchNumber = String(item.searchNumber).replace(/\D/g, ""); 
@@ -178,7 +189,10 @@ export default function GetNumber() {
             return item;
           });
 
-          if (balanceAdded) addBalanceToDatabase();
+          if (balanceAdded) {
+             addBalanceToDatabase();
+          }
+
           return [...newDups, ...updatedList];
         });
       }
@@ -197,7 +211,6 @@ export default function GetNumber() {
     return () => clearInterval(interval);
   }, [numbersList]);
 
-  // 💥 আবার ব্যাকএন্ড API ব্যবহার করা হচ্ছে 💥
   const fetchNewNumber = async () => {
     if (!rangeInput) {
       showToast("Please enter a Number Range first!");
@@ -248,7 +261,9 @@ export default function GetNumber() {
   };
 
   const isToday = selectedDate === getTodayString();
+  
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
+    
   const finalFilteredNumbers = dateFilteredNumbers.filter((item) => {
     if (activeFilter === "ALL") return true;
     return item.status === activeFilter;
@@ -259,6 +274,11 @@ export default function GetNumber() {
     const timeB = b.receivedAt || b.createdAt;
     return timeB - timeA; 
   });
+
+  const totalGen = dateFilteredNumbers.length;
+  const successCount = dateFilteredNumbers.filter((n) => n.status === "DONE").length;
+  const waitCount = dateFilteredNumbers.filter((n) => n.status === "WAIT").length;
+  const failCount = dateFilteredNumbers.filter((n) => n.status === "FAIL").length;
 
   return (
     <DashboardLayout>
@@ -274,19 +294,19 @@ export default function GetNumber() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-6 md:mb-8">
            <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-4 md:p-5 flex flex-col justify-center items-center md:items-start md:flex-row md:justify-between transition-all hover:border-[#94A3B8]">
               <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1 md:mb-0">Total Gen</span>
-              <span className="text-2xl font-black text-white">{dateFilteredNumbers.length}</span>
+              <span className="text-2xl font-black text-white">{totalGen}</span>
            </div>
            <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#10B981]/10 border border-[#10B981]/30 p-4 md:p-5 flex flex-col justify-center items-center md:items-start md:flex-row md:justify-between transition-all hover:border-[#10B981]">
               <span className="text-[10px] font-black text-[#10B981] uppercase tracking-widest mb-1 md:mb-0">Success</span>
-              <span className="text-2xl font-black text-[#10B981]">{dateFilteredNumbers.filter((n) => n.status === "DONE").length}</span>
+              <span className="text-2xl font-black text-[#10B981]">{successCount}</span>
            </div>
            <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#EAB308]/10 border border-[#EAB308]/30 p-4 md:p-5 flex flex-col justify-center items-center md:items-start md:flex-row md:justify-between transition-all hover:border-[#EAB308]">
               <span className="text-[10px] font-black text-[#EAB308] uppercase tracking-widest mb-1 md:mb-0">Wait (Live)</span>
-              <span className="text-2xl font-black text-[#EAB308]">{dateFilteredNumbers.filter((n) => n.status === "WAIT").length}</span>
+              <span className="text-2xl font-black text-[#EAB308]">{waitCount}</span>
            </div>
            <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#F43F5E]/10 border border-[#F43F5E]/30 p-4 md:p-5 flex flex-col justify-center items-center md:items-start md:flex-row md:justify-between transition-all hover:border-[#F43F5E]">
               <span className="text-[10px] font-black text-[#F43F5E] uppercase tracking-widest mb-1 md:mb-0">Failed</span>
-              <span className="text-2xl font-black text-[#F43F5E]">{dateFilteredNumbers.filter((n) => n.status === "FAIL").length}</span>
+              <span className="text-2xl font-black text-[#F43F5E]">{failCount}</span>
            </div>
         </div>
 
