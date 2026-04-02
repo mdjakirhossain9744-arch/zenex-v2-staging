@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import LiveLog from "../../../models/LiveLog";
 
-// 💥 Next.js এর নিজস্ব সুপার পাওয়ারফুল ৫ সেকেন্ড ক্যাশ (Serverless Freeze হবে না) 💥
-export const revalidate = 5; 
+// 💥 Vercel এবং Next.js এর সব ক্যাশ চিরতরে অফ! 💥
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 const MNIT_API_KEY = "M_7VX25KAJI";
 
@@ -25,26 +27,37 @@ export async function GET() {
   try {
     await connectToDatabase();
 
-    const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info", {
+    // 💥 ম্যাজিক ১: MNIT এর Cloudflare ক্যাশ ভাঙার জন্য লাইভ টাইমস্ট্যাম্প যুক্ত করা হলো! 💥
+    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${Date.now()}`;
+
+    const response = await fetch(mnitUrl, {
       method: "GET",
       headers: {
         "mapikey": MNIT_API_KEY, 
         "Content-Type": "application/json",
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
-        "Cache-Control": "no-cache"
-      }
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+      },
+      cache: "no-store",
     });
 
     if (response.ok) {
       const result = await response.json();
       if (result && result.data && Array.isArray(result.data.otps)) {
-        try {
-          const bulkOps = result.data.otps.map((item: any) => ({
+        
+        const bulkOps = result.data.otps.map((item: any) => {
+          // MNIT এর অরিজিনাল টাইম নেওয়া হচ্ছে, যাতে সবগুলোর টাইম এক না হয়ে যায়
+          const mnitTime = item.created_at ? new Date(item.created_at) : new Date();
+          const uniqueId = item.nid || `${item.number}_${item.otp}`;
+
+          return {
             updateOne: {
-              filter: { nid: item.nid || `${item.number}_${item.otp}` },
+              filter: { nid: uniqueId },
               update: {
                 $set: {
-                  nid: item.nid || `${item.number}_${item.otp}`,
+                  nid: uniqueId,
                   number: item.number,
                   otp: item.otp,
                   country: item.country || "GLOBAL",
@@ -52,31 +65,36 @@ export async function GET() {
                   service: getServiceName(item.otp)
                 },
                 $setOnInsert: {
-                  createdAt: new Date()
+                  createdAt: mnitTime
                 }
               },
               upsert: true
             }
-          }));
-          
-          if (bulkOps.length > 0) {
+          };
+        });
+        
+        if (bulkOps.length > 0) {
+          try {
             await LiveLog.bulkWrite(bulkOps, { ordered: false });
+          } catch (e) {
+            // ডুপ্লিকেট ইগনোর
           }
-        } catch (e) {
-          // ডুপ্লিকেট ইগনোর
         }
       }
     }
 
-    // 💥 মেইন ম্যাজিক: ডাটাবেস থেকে জোর করে শুধুমাত্র শেষ ২০ মিনিটের ডাটা আনা হচ্ছে 💥
     const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
 
+    // 💥 ম্যাজিক ২: ডাটাবেসের ভরসায় না থেকে, কোড দিয়ে জোর করে ২০ মিনিটের পুরনো ডাটা ডিলিট! 💥
+    await LiveLog.deleteMany({ createdAt: { $lt: twentyMinsAgo } });
+
+    // 💥 ম্যাজিক ৩: ফ্রেশ ডাটা আনা হচ্ছে 💥
     const latestLogs = await LiveLog.find({ createdAt: { $gte: twentyMinsAgo } })
       .sort({ createdAt: -1, _id: -1 })
       .limit(100);
 
     const topAppsAgg = await LiveLog.aggregate([
-      { $match: { createdAt: { $gte: twentyMinsAgo } } }, // গ্রাফেও শুধু ২০ মিনিটের হিসাব
+      { $match: { createdAt: { $gte: twentyMinsAgo } } }, 
       { $group: { _id: "$service", value: { $sum: 1 } } },
       { $sort: { value: -1 } }, 
       { $limit: 8 }
@@ -89,6 +107,7 @@ export async function GET() {
       pad += " ";
     }
 
+    // কোনো ক্যাশ ভেরিয়েবল নেই, একদম ফ্রেশ ডাটা পাঠানো হচ্ছে
     return NextResponse.json({ success: true, logs: latestLogs, graph: graphData });
 
   } catch (error: any) {

@@ -15,8 +15,8 @@ export default function Console() {
 
   const fetchGlobalData = async () => {
     try {
-      // 💥 কোনো ফেক প্যারামিটার ছাড়াই ফ্রেশ এপিআই কল 💥
-      const res = await fetch("/api/live-console", { cache: 'no-store' });
+      // 💥 ব্রাউজারের ক্যাশ ফোর্স করে ভাঙা হলো 💥
+      const res = await fetch(`/api/live-console?t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       
       if (data.success) {
