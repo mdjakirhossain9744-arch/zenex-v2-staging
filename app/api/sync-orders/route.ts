@@ -49,7 +49,9 @@ export async function POST(req: Request) {
       const newOrder = new Order({
         userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
         country: orderData.country, operator: orderData.operator, status: orderData.status,
-        otp: orderData.otp, fullMessage: orderData.fullMessage, dateString: orderData.dateString
+        otp: orderData.otp, fullMessage: orderData.fullMessage, dateString: orderData.dateString,
+        // 💥 তৈরি করার সময় ১ দিনের (২৪ ঘণ্টা) মেয়াদ দেওয়া হলো 💥
+        expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
       return NextResponse.json({ success: true });
@@ -62,6 +64,8 @@ export async function POST(req: Request) {
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
         existingOrder.otp = orderData.otp || "Timeout"; 
+        // 💥 ফেইল হলে মেয়াদ ২৪ ঘণ্টাই থাকবে 💥
+        existingOrder.expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await existingOrder.save();
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
@@ -90,7 +94,6 @@ export async function POST(req: Request) {
           if (user) {
             const userRate = Number(user.otpRate) || 0.50;
             
-            // 💥 ম্যাজিক: Atomic Operation + $round (দশমিক সমস্যা আর কখনোই হবে না) 💥
             await User.findOneAndUpdate(
               { email }, 
               [{ $set: { balance: { $round: [{ $add: [{ $ifNull: ["$balance", 0] }, userRate] }, 2] } } }]
@@ -107,7 +110,6 @@ export async function POST(req: Request) {
                 const commission = Number((agentRate - userRate).toFixed(2));
 
                 if (commission > 0) {
-                  // 💥 এজেন্টের ব্যালেন্সেও $round বসিয়ে দেওয়া হলো 💥
                   await User.findOneAndUpdate(
                      { _id: agent._id }, 
                      [{
@@ -126,6 +128,8 @@ export async function POST(req: Request) {
         freshOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
         freshOrder.otp = orderData.otp; 
         freshOrder.status = "DONE";
+        // 💥 ম্যাজিক: সাকসেস/DONE হলে মেয়াদ বাড়িয়ে ১০ দিন করে দেওয়া হলো! 💥
+        freshOrder.expireAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); 
         await freshOrder.save();
 
         return NextResponse.json({ success: true, message: "Processed successfully!" });

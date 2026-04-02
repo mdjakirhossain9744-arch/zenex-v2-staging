@@ -5,7 +5,10 @@ import LiveLog from "../../../models/LiveLog";
 export const dynamic = "force-dynamic";
 const MNIT_API_KEY = "M_7VX25KAJI";
 
-// সার্ভিস নাম বের করার ফাংশন
+let cachedData: any = null;
+let lastFetchTime: number = 0;
+const CACHE_DURATION = 2000; // 💥 মাত্র ২ সেকেন্ড ক্যাশ (সুপার লাইভ) 💥
+
 const getServiceName = (message: string) => {
   const msgLower = (message || "").toLowerCase();
   const popularApps = ['facebook', 'whatsapp', 'telegram', 'instagram', 'google', 'tiktok', 'apple', 'amazon', 'netflix', 'yahoo', 'twitter', 'paypal', 'discord', 'tinder', 'uber', 'viber', 'line', 'coinw'];
@@ -22,9 +25,13 @@ const getServiceName = (message: string) => {
 
 export async function GET() {
   try {
+    const currentTime = Date.now();
+    if (cachedData && (currentTime - lastFetchTime < CACHE_DURATION)) {
+      return NextResponse.json(cachedData);
+    }
+
     await connectToDatabase();
 
-    // ১. MNIT থেকে লাইভ ডাটা আনা হচ্ছে
     const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info", {
       method: "GET",
       headers: {
@@ -39,54 +46,61 @@ export async function GET() {
       const result = await response.json();
       if (result && result.data && Array.isArray(result.data.otps)) {
         
-        // ২. ডাটাবেসে সেভ করা হচ্ছে (Bulk Upsert - ডুপ্লিকেট হবে না)
-        const bulkOps = result.data.otps.map((item: any) => ({
-          updateOne: {
-            filter: { nid: item.nid || `${item.number}_${item.otp}` },
-            update: {
-              $set: {
-                nid: item.nid || `${item.number}_${item.otp}`,
-                number: item.number,
-                otp: item.otp,
-                country: item.country || "GLOBAL",
-                operator: item.operator || "Other",
-                service: getServiceName(item.otp),
-                createdAt: item.created_at ? new Date(item.created_at) : new Date()
-              }
-            },
-            upsert: true
+        // ফাস্ট সেভ করার জন্য ordered: false ব্যবহার করা হয়েছে
+        try {
+          const bulkOps = result.data.otps.map((item: any) => ({
+            updateOne: {
+              filter: { nid: item.nid || `${item.number}_${item.otp}` },
+              update: {
+                $set: {
+                  nid: item.nid || `${item.number}_${item.otp}`,
+                  number: item.number,
+                  otp: item.otp,
+                  country: item.country || "GLOBAL",
+                  operator: item.operator || "Other",
+                  service: getServiceName(item.otp),
+                  // ডাটাবেসে ঢোকার সময়কার লাইভ টাইম!
+                  createdAt: new Date() 
+                }
+              },
+              upsert: true
+            }
+          }));
+          
+          if (bulkOps.length > 0) {
+            await LiveLog.bulkWrite(bulkOps, { ordered: false });
           }
-        }));
-        
-        if (bulkOps.length > 0) {
-          await LiveLog.bulkWrite(bulkOps);
+        } catch (e) {
+          // ডুপ্লিকেট হলে ইগনোর করবে
         }
       }
     }
 
-    // ৩. ডাটাবেস থেকে সর্বশেষ ১০০ টি ওটিপি আনা হচ্ছে
+    // 💥 ডাটাবেস থেকে শুধু লাস্ট ১০০টি ওটিপি আনা হচ্ছে 💥
     const latestLogs = await LiveLog.find().sort({ createdAt: -1 }).limit(100);
 
-    // ৪. 💥 গ্রাফের জন্য ডাটাবেস থেকে লাইভ কাউন্ট (যেমন MNIT করে) 💥
+    // 💥 গ্রাফের জন্য লাস্ট ২০ মিনিটের কাউন্ট 💥
     const topAppsAgg = await LiveLog.aggregate([
       { $group: { _id: "$service", value: { $sum: 1 } } },
-      { $sort: { value: -1 } }, // সবচেয়ে বেশি ওটিপি যেটা, সেটা ১ নম্বরে থাকবে
+      { $sort: { value: -1 } }, 
       { $limit: 8 }
     ]);
 
     let graphData = topAppsAgg.map(app => ({ name: app._id, value: app.value }));
-    
-    // চার্ট সুন্দর রাখার জন্য প্যাডিং
     let pad = " ";
     while (graphData.length < 8) {
       graphData.push({ name: pad, value: 0 });
       pad += " ";
     }
 
-    return NextResponse.json({ success: true, logs: latestLogs, graph: graphData });
+    cachedData = { success: true, logs: latestLogs, graph: graphData };
+    lastFetchTime = currentTime;
+
+    return NextResponse.json(cachedData);
 
   } catch (error: any) {
-    console.error("Live Console API Error:", error);
+    console.error("Live Console Error:", error);
+    if (cachedData) return NextResponse.json(cachedData);
     return NextResponse.json({ success: false, error: "Network Error" }, { status: 500 });
   }
 }

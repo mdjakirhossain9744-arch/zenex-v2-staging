@@ -8,7 +8,8 @@ export default function Console() {
   const [liveLogs, setLiveLogs] = useState<any[]>([]);
   const [graphData, setGraphData] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [countdown, setCountdown] = useState(5);
+  // 💥 প্রতি ২ সেকেন্ডে রিফ্রেশ 💥
+  const [countdown, setCountdown] = useState(2);
   const [loading, setLoading] = useState(true);
 
   const BAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#EAB308', '#F43F5E'];
@@ -35,7 +36,7 @@ export default function Console() {
       setCountdown((prev) => {
         if (prev <= 1) {
           fetchGlobalData(); 
-          return 5; // ৫ সেকেন্ড রিফ্রেশ
+          return 2; // 💥 ২ সেকেন্ড 💥
         }
         return prev - 1; 
       });
@@ -59,6 +60,7 @@ export default function Console() {
   const formatTime = (timestamp: any) => {
     if (!timestamp) return "Unknown Time";
     const date = new Date(timestamp);
+    // ডিভাইসের অরিজিনাল লাইভ টাইম
     return !isNaN(date.getTime()) ? date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : "Time Error";
   };
 
@@ -84,13 +86,14 @@ export default function Console() {
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 pb-16">
         
+        {/* Graphs Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
            <div className="lg:col-span-2 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
               
               <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-2 md:mb-4">
-                 Top Apps Live Trend
-                 <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#3B82F6]">Global Data</span>
+                 Top Apps (Last 20 Mins)
+                 <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#10B981] animate-pulse">Live Updating</span>
               </h3>
               
               <div className="flex-1 mt-4">
@@ -99,7 +102,7 @@ export default function Console() {
                     <XAxis dataKey="name" stroke="#64748B" fontSize={9} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" />
                     <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                     <Tooltip cursor={{fill: '#334155', opacity: 0.2}} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(val: any) => val > 0 ? [val, 'OTPs'] : []} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false}>
                       <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={10} fontWeight="bold" formatter={(val: any) => val > 0 ? `${val}` : ''} />
                       {graphData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
@@ -115,7 +118,7 @@ export default function Console() {
               {carrierData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={carrierData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none">
+                    <Pie data={carrierData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none" isAnimationActive={false}>
                       {carrierData.map((entry, index) => (
                         <PieCell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
                       ))}
@@ -124,7 +127,7 @@ export default function Console() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-[#64748B] text-xs md:text-sm">Gathering data...</div>
+                <div className="flex-1 flex items-center justify-center text-[#64748B] text-xs md:text-sm">Waiting for data...</div>
               )}
               <div className="flex flex-wrap justify-center gap-2 mt-2">
                 {carrierData.map((entry, index) => (
@@ -150,15 +153,16 @@ export default function Console() {
               <svg className={`w-3 h-3 md:w-4 md:h-4 text-[#8B5CF6] ${countdown === 1 ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span className="text-[10px] md:text-xs font-bold text-[#94A3B8]">Auto Sync: <span className="text-white">{countdown}s</span></span>
+              <span className="text-[10px] md:text-xs font-bold text-[#94A3B8]">Sync in: <span className="text-white">{countdown}s</span></span>
            </div>
         </div>
 
+        {/* 💥 100 Latest Live Feed 💥 */}
         <div className="flex flex-col gap-2.5 w-full pb-10">
            {loading && liveLogs.length === 0 ? (
               <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
                  <div className="w-6 h-6 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin mb-3"></div>
-                 <h3 className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Loading Database...</h3>
+                 <h3 className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Connecting Live Stream...</h3>
               </div>
            ) : filteredLogs.length === 0 ? (
               <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
@@ -168,31 +172,42 @@ export default function Console() {
               filteredLogs.map((log, index) => {
                 const time = formatTime(log.createdAt); 
                 return (
-                 <div key={index} className="bg-[#0B0F1A]/80 border border-[#334155] p-2.5 md:p-3 rounded-lg flex flex-col gap-1.5 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
+                 <div key={index} className="bg-[#0B0F1A]/80 border border-[#334155] p-3 md:p-4 rounded-lg flex flex-col gap-2 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
+                    {/* Accent Line */}
                     <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
                     
-                    <div className="flex justify-between items-center ml-2">
-                      <div className="flex items-center gap-1.5 md:gap-2">
-                        <span className="text-[9px] md:text-[10px] font-black text-[#F59E0B] tracking-widest">{time}</span>
-                        <div className="flex items-center gap-1 bg-[#1E293B] border border-[#334155]/50 px-1.5 py-0.5 rounded">
-                           <span className="text-[8px] md:text-[9px] font-bold text-[#94A3B8] truncate max-w-[60px]">{log.operator}</span>
-                           <span className="text-[8px] text-[#475569]">|</span>
-                           <span className="text-[8px] md:text-[9px] font-black text-[#10B981]">🌍 {log.country.toUpperCase()}</span>
-                        </div>
+                    {/* 💥 Row 1: Time | Operator | Country | App Badge 💥 */}
+                    <div className="flex justify-between items-center ml-2 border-b border-[#334155]/50 pb-2">
+                      <div className="flex items-center gap-2 md:gap-3">
+                        <span className="text-[10px] md:text-xs font-black text-[#F59E0B] tracking-widest">{time}</span>
+                        <span className="text-[10px] md:text-xs font-bold text-[#94A3B8]">{log.operator}</span>
+                        <span className="text-[10px] text-[#475569]">|</span>
+                        <span className="text-[10px] md:text-xs font-black text-[#10B981] flex items-center gap-1">
+                          🌍 {String(log.country).toUpperCase()}
+                        </span>
                       </div>
 
-                      <span className="text-[8px] md:text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest bg-[#3B82F6]/15 text-[#3B82F6]">
+                      <span className={`text-[9px] md:text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest ${
+                        log.service === 'FACEBOOK' ? 'bg-[#1877F2]/15 text-[#1877F2]' : 
+                        log.service === 'WHATSAPP' ? 'bg-[#25D366]/15 text-[#25D366]' : 
+                        log.service === 'INSTAGRAM' ? 'bg-[#E1306C]/15 text-[#E1306C]' : 
+                        log.service === 'GOOGLE' ? 'bg-[#EA4335]/15 text-[#EA4335]' : 
+                        log.service === 'PAYPAL' ? 'bg-[#00457C]/20 text-[#0079C1]' : 
+                        log.service === 'OTHER' ? 'bg-[#64748B]/15 text-[#64748B]' : 
+                        'bg-[#3B82F6]/15 text-[#3B82F6]'
+                      }`}>
                         {log.service}
                       </span>
                     </div>
                     
-                    <div className="ml-2 flex flex-col md:flex-row md:items-center gap-1 md:gap-3 font-mono">
+                    {/* 💥 Row 2: Number ➜ OTP 💥 */}
+                    <div className="ml-2 flex flex-col md:flex-row md:items-center gap-1.5 md:gap-3 font-mono mt-1">
                       <div className="flex items-center gap-2 text-white">
-                        <span className="text-xs md:text-sm font-bold tracking-wider">{maskNumber(log.number)}</span>
-                        <span className="hidden md:inline text-[#334155] font-black text-[10px]">➜</span>
+                        <span className="text-sm md:text-base font-bold tracking-wider">{maskNumber(log.number)}</span>
+                        <span className="hidden md:inline text-[#334155] font-black text-xs">➜</span>
                       </div>
                       
-                      <div className="text-[10px] md:text-[11px] text-[#94A3B8] leading-tight flex-1 break-words">
+                      <div className="text-[11px] md:text-xs text-[#94A3B8] leading-relaxed flex-1 break-words">
                         <span className="text-[#10B981] font-black mr-1.5 md:hidden">↳</span>
                         <span className="text-[#10B981] font-black mr-1">&lt;#&gt;</span>
                         {maskFullMessage(log.otp)}
