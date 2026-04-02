@@ -34,8 +34,8 @@ export async function POST(req: Request) {
           otp: o.otp,
           fullMessage: o.fullMessage,
           seenMessages: msgArray, 
-          isDup: msgArray.length > 1, // ফ্রন্টএন্ডের পুরনো কোড সাপোর্ট করার জন্য
-          isMulti: msgArray.length > 1, // 💥 নতুন MULTI লজিক 💥
+          isDup: msgArray.length > 1, 
+          isMulti: msgArray.length > 1, 
           createdAt: new Date(o.createdAt).getTime(),
           receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
         };
@@ -72,7 +72,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: "Order not found" });
       }
 
-      // যদি OTP আসে এবং স্ট্যাটাস DONE হয়
+      // 🚨 💥 বাগ ফিক্স: যদি টাইমআউট (FAIL) বা CANCEL হয়, তবে আগেই ডাটাবেসে স্ট্যাটাস FAIL করে রিটার্ন করবে 💥
+      if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
+        existingOrder.status = "FAIL";
+        existingOrder.otp = orderData.otp || "Timeout"; // Timeout লেখাটি সেভ করবে
+        await existingOrder.save();
+        return NextResponse.json({ success: true, message: "Order failed due to timeout." });
+      }
+
+      // 💥 যদি সত্যিকারের OTP আসে এবং স্ট্যাটাস DONE হয় 💥
       if (orderData.status === "DONE" || orderData.otp) {
         
         const incomingMsg = (orderData.fullMessage || "").trim();
@@ -83,9 +91,9 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Already processed this exact OTP text." });
         }
 
-        // 🛡️ হ্যাকার প্রটেকশন: লিমিট বাড়িয়ে ৫০ করা হলো (যাতে রিয়েল ইউজাররা আনলিমিটেড কোড নিতে পারে)
+        // 🛡️ হ্যাকার প্রটেকশন: লিমিট ৫০ করা হলো (যাতে রিয়েল ইউজাররা আনলিমিটেড কোড নিতে পারে)
         const msgCount = currentMsg ? currentMsg.split(" _||_ ").length : 0;
-        if (msgCount >= 5) {
+        if (msgCount >= 50) { 
           return NextResponse.json({ success: true, message: "Max safety limit (50) reached for this number." });
         }
 
@@ -138,11 +146,6 @@ export async function POST(req: Request) {
             : `New MULTI OTP (${msgCount + 1}) processed, Balance & Commission added!` 
         });
 
-      } else {
-        // যদি স্ট্যাটাস CANCEL হয়
-        existingOrder.status = orderData.status;
-        await existingOrder.save();
-        return NextResponse.json({ success: true });
       }
     }
 
