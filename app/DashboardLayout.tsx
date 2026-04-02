@@ -13,29 +13,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   
-  // 💥 নোটিফিকেশন স্টেট 💥
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   
   const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
 
-  // 💥 সিকিউর লগআউট ফাংশন 💥
+  // 💥 সিকিউর লগআউট ফাংশন ফিক্সড (কালো স্ক্রিন রিমুভড) 💥
   const handleLogout = useCallback(async () => {
     try {
-      await fetch("/api/logout", { method: "POST" });
+      // ১. ব্যাকএন্ড থেকে কুকি ডিলিট করা
+      await fetch("/api/logout", { method: "GET" });
     } catch (error) {
-      console.error(error);
+      console.error("Logout API failed:", error);
+    } finally {
+      // ২. লোকাল স্টোরেজ থেকে সব ডাটা একদম ক্লিন করা
+      localStorage.removeItem("user");
+      localStorage.removeItem("zenex_login_time");
+      localStorage.removeItem("zenex_saved_range");
+      
+      // ৩. 💥 ম্যাজিক: router.push বাদ দিয়ে হার্ড রিলোড! কালো স্ক্রিন জীবনেও আর আসবে না! 💥
+      window.location.href = "/login";
     }
-    localStorage.removeItem("user");
-    router.push("/login");
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
     const storedUser = localStorage.getItem("user");
 
-    // Middleware কুকি চেক করছে
     if (!storedUser) {
       router.push("/login");
       return;
@@ -45,7 +50,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setUser(parsedUser);
     setIsAuthorized(true); 
 
-    // 💥 ১. Live Session Checking (Device Auto-Logout Logic) 💥
     const checkActiveSession = async () => {
       try {
         const res = await fetch("/api/check-session", { method: "GET" });
@@ -58,7 +62,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     };
 
-    // 💥 ২. Maintenance Status Checking 💥
     const checkMaintenance = async () => {
       try {
         const res = await fetch("/api/system-settings");
@@ -75,7 +78,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     };
 
-    // 💥 ৩. Real-time Balance Fetching 💥
     const fetchRealBalance = async () => {
       if (parsedUser.role === "admin") return;
       
@@ -88,7 +90,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if(res.ok){
           const data = await res.json();
           if (data && data.user) {
-             setBalance(data.user.balance.toFixed(2));
+             setBalance(Number(data.user.balance || 0).toFixed(2));
           }
         }
       } catch (err) {
@@ -96,12 +98,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     };
     
-    // Initial Calls
     checkActiveSession();
     checkMaintenance();
     fetchRealBalance();
 
-    // Intervals (Polling)
     const sessionInterval = setInterval(checkActiveSession, 30000); 
     const maintInterval = setInterval(checkMaintenance, 5000); 
     const balanceInterval = setInterval(fetchRealBalance, 5000); 
