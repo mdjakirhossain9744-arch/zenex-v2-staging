@@ -19,7 +19,6 @@ export default function Console() {
       const data = await res.json();
       
       if (data.success) {
-        // 🔥 আপডেট: লেটেস্ট ওটিপি সবসময় সবার উপরে রাখার জন্য ফোর্স সর্টিং 
         const sortedLogs = (data.logs || []).sort((a: any, b: any) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
@@ -172,7 +171,6 @@ export default function Console() {
               filteredLogs.map((log, index) => {
                 const time = formatTime(log.createdAt); 
                 return (
-                 {/* 🔥 আপডেট: key এ log.id ব্যবহার করা হয়েছে স্মুথ লাইভ আপডেটের জন্য */}
                  <div key={log.id || index} className="bg-[#0B0F1A]/80 border border-[#334155] p-3 md:p-4 rounded-lg flex flex-col gap-2 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
                     <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
                     
