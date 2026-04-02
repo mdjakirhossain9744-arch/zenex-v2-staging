@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import LiveLog from "../../../models/LiveLog";
 
-// 💥 Vercel এবং Next.js এর সব ক্যাশ চিরতরে অফ! 💥
+// 💥 Vercel Edge Caching চিরতরে ধ্বংস করার কমান্ড 💥
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
@@ -29,6 +29,7 @@ export async function GET() {
 
     const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${Date.now()}`;
 
+    // 🚀 Ultimate Fetch Strategy: Next.js 14 এর ক্যাশ ফোর্স-কিল করা হলো
     const response = await fetch(mnitUrl, {
       method: "GET",
       headers: {
@@ -40,14 +41,21 @@ export async function GET() {
         "Expires": "0"
       },
       cache: "no-store",
+      next: { revalidate: 0 } // 🔥 এটাই সবচেয়ে ইম্পর্টেন্ট লাইন! Vercel আর ক্যাশ ধরতে পারবে না।
     });
+
+    // Cloudflare বা MNIT ব্লক করছে কিনা তা সার্ভার লগে ধরার জন্য
+    if (!response.ok) {
+       console.error("MNIT API Blocked:", response.status, await response.text());
+    }
 
     if (response.ok) {
       const result = await response.json();
       if (result && result.data && Array.isArray(result.data.otps)) {
         
         const bulkOps = result.data.otps.map((item: any) => {
-          const uniqueId = item.nid || `${item.number}_${item.otp}`;
+          // Unique ID নিশ্চিত করা হলো
+          const uniqueId = item.nid ? String(item.nid) : `${item.number}_${item.otp}`;
 
           return {
             updateOne: {
@@ -61,7 +69,6 @@ export async function GET() {
                   operator: item.operator || "Other",
                   service: getServiceName(item.otp)
                 },
-                // 💥 ম্যাজিক ফিক্স: MNIT এর টাইম বাদ! আমাদের নিজস্ব সার্ভারের লাইভ টাইম বসানো হলো! 💥
                 $setOnInsert: {
                   createdAt: new Date()
                 }
@@ -81,16 +88,18 @@ export async function GET() {
       }
     }
 
+    // টাইমজোন ফিক্স: বর্তমান সময় থেকে ২০ মিনিট আগের ডাটা
     const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
 
     // ২০ মিনিটের পুরনো ডাটা ডিলিট
     await LiveLog.deleteMany({ createdAt: { $lt: twentyMinsAgo } });
 
-    // ফ্রেশ ডাটা আনা হচ্ছে
+    // ফ্রেশ ডাটা আনা হচ্ছে (সবার নতুন ডাটা একদম উপরে থাকবে)
     const latestLogs = await LiveLog.find({ createdAt: { $gte: twentyMinsAgo } })
-      .sort({ createdAt: -1, _id: -1 })
+      .sort({ createdAt: -1 }) 
       .limit(100);
 
+    // ಗ್ರಾফ ডাটা
     const topAppsAgg = await LiveLog.aggregate([
       { $match: { createdAt: { $gte: twentyMinsAgo } } }, 
       { $group: { _id: "$service", value: { $sum: 1 } } },
@@ -105,7 +114,12 @@ export async function GET() {
       pad += " ";
     }
 
-    return NextResponse.json({ success: true, logs: latestLogs, graph: graphData });
+    return NextResponse.json({ 
+        success: true, 
+        logs: latestLogs, 
+        graph: graphData,
+        serverTime: new Date().toISOString() // ফ্রন্টএন্ডকে বোঝানোর জন্য যে সার্ভার লাইভ আছে
+    });
 
   } catch (error: any) {
     console.error("Live Console Error:", error);
