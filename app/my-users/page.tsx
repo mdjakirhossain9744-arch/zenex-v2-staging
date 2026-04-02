@@ -48,29 +48,35 @@ export default function AgentUsersPage() {
         setAgentMail(parsedUser.email); 
         fetchNetworkUsers(parsedUser.email);
         
-        // প্রতি ১০ সেকেন্ডে লাইভ রিফ্রেশ করবে
         const interval = setInterval(() => fetchNetworkUsers(parsedUser.email), 10000);
         return () => clearInterval(interval);
       }
     }
   }, []);
 
-  const filteredUsers = myUsers.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.uid && u.uid.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // 💥 BUG FIXED: Added Fallbacks (|| "") to prevent .toLowerCase() crash 💥
+  const filteredUsers = myUsers.filter(u => {
+    const name = u.name || "";
+    const email = u.email || "";
+    const uid = u.uid || "";
+    const query = searchQuery.toLowerCase();
+    
+    return name.toLowerCase().includes(query) || 
+           email.toLowerCase().includes(query) || 
+           uid.toLowerCase().includes(query);
+  });
 
   const totalUsers = myUsers.length;
-  const activeUsers = myUsers.filter(u => u.status.toLowerCase() === 'active').length;
-  const pendingUsers = myUsers.filter(u => u.status.toLowerCase() === 'pending').length;
-  const bannedUsers = myUsers.filter(u => u.status.toLowerCase() === 'banned').length;
+  // 💥 BUG FIXED: Status toLowerCase() protected 💥
+  const activeUsers = myUsers.filter(u => (u.status || "").toLowerCase() === 'active').length;
+  const pendingUsers = myUsers.filter(u => (u.status || "").toLowerCase() === 'pending').length;
+  const bannedUsers = myUsers.filter(u => (u.status || "").toLowerCase() === 'banned').length;
   const isSeatFull = totalUsers >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
     setSelectedUser(user);
-    setNewRate(user.rate); 
-    setNewStatus(user.status.toLowerCase()); 
+    setNewRate(user.rate || "0.50"); 
+    setNewStatus((user.status || "active").toLowerCase()); 
     setNewPassword(""); 
     setIsModalOpen(true);
   };
@@ -115,7 +121,7 @@ export default function AgentUsersPage() {
   };
 
   const handleDeleteUser = async () => {
-    const confirmDelete = window.confirm(`⚠️ DANGER ZONE!\nAre you absolutely sure you want to permanently delete "${selectedUser.name}"?\nAll their data and balance will be lost. This CANNOT be undone!`);
+    const confirmDelete = window.confirm(`⚠️ DANGER ZONE!\nAre you absolutely sure you want to permanently delete "${selectedUser?.name || 'this user'}"?\nAll their data and balance will be lost. This CANNOT be undone!`);
     
     if (confirmDelete) {
       try {
@@ -127,7 +133,7 @@ export default function AgentUsersPage() {
         const data = await res.json();
         
         if (data.success) {
-          alert(`✅ ${selectedUser.name} has been permanently removed!`);
+          alert(`✅ User has been permanently removed!`);
           setIsModalOpen(false);
           fetchNetworkUsers(agentMail); 
         } else {
@@ -164,7 +170,6 @@ export default function AgentUsersPage() {
           </div>
         </div>
 
-        {/* 💥 Updated Cards Section with Banned Card & Removed Profit Margin 💥 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg relative overflow-hidden border-t-2 border-t-[#A855F7]">
             <p className="text-[#94A3B8] text-xs font-bold uppercase tracking-wider mb-1">Total Users</p>
@@ -189,7 +194,6 @@ export default function AgentUsersPage() {
           </div>
 
           <div className="bg-red-500/5 backdrop-blur-xl border border-[#F43F5E]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#F43F5E] relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-[#F43F5E]/10 rounded-bl-full pointer-events-none"></div>
             <p className="text-[#F43F5E] text-xs font-bold uppercase tracking-wider mb-1">Banned</p>
             <h3 className="text-2xl md:text-3xl font-black text-[#F43F5E]">
               {bannedUsers}
@@ -221,7 +225,6 @@ export default function AgentUsersPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-bold text-[#E2E8F0]">{u.name}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u.uid}</span>
-                        {/* 💥 API Badge for Agents 💥 */}
                         {u.isApiActive && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">API</span>
                         )}
@@ -258,7 +261,7 @@ export default function AgentUsersPage() {
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#A855F7] to-[#EC4899] flex items-center justify-center text-white font-black">
-                   {selectedUser.name.charAt(0)}
+                   {selectedUser.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
                    <h3 className="text-lg font-black text-white leading-tight">{selectedUser.name}</h3>

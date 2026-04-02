@@ -39,34 +39,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Agent not found" }, { status: 404 });
     }
 
+    // 💥 BUG FIXED: Secure Query to prevent mapping null values 💥
+    const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
+    if (agent.customAgentMail) {
+      emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
+    }
+
     const users = await User.find({
-      $or: [
-        { agentEmail: new RegExp(`^${agent.email}$`, 'i') }, 
-        { agentEmail: agent.customAgentMail ? new RegExp(`^${agent.customAgentMail}$`, 'i') : null }
-      ].filter(condition => condition.agentEmail !== null),
+      $or: emailConditions,
       role: "user"
     }).select("-password").sort({ createdAt: -1 });
 
-    // 💥 ম্যাজিক: লন্ডনের টাইমের বদলে পারফেক্ট বাংলাদেশ টাইমের আজকের ডেট 💥
     const todayStr = getBDDateString();
 
     const formattedUsers = await Promise.all(users.map(async (u) => {
       
-      // শুধুমাত্র আজকের (BD Time) সাকসেসফুল ওটিপি গোনা হবে
       const todayOtpCount = await Order.countDocuments({
          userEmail: new RegExp(`^${u.email}$`, 'i'), 
          dateString: todayStr,
          status: "DONE"
       });
 
+      // 💥 BUG FIXED: Added guarantees (||) so frontend NEVER receives undefined fields 💥
+      let finalStatus = "Pending";
+      if (u.status) {
+         finalStatus = u.status.toLowerCase() === 'active' ? 'Active' : u.status.toLowerCase() === 'banned' ? 'Banned' : 'Pending';
+      }
+
       return {
         id: u._id,
-        uid: `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`,
-        name: u.fullName,
-        email: u.email,
+        uid: u._id ? `ZX-${u._id.toString().substring(18, 24).toUpperCase()}` : "ZX-UNKNOWN",
+        name: u.fullName || "Unknown User",
+        email: u.email || "No Email",
         balance: Number(u.balance || 0).toFixed(2),
-        status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
-        todayOTP: todayOtpCount, // রাত ১২টায় জিরো হয়ে যাবে!
+        status: finalStatus,
+        todayOTP: todayOtpCount, 
         rate: Number(u.otpRate || 0.50).toFixed(2),
         isApiActive: u.isApiActive || false 
       };
