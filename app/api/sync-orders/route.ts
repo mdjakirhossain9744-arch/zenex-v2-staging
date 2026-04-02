@@ -5,6 +5,16 @@ import User from "../../../models/User";
 
 export const dynamic = "force-dynamic";
 
+// 💥 বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন 💥
+const getBDDateString = (dateObj: Date | number | string = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+  }).format(new Date(dateObj));
+};
+
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
@@ -18,8 +28,14 @@ export async function POST(req: Request) {
     if (action === "FETCH") {
       const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).limit(200);
       const finalOrders: any[] = [];
+      const todayStr = getBDDateString(); // 💥 আজকের বাংলাদেশ ডেট
 
       orders.forEach((o: any) => {
+        // 💥 ম্যাজিক ১: রাত ১২টার পর আগের দিনের WAIT বা FAIL ওটিপি হাইড হয়ে যাবে! শুধু DONE গুলা থাকবে।
+        if (o.dateString !== todayStr && o.status !== "DONE") {
+            return; 
+        }
+
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         if (o.status === "DONE" && msgArray.length > 1) {
           msgArray.forEach((msg: string, index: number) => {
@@ -42,14 +58,20 @@ export async function POST(req: Request) {
           });
         }
       });
+
+      // 💥 ম্যাজিক ২: ফ্রন্টএন্ডে পাঠানোর আগে টাইমের ওপর বেস করে স্ট্রং সর্টিং (যাতে লাফাদাফি না করে) 💥
+      finalOrders.sort((a, b) => b.createdAt - a.createdAt);
+
       return NextResponse.json({ success: true, orders: finalOrders });
     }
 
     if (action === "CREATE") {
+      const todayStr = getBDDateString(); // 💥 বাংলাদেশ টাইম ফোর্স করা হলো
       const newOrder = new Order({
         userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
         country: orderData.country, operator: orderData.operator, status: orderData.status,
-        otp: orderData.otp, fullMessage: orderData.fullMessage, dateString: orderData.dateString,
+        otp: orderData.otp, fullMessage: orderData.fullMessage, 
+        dateString: todayStr, // 💥
         expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
@@ -83,8 +105,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Max safety limit reached." });
         }
 
-        // 💥 ম্যাজিক ফিক্স: Atomic Lock! 
-        // ৩টা ওটিপি একসাথে আসলে এটা ডাটাবেসকে ক্র্যাশ বা ওভাররাইট করতে দেবে না।
+        // 💥 Atomic Lock (রেস কন্ডিশন ফিক্স) 💥
         const updatedOrder = await Order.findOneAndUpdate(
           { _id: existingOrder._id, fullMessage: currentMsg }, 
           { 
@@ -98,12 +119,10 @@ export async function POST(req: Request) {
           { new: true }
         );
 
-        // যদি একই মিলি-সেকেন্ডে অন্য কোনো ওটিপি ঢুকে যায়, তাহলে এটা সেভ না করে ফ্রন্টএন্ডকে আবার ট্রাই করতে বলবে।
         if (!updatedOrder) {
           return NextResponse.json({ success: false, message: "Race condition locked. Retrying..." });
         }
 
-        // আপনার অরিজিনাল ব্যালেন্স যোগ করার লজিক (একদম হুবহু রাখা হয়েছে)
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");

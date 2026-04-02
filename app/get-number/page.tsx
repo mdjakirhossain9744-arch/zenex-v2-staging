@@ -3,6 +3,16 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
+// 💥 ম্যাজিক ১: ফ্রন্টএন্ডেও বাংলাদেশ টাইম ফোর্স করা হলো (রাত ১২টায় পারফেক্টলি ডেট চেঞ্জ হবে) 💥
+const getBDDateString = (dateObj: Date | number | string = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+  }).format(new Date(dateObj));
+};
+
 export default function GetNumber() {
   const [rangeInput, setRangeInput] = useState("");
   const [isNational, setIsNational] = useState(false);
@@ -20,15 +30,7 @@ export default function GetNumber() {
     return storedUser ? JSON.parse(storedUser).email : "";
   };
 
-  const getTodayString = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const [selectedDate, setSelectedDate] = useState(getTodayString());
+  const [selectedDate, setSelectedDate] = useState(getBDDateString());
 
   useEffect(() => {
     const savedRange = localStorage.getItem("zenex_saved_range");
@@ -41,10 +43,11 @@ export default function GetNumber() {
     localStorage.setItem("zenex_saved_range", val); 
   };
 
+  // 💥 বাংলাদেশ টাইমে রাত ১২টা বাজলেই অটোমেটিক ডেট চেঞ্জ হয়ে পেজ রিফ্রেশ হবে 💥
   useEffect(() => {
-    let lastKnownToday = getTodayString();
+    let lastKnownToday = getBDDateString();
     const checkDateChange = setInterval(() => {
-      const realToday = getTodayString();
+      const realToday = getBDDateString();
       if (lastKnownToday !== realToday) {
         setSelectedDate((prevDate) => {
           if (prevDate === lastKnownToday) return realToday; 
@@ -52,25 +55,26 @@ export default function GetNumber() {
         });
         lastKnownToday = realToday;
       }
-    }, 60000); 
+    }, 10000); // প্রতি ১০ সেকেন্ডে চেক করবে
     return () => clearInterval(checkDateChange);
   }, []);
 
   const changeDate = (days: number) => {
-    const current = new Date(selectedDate);
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const current = new Date(year, month - 1, day);
     current.setDate(current.getDate() + days);
-    const year = current.getFullYear();
-    const month = String(current.getMonth() + 1).padStart(2, '0');
-    const day = String(current.getDate()).padStart(2, '0');
-    const newDateStr = `${year}-${month}-${day}`;
+    
+    const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
 
-    if (newDateStr <= getTodayString()) setSelectedDate(newDateStr);
+    if (newDateStr <= getBDDateString()) setSelectedDate(newDateStr);
   };
 
   const getFormattedDate = () => {
-    const dateObj = new Date(selectedDate);
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-    if (selectedDate === getTodayString()) return `Today, ${dateObj.toLocaleDateString('en-GB', options)}`;
+    
+    if (selectedDate === getBDDateString()) return `Today, ${dateObj.toLocaleDateString('en-GB', options)}`;
     return dateObj.toLocaleDateString('en-GB', options);
   };
 
@@ -123,7 +127,6 @@ export default function GetNumber() {
       const result = await res.json();
 
       if (result.success && result.otps) {
-        // 💥 Race Condition সমাধানের জন্য আগে ডাটা প্রসেস করে নেবো 💥
         let updatedList = [...numbersList];
         let newDups: any[] = [];
 
@@ -185,14 +188,12 @@ export default function GetNumber() {
                 });
 
                 if (newMessages.length > 0) {
-                   // 💥 ম্যাজিক: forEach এর বদলে for...of (যাতে রিকোয়েস্ট ১টার পর ১টা যায়) 💥
                    for (const newMsg of newMessages) {
                       const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
                       const finalCode = codeMatch ? codeMatch[0] : newMsg;
 
                       showToast(`MULTI OTP Received: ${finalCode}`);
                       
-                      // await ব্যবহার করে নিশ্চিত করা হচ্ছে যে আগেরটা সেভ হলেই পরেরটা যাবে
                       await fetch("/api/sync-orders", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -200,7 +201,9 @@ export default function GetNumber() {
                       });
 
                       newDups.push({
-                         ...item, id: Date.now() + Math.random().toString(), status: "DONE",
+                         ...item, 
+                         id: `${item.id}_${finalCode}`, // 💥 ম্যাজিক ২: গ্লিচ ফিক্স! ফিক্সড আইডি দেওয়া হলো 💥
+                         status: "DONE",
                          otp: finalCode, fullMessage: newMsg, seenMessages: [], 
                          isMulti: true, receivedAt: Date.now()
                       });
@@ -247,7 +250,7 @@ export default function GetNumber() {
         showToast(`Copied: ${numberToCopy}`);
 
         const fullNumberDisplay = result.data.full_number.startsWith("+") ? result.data.full_number : `+${result.data.full_number}`;
-        const todayStr = getTodayString();
+        const todayStr = getBDDateString();
 
         const newEntry = {
           id: Date.now().toString(), dateString: todayStr, displayNumber: fullNumberDisplay, 
@@ -275,7 +278,7 @@ export default function GetNumber() {
     }
   };
 
-  const isToday = selectedDate === getTodayString();
+  const isToday = selectedDate === getBDDateString();
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
   const finalFilteredNumbers = dateFilteredNumbers.filter((item) => {
@@ -283,10 +286,10 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
+  // 💥 ম্যাজিক ৩: লাফাদাফি (Jumping) ফিক্স! 💥
+  // এখন শুধু জেনারেট হওয়ার টাইম (createdAt) অনুযায়ী সাজানো হবে। ওটিপি আসলেও সিরিয়াল ব্রেক হবে না!
   const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => {
-    const timeA = a.receivedAt || a.createdAt;
-    const timeB = b.receivedAt || b.createdAt;
-    return timeB - timeA; 
+    return b.createdAt - a.createdAt; 
   });
 
   const totalGen = dateFilteredNumbers.length;
