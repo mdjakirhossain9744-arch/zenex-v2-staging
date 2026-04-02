@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-// 💥 ম্যাজিক ১: ফ্রন্টএন্ডেও বাংলাদেশ টাইম ফোর্স করা হলো (রাত ১২টায় পারফেক্টলি ডেট চেঞ্জ হবে) 💥
+// বাংলাদেশ টাইম ফোর্স করা হলো (রাত ১২টায় পারফেক্টলি ডেট চেঞ্জ হবে)
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Dhaka',
@@ -24,13 +24,18 @@ export default function GetNumber() {
   const [toastMessage, setToastMessage] = useState("");
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [selectedDate, setSelectedDate] = useState(getBDDateString());
+
+  // 💥 Refs for Web Worker latest state access 💥
+  const numbersListRef = useRef(numbersList);
+  useEffect(() => { numbersListRef.current = numbersList; }, [numbersList]);
+
+  const isCheckingRef = useRef(false); // To prevent overlapping API calls
 
   const getUserEmail = () => {
     const storedUser = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
     return storedUser ? JSON.parse(storedUser).email : "";
   };
-
-  const [selectedDate, setSelectedDate] = useState(getBDDateString());
 
   useEffect(() => {
     const savedRange = localStorage.getItem("zenex_saved_range");
@@ -43,29 +48,11 @@ export default function GetNumber() {
     localStorage.setItem("zenex_saved_range", val); 
   };
 
-  // 💥 বাংলাদেশ টাইমে রাত ১২টা বাজলেই অটোমেটিক ডেট চেঞ্জ হয়ে পেজ রিফ্রেশ হবে 💥
-  useEffect(() => {
-    let lastKnownToday = getBDDateString();
-    const checkDateChange = setInterval(() => {
-      const realToday = getBDDateString();
-      if (lastKnownToday !== realToday) {
-        setSelectedDate((prevDate) => {
-          if (prevDate === lastKnownToday) return realToday; 
-          return prevDate;
-        });
-        lastKnownToday = realToday;
-      }
-    }, 10000); // প্রতি ১০ সেকেন্ডে চেক করবে
-    return () => clearInterval(checkDateChange);
-  }, []);
-
   const changeDate = (days: number) => {
     const [year, month, day] = selectedDate.split('-').map(Number);
     const current = new Date(year, month - 1, day);
     current.setDate(current.getDate() + days);
-    
     const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
-
     if (newDateStr <= getBDDateString()) setSelectedDate(newDateStr);
   };
 
@@ -73,9 +60,23 @@ export default function GetNumber() {
     const [year, month, day] = selectedDate.split('-').map(Number);
     const dateObj = new Date(year, month - 1, day);
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-    
     if (selectedDate === getBDDateString()) return `Today, ${dateObj.toLocaleDateString('en-GB', options)}`;
     return dateObj.toLocaleDateString('en-GB', options);
+  };
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(""), 3000);
+  };
+
+  // 💥 Fixed "Just Now" Bug: Accurately calculating real time 💥
+  const getTimeAgo = (timestamp: number) => {
+    if (!timestamp) return "Just Now";
+    const secondsPast = Math.floor((currentTime - timestamp) / 1000);
+    if (secondsPast < 60) return "Just Now";
+    if (secondsPast < 3600) return `${Math.floor(secondsPast / 60)} min ago`;
+    if (secondsPast < 86400) return `${Math.floor(secondsPast / 3600)} hour ago`;
+    return new Date(timestamp).toLocaleDateString();
   };
 
   const fetchDbOrders = async () => {
@@ -96,38 +97,17 @@ export default function GetNumber() {
     }
   };
 
-  useEffect(() => {
-    fetchDbOrders();
-    const syncInterval = setInterval(fetchDbOrders, 10000); 
-    return () => clearInterval(syncInterval);
-  }, []);
-
-  useEffect(() => {
-    const timerInterval = setInterval(() => setCurrentTime(Date.now()), 10000); 
-    return () => clearInterval(timerInterval);
-  }, []);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 3000);
-  };
-
-  const getTimeAgo = (timestamp: number) => {
-    const secondsPast = Math.floor((currentTime - timestamp) / 1000);
-    if (secondsPast < 60) return "Just Now";
-    if (secondsPast < 3600) return `${Math.floor(secondsPast / 60)} min ago`;
-    if (secondsPast < 86400) return `${Math.floor(secondsPast / 3600)} hour ago`;
-    return new Date(timestamp).toLocaleDateString();
-  };
-
   const checkOtps = async (isManual = false) => {
+    if (isCheckingRef.current) return; // Prevent double checking
+    isCheckingRef.current = true;
     if (isManual) setIsRefreshing(true);
+    
     try {
       const res = await fetch(`/api/check-otp?t=${Date.now()}`);
       const result = await res.json();
 
       if (result.success && result.otps) {
-        let updatedList = [...numbersList];
+        let updatedList = [...numbersListRef.current];
         let newDups: any[] = [];
 
         for (let i = 0; i < updatedList.length; i++) {
@@ -161,17 +141,19 @@ export default function GetNumber() {
                 const codeMatch = firstMsg.match(/\b\d{4,8}\b/); 
                 const finalCode = codeMatch ? codeMatch[0] : firstMsg;
 
-                showToast(`OTP Received: ${finalCode}`);
+                if(isManual) showToast(`OTP Received: ${finalCode}`);
+
+                const exactReceiveTime = Date.now();
 
                 await fetch("/api/sync-orders", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg } })
+                  body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: exactReceiveTime } })
                 });
 
                 updatedList[i] = { 
                   ...item, status: "DONE", otp: finalCode, fullMessage: firstMsg, 
-                  seenMessages: apiMessages, receivedAt: Date.now() 
+                  seenMessages: apiMessages, receivedAt: exactReceiveTime 
                 };
              } 
              else if (item.status === "DONE") {
@@ -192,20 +174,22 @@ export default function GetNumber() {
                       const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
                       const finalCode = codeMatch ? codeMatch[0] : newMsg;
 
-                      showToast(`MULTI OTP Received: ${finalCode}`);
+                      if(isManual) showToast(`MULTI OTP Received: ${finalCode}`);
                       
+                      const exactReceiveTime = Date.now();
+
                       await fetch("/api/sync-orders", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg } })
+                        body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: exactReceiveTime } })
                       });
 
                       newDups.push({
                          ...item, 
-                         id: `${item.id}_${finalCode}`, // 💥 ম্যাজিক ২: গ্লিচ ফিক্স! ফিক্সড আইডি দেওয়া হলো 💥
+                         id: `${item.id}_${finalCode}`, 
                          status: "DONE",
                          otp: finalCode, fullMessage: newMsg, seenMessages: [], 
-                         isMulti: true, receivedAt: Date.now()
+                         isMulti: true, receivedAt: exactReceiveTime
                       });
                    }
                    updatedList[i] = { ...item, seenMessages: [...alreadySeen, ...newMessages] };
@@ -218,17 +202,62 @@ export default function GetNumber() {
     } catch (err) {
       console.error("Check Error");
     } finally {
+      isCheckingRef.current = false;
       if (isManual) setTimeout(() => setIsRefreshing(false), 500); 
     }
   };
 
+  const fetchDbOrdersRef = useRef(fetchDbOrders);
+  useEffect(() => { fetchDbOrdersRef.current = fetchDbOrders; }, [fetchDbOrders]);
+
+  const checkOtpsRef = useRef(checkOtps);
+  useEffect(() => { checkOtpsRef.current = checkOtps; }, [checkOtps]);
+
+  // 💥 THE MAGIC: UNSTOPPABLE BACKGROUND WEB WORKER 💥
+  // ব্রাউজার অন্য ট্যাবে গেলেও এই ওয়ার্কার কখনোই ঘুমাবে না!
   useEffect(() => {
-    const interval = setInterval(() => {
-      const hasActiveNumbers = numbersList.some(n => n.status === "WAIT");
-      if (hasActiveNumbers) checkOtps(false);
-    }, 3000); 
-    return () => clearInterval(interval);
-  }, [numbersList]);
+    if (typeof window === 'undefined') return;
+
+    const workerCode = `
+      let tick3, tick10;
+      self.onmessage = function(e) {
+        if (e.data === 'start') {
+          tick3 = setInterval(() => self.postMessage('tick3'), 3000);
+          tick10 = setInterval(() => self.postMessage('tick10'), 10000);
+        } else if (e.data === 'stop') {
+          clearInterval(tick3);
+          clearInterval(tick10);
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob));
+
+    worker.onmessage = (e) => {
+      if (e.data === 'tick3') {
+         const hasActiveNumbers = numbersListRef.current.some(n => n.status === "WAIT");
+         if (hasActiveNumbers) checkOtpsRef.current(false);
+      }
+      if (e.data === 'tick10') {
+         fetchDbOrdersRef.current();
+         setCurrentTime(Date.now()); // Update time properly
+         
+         // Night 12AM Date Change logic
+         const realToday = getBDDateString();
+         setSelectedDate((prevDate) => {
+            if (prevDate !== realToday && prevDate === getBDDateString(Date.now() - 86400000)) return realToday;
+            return prevDate;
+         });
+      }
+    };
+
+    worker.postMessage('start');
+
+    return () => {
+      worker.postMessage('stop');
+      worker.terminate();
+    };
+  }, []);
 
   const fetchNewNumber = async () => {
     if (!rangeInput) {
@@ -286,8 +315,6 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
-  // 💥 ম্যাজিক ৩: লাফাদাফি (Jumping) ফিক্স! 💥
-  // এখন শুধু জেনারেট হওয়ার টাইম (createdAt) অনুযায়ী সাজানো হবে। ওটিপি আসলেও সিরিয়াল ব্রেক হবে না!
   const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => {
     return b.createdAt - a.createdAt; 
   });
@@ -413,7 +440,7 @@ export default function GetNumber() {
                           </div>
                           
                           <div className="flex items-center gap-2">
-                             <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(item.receivedAt || item.createdAt)}</span>
+                             <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
                              <span className={`px-1.5 py-0.5 border text-[8px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
                           </div>
                        </div>
@@ -442,7 +469,7 @@ export default function GetNumber() {
                                <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
                                {item.operator}
                             </span>
-                            <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.createdAt)}</span>
+                            <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
                           </div>
                        </div>
                     </div>
