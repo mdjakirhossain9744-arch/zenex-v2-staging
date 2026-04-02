@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
@@ -18,8 +18,7 @@ export default function Summary() {
 
   const generateDateRange = (days: number, baseDateStr: string) => {
     const dates = [];
-    const [year, month, day] = baseDateStr.split('-').map(Number);
-    const baseDate = new Date(year, month - 1, day);
+    const baseDate = new Date(baseDateStr);
 
     for (let i = 0; i < days; i++) {
       const d = new Date(baseDate);
@@ -30,80 +29,96 @@ export default function Summary() {
     return dates;
   };
 
-  useEffect(() => {
-    const loadSummaryData = async () => {
-      setLoading(true);
-      const storedUser = localStorage.getItem("user");
-      if (!storedUser) { setLoading(false); return; }
+  // 💥 LIVE AUTO REFRESH MAGIC FUNCTION 💥
+  const loadSummaryData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true); // প্রথমবার লোডিং দেখাবে, পরে ব্যাকগ্রাউন্ডে সাইলেন্ট আপডেট হবে
+    const storedUser = localStorage.getItem("user");
+    if (!storedUser) { setLoading(false); return; }
 
-      const parsedUser = JSON.parse(storedUser);
-      const currentRole = parsedUser.role?.toLowerCase() || "user";
-      setRole(currentRole);
+    const parsedUser = JSON.parse(storedUser);
+    const currentRole = parsedUser.role?.toLowerCase() || "user";
+    setRole(currentRole);
 
-      try {
-        // 💥 ম্যাজিক: পজিশন অনুযায়ী অটোমেটিক সঠিক API সিলেক্ট হবে 💥
-        const apiEndpoint = currentRole === "agent" ? "/api/agent-summary" : "/api/summary-report";
+    try {
+      const apiEndpoint = currentRole === "agent" ? "/api/agent-summary" : "/api/summary-report";
 
-        const res = await fetch(apiEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: parsedUser.email, role: currentRole })
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-          setUserRate(data.userRate);
-          setDbEarnings(Number(data.balance).toFixed(2));
-
-          let daysToShow = 7;
-          if (dateFilter === "today") daysToShow = 1;
-          else if (dateFilter === "15") daysToShow = 15;
-          else if (dateFilter === "30") daysToShow = 30;
-          else if (dateFilter === "all") daysToShow = 60;
-
-          const serverDate = data.serverDate; 
-          const dateTemplate = generateDateRange(daysToShow, serverDate);
-          const groupedRawData = data.groupedRawData || {};
-
-          const formatDateStr = (dateString: string) => {
-             return new Date(dateString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-          };
-
-          const finalData = dateTemplate.map(dateStr => {
-            const existingData = groupedRawData[dateStr];
-            return {
-              dateStr: dateStr,
-              displayDate: formatDateStr(dateStr),
-              allocation: existingData ? existingData.allocation : 0,
-              success: existingData ? existingData.success : 0,
-              failed: existingData ? existingData.failed : 0,
-              amount: existingData ? existingData.amount : 0,
-              rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
-            };
-          });
-
-          setReportData(finalData);
-
-          const t = finalData.reduce((acc: any, curr: any) => ({
-              allocation: acc.allocation + curr.allocation,
-              success: acc.success + curr.success,
-              failed: acc.failed + curr.failed,
-              amount: acc.amount + curr.amount,
-          }), { allocation: 0, success: 0, failed: 0, amount: 0 });
-
-          setTotals(t);
-          setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
-        }
-      } catch (e) {
-        console.error("Failed to load summary");
-      }
+      const res = await fetch(apiEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: parsedUser.email, role: currentRole })
+      });
       
-      setLoading(false);
-    };
+      const data = await res.json();
+      
+      if (data.success) {
+        setUserRate(data.userRate);
+        setDbEarnings(Number(data.balance).toFixed(2));
 
-    loadSummaryData();
-  }, [dateFilter]); 
+        let daysToShow = 7;
+        if (dateFilter === "today") daysToShow = 1;
+        else if (dateFilter === "15") daysToShow = 15;
+        else if (dateFilter === "30") daysToShow = 30;
+        else if (dateFilter === "all") daysToShow = 60;
+
+        const serverDate = data.serverDate || new Date().toISOString(); 
+        const dateTemplate = generateDateRange(daysToShow, serverDate);
+        
+        const rawData = data.groupedRawData || {};
+
+        const formatDateStr = (dateString: string) => {
+           return new Date(dateString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        };
+
+        const finalData = dateTemplate.map(dateStr => {
+          // 💥 Now Frontend completely relies on backend's strict YYYY-MM-DD output 💥
+          let existingData = rawData[dateStr];
+          
+          // Fallback logic for Admin API just in case it sends MM/DD/YYYY
+          if (!existingData) {
+            const fallbackKey = new Date(dateStr).toLocaleDateString('en-US'); // e.g. "4/3/2026"
+            existingData = rawData[fallbackKey];
+          }
+
+          return {
+            dateStr: dateStr,
+            displayDate: formatDateStr(dateStr),
+            allocation: existingData ? existingData.allocation : 0,
+            success: existingData ? existingData.success : 0,
+            failed: existingData ? existingData.failed : 0,
+            amount: existingData ? existingData.amount : 0,
+            rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
+          };
+        });
+
+        setReportData(finalData);
+
+        const t = finalData.reduce((acc: any, curr: any) => ({
+            allocation: acc.allocation + curr.allocation,
+            success: acc.success + curr.success,
+            failed: acc.failed + curr.failed,
+            amount: acc.amount + curr.amount,
+        }), { allocation: 0, success: 0, failed: 0, amount: 0 });
+
+        setTotals(t);
+        setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
+      }
+    } catch (e) {
+      console.error("Failed to load summary");
+    }
+    
+    if (!isSilent) setLoading(false);
+  }, [dateFilter]);
+
+  // 💥 SetInterval for Live Updates 💥
+  useEffect(() => {
+    loadSummaryData(false); // First load with spinner
+
+    const interval = setInterval(() => {
+      loadSummaryData(true); // Silent background fetch every 10 seconds!
+    }, 10000); 
+
+    return () => clearInterval(interval);
+  }, [loadSummaryData]); 
 
   const isAgent = role === "agent";
   const isAdmin = role === "admin";
@@ -118,9 +133,16 @@ export default function Summary() {
         
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
           <div>
-            <h2 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent uppercase tracking-wider mb-1">
-              {pageTitle}
-            </h2>
+            <div className="flex items-center gap-3 mb-1">
+              <h2 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent uppercase tracking-wider">
+                {pageTitle}
+              </h2>
+              {/* 🔴 Live Status Dot */}
+              <span className="flex h-3 w-3 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+            </div>
             <p className="text-xs text-[#94A3B8] font-medium">
               {isAdmin ? "Overall website performance and stats." : isAgent ? "Aggregated daily report of all users in your specific network." : "Your personal OTP success and earnings overview."}
             </p>
