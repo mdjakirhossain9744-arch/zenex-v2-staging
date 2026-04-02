@@ -15,91 +15,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
     }
 
-    // 💥 ১. ডাটাবেস থেকে সব নাম্বার টেনে আনা (Visual Bug Fixed) 💥
     if (action === "FETCH") {
       const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).limit(200);
-      
       const finalOrders: any[] = [];
 
-      // 💥 টাইপস্ক্রিপ্ট এরর এড়াতে 'o: any' বসানো হলো 💥
       orders.forEach((o: any) => {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-        
-        // 💥 যদি মাল্টি ওটিপি হয়, তবে ডাটাবেসের ১টি রো-কে ভেঙে আলাদা আলাদা কার্ড বানানো হচ্ছে 💥
         if (o.status === "DONE" && msgArray.length > 1) {
-          // 💥 এখানে Type Error ফিক্স করা হয়েছে (msg: string, index: number) 💥
           msgArray.forEach((msg: string, index: number) => {
             const codeMatch = msg.match(/\b\d{4,8}\b/);
             const extractedOtp = codeMatch ? codeMatch[0] : msg;
-
             finalOrders.push({
-              id: `${o._id.toString()}_${index}`, // ইউনিক আইডি
-              dateString: o.dateString,
-              displayNumber: o.displayNumber,
-              searchNumber: o.searchNumber,
-              country: o.country,
-              operator: o.operator,
-              status: o.status,
-              otp: extractedOtp,
-              fullMessage: msg,
-              seenMessages: msgArray, 
-              isDup: index > 0, 
-              isMulti: true, 
-              createdAt: new Date(o.createdAt).getTime(),
-              receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
+              id: `${o._id.toString()}_${index}`,
+              dateString: o.dateString, displayNumber: o.displayNumber, searchNumber: o.searchNumber,
+              country: o.country, operator: o.operator, status: o.status, otp: extractedOtp,
+              fullMessage: msg, seenMessages: msgArray, isDup: index > 0, isMulti: true, 
+              createdAt: new Date(o.createdAt).getTime(), receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
             });
           });
         } else {
-          // সিঙ্গেল ওটিপি বা ওয়েটিং/ফেইলড নাম্বার
           finalOrders.push({
-            id: o._id.toString(),
-            dateString: o.dateString,
-            displayNumber: o.displayNumber,
-            searchNumber: o.searchNumber,
-            country: o.country,
-            operator: o.operator,
-            status: o.status,
-            otp: o.otp,
-            fullMessage: o.fullMessage,
-            seenMessages: msgArray,
-            isDup: false,
-            isMulti: false,
-            createdAt: new Date(o.createdAt).getTime(),
-            receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
+            id: o._id.toString(), dateString: o.dateString, displayNumber: o.displayNumber,
+            searchNumber: o.searchNumber, country: o.country, operator: o.operator, status: o.status,
+            otp: o.otp, fullMessage: o.fullMessage, seenMessages: msgArray, isDup: false, isMulti: false,
+            createdAt: new Date(o.createdAt).getTime(), receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
           });
         }
       });
-
       return NextResponse.json({ success: true, orders: finalOrders });
     }
 
-    // 💥 ২. ম্যানুয়ালি নাম্বার নিলে সেটা ডাটাবেসে সেভ করা 💥
     if (action === "CREATE") {
       const newOrder = new Order({
-        userEmail: email,
-        searchNumber: orderData.searchNumber,
-        displayNumber: orderData.displayNumber,
-        country: orderData.country,
-        operator: orderData.operator,
-        status: orderData.status,
-        otp: orderData.otp,
-        fullMessage: orderData.fullMessage,
-        dateString: orderData.dateString
+        userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
+        country: orderData.country, operator: orderData.operator, status: orderData.status,
+        otp: orderData.otp, fullMessage: orderData.fullMessage, dateString: orderData.dateString
       });
       await newOrder.save();
       return NextResponse.json({ success: true });
     }
 
-    // 💥 ৩. ম্যাজিক: MULTI OTP, অটো-কমিশন ও অ্যান্টি-হ্যাক সিস্টেম 💥
     if (action === "UPDATE") {
-      const existingOrder = await Order.findOne({ 
-        searchNumber: orderData.searchNumber, 
-        userEmail: email 
-      });
-
-      if (!existingOrder) {
-        return NextResponse.json({ success: false, message: "Order not found" });
-      }
+      const existingOrder = await Order.findOne({ searchNumber: orderData.searchNumber, userEmail: email });
+      if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found" });
 
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
@@ -110,8 +68,10 @@ export async function POST(req: Request) {
 
       if (orderData.status === "DONE" || orderData.otp) {
         
+        // 💥 Race Condition এড়াতে ফ্রেশ ডাটা আনা হচ্ছে 💥
+        const freshOrder = await Order.findById(existingOrder._id);
         const incomingMsg = (orderData.fullMessage || "").trim();
-        const currentMsg = existingOrder.fullMessage || "";
+        const currentMsg = freshOrder.fullMessage || "";
 
         if (incomingMsg && currentMsg.includes(incomingMsg)) {
           return NextResponse.json({ success: true, message: "Already processed this exact OTP text." });
@@ -119,11 +79,10 @@ export async function POST(req: Request) {
 
         const msgCount = currentMsg ? currentMsg.split(" _||_ ").length : 0;
         if (msgCount >= 50) { 
-          return NextResponse.json({ success: true, message: "Max safety limit (50) reached for this number." });
+          return NextResponse.json({ success: true, message: "Max safety limit reached." });
         }
 
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
-                              incomingMsg.toLowerCase().includes("wa.me") || 
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
@@ -131,8 +90,9 @@ export async function POST(req: Request) {
           const user = await User.findOne({ email });
           if (user) {
             const userRate = Number(user.otpRate) || 0.50;
-            user.balance = Number((Number(user.balance || 0) + userRate).toFixed(2));
-            await user.save();
+            
+            // 💥 Atomic Operation ($inc) দিয়ে ব্যালেন্স যোগ (১০০% সিকিউর) 💥
+            await User.findOneAndUpdate({ email }, { $inc: { balance: userRate } });
 
             if (user.agentEmail) {
               const agent = await User.findOne({
@@ -145,33 +105,27 @@ export async function POST(req: Request) {
                 const commission = Number((agentRate - userRate).toFixed(2));
 
                 if (commission > 0) {
-                  agent.agentEarning = Number((Number(agent.agentEarning || 0) + commission).toFixed(2));
-                  agent.balance = Number((Number(agent.balance || 0) + commission).toFixed(2));
-                  await agent.save();
+                  // 💥 এজেন্টের ব্যালেন্সও Atomic Operation দিয়ে যোগ করা হলো 💥
+                  await User.findOneAndUpdate(
+                     { _id: agent._id }, 
+                     { $inc: { agentEarning: commission, balance: commission } }
+                  );
                 }
               }
             }
           }
         }
 
-        existingOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
-        existingOrder.otp = orderData.otp; 
-        existingOrder.status = "DONE";
-        await existingOrder.save();
+        freshOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
+        freshOrder.otp = orderData.otp; 
+        freshOrder.status = "DONE";
+        await freshOrder.save();
 
-        return NextResponse.json({ 
-          success: true, 
-          message: isFreeService 
-            ? "New OTP processed. No balance added for WhatsApp/Telegram." 
-            : `New MULTI OTP (${msgCount + 1}) processed, Balance & Commission added!` 
-        });
-
+        return NextResponse.json({ success: true, message: "Processed successfully!" });
       }
     }
-
     return NextResponse.json({ success: false, message: "Invalid action" });
   } catch (error) {
-    console.error("Sync Order API Error:", error);
     return NextResponse.json({ success: false, message: "Database Error" }, { status: 500 });
   }
 }

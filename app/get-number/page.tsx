@@ -123,102 +123,94 @@ export default function GetNumber() {
       const result = await res.json();
 
       if (result.success && result.otps) {
-        setNumbersList((prevList) => {
-          let updatedList = [...prevList];
-          let newDups: any[] = [];
+        // 💥 Race Condition সমাধানের জন্য আগে ডাটা প্রসেস করে নেবো 💥
+        let updatedList = [...numbersList];
+        let newDups: any[] = [];
 
-          updatedList = updatedList.map((item) => {
-            if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
-               fetch("/api/sync-orders", {
-                 method: "POST",
-                 headers: { "Content-Type": "application/json" },
-                 body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "FAIL", otp: "Timeout", fullMessage: "" } })
-               });
-               return { ...item, status: "FAIL", otp: "Timeout" };
-            }
+        for (let i = 0; i < updatedList.length; i++) {
+          let item = updatedList[i];
 
-            if (item.isDup || item.isMulti) return item;
+          if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
+             await fetch("/api/sync-orders", {
+               method: "POST",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "FAIL", otp: "Timeout", fullMessage: "" } })
+             });
+             updatedList[i] = { ...item, status: "FAIL", otp: "Timeout" };
+             continue;
+          }
 
-            const cleanSearchNumber = String(item.searchNumber).replace(/\D/g, ""); 
-            const last6Digits = cleanSearchNumber.slice(-6); 
-            
-            const matchingOtps = result.otps.filter((otpObj: any) => {
-               if(!otpObj.number) return false;
-               return String(otpObj.number).replace(/\D/g, "").endsWith(last6Digits);
-            });
+          if (item.isDup || item.isMulti) continue;
 
-            if (matchingOtps.length > 0) {
-               const apiMessages = matchingOtps.map((m: any) => m.otp || "");
-
-               if (item.status === "WAIT") {
-                  const firstMsg = apiMessages[0];
-                  const codeMatch = firstMsg.match(/\b\d{4,8}\b/); 
-                  const finalCode = codeMatch ? codeMatch[0] : firstMsg;
-
-                  showToast(`OTP Received: ${finalCode}`);
-
-                  fetch("/api/sync-orders", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg } })
-                  });
-
-                  return { 
-                    ...item, 
-                    status: "DONE", 
-                    otp: finalCode, 
-                    fullMessage: firstMsg, 
-                    seenMessages: apiMessages, 
-                    receivedAt: Date.now() 
-                  };
-               } 
-               else if (item.status === "DONE") {
-                  const alreadySeen = item.seenMessages || [item.fullMessage];
-                  
-                  const alreadySeenCodes = alreadySeen.map((msg: string) => {
-                     const match = msg.match(/\b\d{4,8}\b/);
-                     return match ? match[0] : msg.trim();
-                  });
-
-                  const newMessages = apiMessages.filter((msg: string) => {
-                     const codeMatch = msg.match(/\b\d{4,8}\b/);
-                     const extractedCode = codeMatch ? codeMatch[0] : msg.trim();
-                     return !alreadySeenCodes.includes(extractedCode);
-                  });
-
-                  if (newMessages.length > 0) {
-                     newMessages.forEach((newMsg: string) => {
-                        const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
-                        const finalCode = codeMatch ? codeMatch[0] : newMsg;
-
-                        showToast(`MULTI OTP Received: ${finalCode}`);
-                        
-                        fetch("/api/sync-orders", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg } })
-                        });
-
-                        newDups.push({
-                           ...item,
-                           id: Date.now() + Math.random().toString(),
-                           status: "DONE",
-                           otp: finalCode,
-                           fullMessage: newMsg,
-                           seenMessages: [], 
-                           isMulti: true, 
-                           receivedAt: Date.now()
-                        });
-                     });
-                     return { ...item, seenMessages: [...alreadySeen, ...newMessages] };
-                  }
-               }
-            }
-            return item;
+          const cleanSearchNumber = String(item.searchNumber).replace(/\D/g, ""); 
+          const last6Digits = cleanSearchNumber.slice(-6); 
+          
+          const matchingOtps = result.otps.filter((otpObj: any) => {
+             if(!otpObj.number) return false;
+             return String(otpObj.number).replace(/\D/g, "").endsWith(last6Digits);
           });
 
-          return [...newDups, ...updatedList];
-        });
+          if (matchingOtps.length > 0) {
+             const apiMessages = matchingOtps.map((m: any) => m.otp || "");
+
+             if (item.status === "WAIT") {
+                const firstMsg = apiMessages[0];
+                const codeMatch = firstMsg.match(/\b\d{4,8}\b/); 
+                const finalCode = codeMatch ? codeMatch[0] : firstMsg;
+
+                showToast(`OTP Received: ${finalCode}`);
+
+                await fetch("/api/sync-orders", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg } })
+                });
+
+                updatedList[i] = { 
+                  ...item, status: "DONE", otp: finalCode, fullMessage: firstMsg, 
+                  seenMessages: apiMessages, receivedAt: Date.now() 
+                };
+             } 
+             else if (item.status === "DONE") {
+                const alreadySeen = item.seenMessages || [item.fullMessage];
+                const alreadySeenCodes = alreadySeen.map((msg: string) => {
+                   const match = msg.match(/\b\d{4,8}\b/);
+                   return match ? match[0] : msg.trim();
+                });
+
+                const newMessages = apiMessages.filter((msg: string) => {
+                   const codeMatch = msg.match(/\b\d{4,8}\b/);
+                   const extractedCode = codeMatch ? codeMatch[0] : msg.trim();
+                   return !alreadySeenCodes.includes(extractedCode);
+                });
+
+                if (newMessages.length > 0) {
+                   // 💥 ম্যাজিক: forEach এর বদলে for...of (যাতে রিকোয়েস্ট ১টার পর ১টা যায়) 💥
+                   for (const newMsg of newMessages) {
+                      const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
+                      const finalCode = codeMatch ? codeMatch[0] : newMsg;
+
+                      showToast(`MULTI OTP Received: ${finalCode}`);
+                      
+                      // await ব্যবহার করে নিশ্চিত করা হচ্ছে যে আগেরটা সেভ হলেই পরেরটা যাবে
+                      await fetch("/api/sync-orders", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg } })
+                      });
+
+                      newDups.push({
+                         ...item, id: Date.now() + Math.random().toString(), status: "DONE",
+                         otp: finalCode, fullMessage: newMsg, seenMessages: [], 
+                         isMulti: true, receivedAt: Date.now()
+                      });
+                   }
+                   updatedList[i] = { ...item, seenMessages: [...alreadySeen, ...newMessages] };
+                }
+             }
+          }
+        }
+        setNumbersList([...newDups, ...updatedList]);
       }
     } catch (err) {
       console.error("Check Error");
@@ -258,28 +250,18 @@ export default function GetNumber() {
         const todayStr = getTodayString();
 
         const newEntry = {
-          id: Date.now().toString(),
-          dateString: todayStr, 
-          displayNumber: fullNumberDisplay, 
-          searchNumber: result.data.full_number, 
-          country: result.data.country || "Unknown",
-          operator: result.data.operator || "Any",
-          status: "WAIT",
-          otp: "Waiting...",
-          fullMessage: "",
-          seenMessages: [], 
-          isDup: false,
-          isMulti: false,
-          createdAt: Date.now(),
-          receivedAt: null 
+          id: Date.now().toString(), dateString: todayStr, displayNumber: fullNumberDisplay, 
+          searchNumber: result.data.full_number, country: result.data.country || "Unknown",
+          operator: result.data.operator || "Any", status: "WAIT", otp: "Waiting...",
+          fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
+          createdAt: Date.now(), receivedAt: null 
         };
         
         setNumbersList((prev) => [newEntry, ...prev]);
         setSelectedDate(todayStr);
 
         fetch("/api/sync-orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "CREATE", email: getUserEmail(), orderData: newEntry })
         });
 
@@ -323,7 +305,6 @@ export default function GetNumber() {
           </div>
         )}
 
-        {/* Top Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
            <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">
               <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Total</span>
@@ -343,7 +324,6 @@ export default function GetNumber() {
            </div>
         </div>
 
-        {/* Input Form */}
         <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
            {!isToday && (
              <div className="absolute inset-0 bg-[#0F172A]/50 z-20 flex items-center justify-center">
@@ -355,10 +335,7 @@ export default function GetNumber() {
               <div className="flex-1 w-full">
                  <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Target Range / Code</label>
                  <input 
-                    type="text" 
-                    value={rangeInput}
-                    onChange={handleRangeChange}
-                    placeholder="e.g. 23276345XXX" 
+                    type="text" value={rangeInput} onChange={handleRangeChange} placeholder="e.g. 23276345XXX" 
                     className="w-full bg-[#0F172A] border border-[#334155] rounded-lg px-4 py-2.5 text-white font-mono text-base focus:outline-none focus:border-[#3B82F6] transition-all" 
                  />
               </div>
@@ -377,8 +354,7 @@ export default function GetNumber() {
                  </label>
               </div>
               <button 
-                 onClick={fetchNewNumber}
-                 disabled={isLoading || !isToday}
+                 onClick={fetchNewNumber} disabled={isLoading || !isToday}
                  className={`bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] hover:from-[#2563EB] hover:to-[#00B4E6] text-white font-black text-sm px-6 py-2.5 rounded-lg transition-all flex items-center gap-2 w-full md:w-auto justify-center tracking-wider ${isLoading || !isToday ? "opacity-50 cursor-not-allowed" : "shadow-md hover:shadow-lg hover:-translate-y-0.5"}`}>
                  {isLoading ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>}
                  {isLoading ? "FETCHING..." : "GET NUMBER"}
@@ -386,7 +362,6 @@ export default function GetNumber() {
            </div>
         </div>
 
-        {/* Feed Section */}
         <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4">
            <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155]">
              <div className="flex items-center gap-2">
@@ -410,7 +385,6 @@ export default function GetNumber() {
              </div>
            </div>
 
-           {/* Minimal List Container */}
            <div className="flex flex-col max-h-[60vh] overflow-y-auto custom-scrollbar w-full">
               {sortedFilteredNumbers.length === 0 ? (
                  <div className="p-10 flex flex-col items-center justify-center text-center">
@@ -419,15 +393,11 @@ export default function GetNumber() {
                  </div>
               ) : (
                  sortedFilteredNumbers.map((item) => (
-                    // 💥 COMPACT CARD DESIGN 💥
                     <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
-                       
-                       {/* Top Row: Number & Status & Country */}
                        <div className="flex justify-between items-center mb-1.5">
                           <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
                             <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
                             
-                            {/* 💥 COUNTRY BADGE 💥 */}
                             <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                               {item.country}
                             </span>
@@ -445,7 +415,6 @@ export default function GetNumber() {
                           </div>
                        </div>
                        
-                       {/* Bottom Row: OTP & Operator */}
                        <div className="flex justify-between items-center">
                           <div className="flex-1 overflow-hidden pr-2">
                              {item.status === "WAIT" ? (
@@ -466,7 +435,6 @@ export default function GetNumber() {
                           </div>
                           
                           <div className="flex flex-col items-end text-right min-w-[60px]">
-                            {/* For mobile, show country with operator */}
                             <span className="text-[9px] font-bold text-[#E2E8F0] uppercase">
                                <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
                                {item.operator}
@@ -474,14 +442,12 @@ export default function GetNumber() {
                             <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.createdAt)}</span>
                           </div>
                        </div>
-
                     </div>
                  ))
               )}
            </div>
         </div>
 
-        {/* Date Filter */}
         <div className="flex flex-col items-center justify-center pb-2">
            <div className="flex items-center gap-3 bg-[#1E293B]/80 border border-[#334155] rounded-full px-4 py-1.5 shadow-md">
              <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
