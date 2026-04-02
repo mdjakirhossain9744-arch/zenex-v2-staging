@@ -125,7 +125,9 @@ export async function POST(req: Request) {
                 const commission = Number((agentRate - userRate).toFixed(2));
 
                 if (commission > 0) {
+                  // 💥 FIX: এখন থেকে কমিশন এজেন্টের আর্নিং এবং মেইন ব্যালেন্স ২ জায়গাতেই যোগ হবে 💥
                   agent.agentEarning = Number((Number(agent.agentEarning || 0) + commission).toFixed(2));
+                  agent.balance = Number((Number(agent.balance || 0) + commission).toFixed(2));
                   await agent.save();
                 }
               }

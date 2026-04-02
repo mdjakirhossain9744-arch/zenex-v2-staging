@@ -8,7 +8,6 @@ export default function Summary() {
   const [dateFilter, setDateFilter] = useState("7"); 
   const [role, setRole] = useState("user");
   
-  // 💥 রিয়েল ডাটাবেস স্টেট 💥
   const [userRate, setUserRate] = useState(0.50);
   const [dbEarnings, setDbEarnings] = useState("0.00"); 
 
@@ -37,130 +36,62 @@ export default function Summary() {
       const currentRole = parsedUser.role?.toLowerCase() || "user";
       setRole(currentRole);
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      let groupedRawData: Record<string, any> = {};
-      let fetchedRate = 0.50;
+      try {
+        // 💥 ডাটাবেস থেকে রিয়েল-টাইম রিপোর্ট আনা হচ্ছে 💥
+        const res = await fetch("/api/summary-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: parsedUser.email, role: currentRole })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          setUserRate(data.userRate);
+          setDbEarnings(Number(data.balance).toFixed(2));
 
-      // 💥 ১. এজেন্টের রিয়েল ডাটাবেস ফেচ 💥
-      if (currentRole === "agent") {
-        try {
-          const res = await fetch("/api/get-agent-users", { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify({ agentEmail: parsedUser.email }) 
-          });
-          const data = await res.json();
-          
-          if (data) {
-            fetchedRate = data.agentRate || 0.70;
-            setUserRate(fetchedRate); // রিয়েল রেট সেট হলো
-            setDbEarnings(Number(data.agentRevenue || 0).toFixed(2)); // রিয়েল প্রফিট সেট হলো
+          let daysToShow = 7;
+          if (dateFilter === "today") daysToShow = 1;
+          else if (dateFilter === "15") daysToShow = 15;
+          else if (dateFilter === "30") daysToShow = 30;
+          else if (dateFilter === "all") daysToShow = 60;
 
-            // গ্রাফের জন্য লোকাল ডাটা
-            const histKey = `z_net_hist_${parsedUser.email}`;
-            let savedHist = JSON.parse(localStorage.getItem(histKey) || "{}");
-            groupedRawData = savedHist;
-          }
-        } catch (e) {}
-      } 
-      // 💥 ২. এডমিনের গ্লোবাল ডাটা 💥
-      else if (currentRole === "admin") {
-        try {
-          const sysRes = await fetch("/api/system-settings");
-          const sysData = await sysRes.json();
-          if (sysData && sysData.globalRate) fetchedRate = Number(sysData.globalRate);
-          setUserRate(fetchedRate);
+          const dateTemplate = generateDateRange(daysToShow);
+          const groupedRawData = data.groupedRawData || {};
 
-          const res = await fetch("/api/check-otp", { cache: "no-store" });
-          const data = await res.json();
-          
-          const histKey = `z_admin_hist_global`;
-          let savedHist = JSON.parse(localStorage.getItem(histKey) || "{}");
-          
-          if (data.otps) {
-            const todaySuccess = data.otps.length;
-            savedHist[todayStr] = {
-              success: todaySuccess,
-              allocation: todaySuccess + Math.floor(todaySuccess * 0.15),
-              failed: Math.floor(todaySuccess * 0.15),
-              amount: todaySuccess * fetchedRate
+          const formatDateStr = (dateString: string) => {
+             return new Date(dateString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+          };
+
+          const finalData = dateTemplate.map(dateStr => {
+            const existingData = groupedRawData[dateStr];
+            return {
+              dateStr: dateStr,
+              displayDate: formatDateStr(dateStr),
+              allocation: existingData ? existingData.allocation : 0,
+              success: existingData ? existingData.success : 0,
+              failed: existingData ? existingData.failed : 0,
+              amount: existingData ? existingData.amount : 0,
+              rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
             };
-            localStorage.setItem(histKey, JSON.stringify(savedHist));
-          }
-          groupedRawData = savedHist;
-        } catch (e) {}
-      } 
-      // 💥 ৩. সাধারণ ইউজারের রিয়েল ডাটা 💥
-      else {
-        try {
-          const res = await fetch("/api/get-user-details", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: parsedUser.email })
           });
-          const data = await res.json();
-          if (data && data.user) {
-            fetchedRate = data.user.otpRate || 0.50;
-            setUserRate(fetchedRate); // ইউজারের রিয়েল রেট
-            setDbEarnings(Number(data.user.balance || 0).toFixed(2)); // ইউজারের রিয়েল ব্যালেন্স
-          }
 
-          const savedNumbers = localStorage.getItem("zenex_numbers_v2");
-          if (savedNumbers) {
-            const parsedLogs = JSON.parse(savedNumbers);
-            parsedLogs.forEach((log: any) => {
-              const d = log.dateString || new Date(log.createdAt).toISOString().split('T')[0];
-              if (!groupedRawData[d]) groupedRawData[d] = { allocation: 0, success: 0, failed: 0, amount: 0 };
-              
-              groupedRawData[d].allocation++;
-              if (log.status === "DONE") {
-                groupedRawData[d].success++;
-                groupedRawData[d].amount += fetchedRate; 
-              } else {
-                groupedRawData[d].failed++;
-              }
-            });
-          }
-        } catch (e) {}
+          setReportData(finalData);
+
+          const t = finalData.reduce((acc: any, curr: any) => ({
+              allocation: acc.allocation + curr.allocation,
+              success: acc.success + curr.success,
+              failed: acc.failed + curr.failed,
+              amount: acc.amount + curr.amount,
+          }), { allocation: 0, success: 0, failed: 0, amount: 0 });
+
+          setTotals(t);
+          setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
+        }
+      } catch (e) {
+        console.error("Failed to load summary");
       }
-
-      // ফিল্টার লজিক
-      let daysToShow = 7;
-      if (dateFilter === "today") daysToShow = 1;
-      else if (dateFilter === "15") daysToShow = 15;
-      else if (dateFilter === "30") daysToShow = 30;
-      else if (dateFilter === "all") daysToShow = 60;
-
-      const dateTemplate = generateDateRange(daysToShow);
-
-      const formatDateStr = (dateString: string) => {
-         return new Date(dateString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      };
-
-      const finalData = dateTemplate.map(dateStr => {
-        const existingData = groupedRawData[dateStr];
-        return {
-          dateStr: dateStr,
-          displayDate: formatDateStr(dateStr),
-          allocation: existingData ? existingData.allocation : 0,
-          success: existingData ? existingData.success : 0,
-          failed: existingData ? existingData.failed : 0,
-          amount: existingData ? existingData.amount : 0,
-          rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
-        };
-      });
-
-      setReportData(finalData);
-
-      const t = finalData.reduce((acc: any, curr: any) => ({
-          allocation: acc.allocation + curr.allocation,
-          success: acc.success + curr.success,
-          failed: acc.failed + curr.failed,
-          amount: acc.amount + curr.amount,
-      }), { allocation: 0, success: 0, failed: 0, amount: 0 });
-
-      setTotals(t);
-      setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
+      
       setLoading(false);
     };
 
@@ -279,7 +210,6 @@ export default function Summary() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                       <XAxis dataKey="displayDate" stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => val.substring(0, 6)} />
                       <YAxis stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} />
-                      {/* 💥 এখানে Type Error ফিক্স করা হয়েছে (val: any) 💥 */}
                       <Tooltip contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(value: any) => [`৳ ${Number(value).toFixed(2)}`, 'Revenue']} />
                       <Line type="monotone" dataKey="amount" name="Revenue" stroke="#3B82F6" strokeWidth={3} dot={{r: 4, fill: '#3B82F6', strokeWidth: 2}} activeDot={{r: 6}} />
                     </LineChart>
