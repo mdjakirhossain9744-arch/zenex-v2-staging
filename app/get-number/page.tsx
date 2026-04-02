@@ -422,10 +422,16 @@ export default function GetNumber() {
                     // 💥 COMPACT CARD DESIGN 💥
                     <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                        
-                       {/* Top Row: Number & Status */}
+                       {/* Top Row: Number & Status & Country */}
                        <div className="flex justify-between items-center mb-1.5">
                           <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
                             <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
+                            
+                            {/* 💥 COUNTRY BADGE 💥 */}
+                            <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
+                              {item.country}
+                            </span>
+
                             {(item.isMulti || item.isDup) && (
                                <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
                                  MULTI
@@ -460,7 +466,11 @@ export default function GetNumber() {
                           </div>
                           
                           <div className="flex flex-col items-end text-right min-w-[60px]">
-                            <span className="text-[9px] font-bold text-[#E2E8F0] uppercase">{item.operator}</span>
+                            {/* For mobile, show country with operator */}
+                            <span className="text-[9px] font-bold text-[#E2E8F0] uppercase">
+                               <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
+                               {item.operator}
+                            </span>
                             <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.createdAt)}</span>
                           </div>
                        </div>
