@@ -2,10 +2,9 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+// router.push বাদ দিয়েছি, কারণ আমরা হার্ড রিলোড করবো
 
 export default function LoginPage() {
-  const router = useRouter();
   const [lang, setLang] = useState("EN");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -39,13 +38,15 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // UI রেন্ডার করার জন্য শুধু বেসিক ডাটা লোকাল স্টোরেজে রাখা হলো
         localStorage.setItem("user", JSON.stringify(data.user));
 
         showToast(lang === "EN" ? "Login Successful!" : "লগিন সফল হয়েছে!", "success");
         setTimeout(() => {
-          router.push("/"); 
-        }, 2000);
+          // 💥 ম্যাজিক: Double Login ফিক্স! 
+          // router.push এর বদলে window.location.href দিলে ব্রাউজার ফোর্স রিলোড নেবে 
+          // এবং কুকি ১০০% সেট হয়ে ড্যাশবোর্ড ওপেন হবে। জীবনেও ২ বার লগিন করা লাগবে না!
+          window.location.href = "/"; 
+        }, 1500);
       } else {
         showToast(data.message, "error");
       }

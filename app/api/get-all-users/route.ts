@@ -3,10 +3,20 @@ export const dynamic = 'force-dynamic';
 import { NextResponse, NextRequest } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
+import Order from "../../../models/Order"; // 💥 ডাটাবেস অ্যাড করা হলো
+
+// 💥 বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন 💥
+const getBDDateString = (dateObj: Date | number | string = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+  }).format(new Date(dateObj));
+};
 
 export async function GET(req: NextRequest) {
   try {
-    // 💥 হ্যাকার প্রটেকশন: কুকি থেকে টোকেন নেওয়া হলো 💥
     const token = req.cookies.get("zenex_token")?.value;
     
     if (!token) {
@@ -14,11 +24,9 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      // jsonwebtoken লাইব্রেরির বদলে মিডলওয়্যারের মতো ডাইরেক্ট ডিকোড (যাতে কোনো এরর না আসে)
       const payloadBase64 = token.split('.')[1];
       const decodedPayload = JSON.parse(atob(payloadBase64));
 
-      // যদি সে এডমিন না হয়, তবে লাথি খাবে
       if (decodedPayload.role !== "admin") {
         return NextResponse.json({ message: "🔴 FORBIDDEN: Admins only!" }, { status: 403 });
       }
@@ -26,28 +34,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "🔴 FORBIDDEN: Invalid Token!" }, { status: 403 });
     }
 
-    // 💥 সিকিউরিটি পাস হলে তবেই ডাটাবেস থেকে ডাটা আনবে 💥
     await connectToDatabase();
     
     const users = await User.find({}).select("-password").sort({ createdAt: -1 });
 
-    const formattedUsers = users.map(u => ({
-      id: u._id,
-      uid: `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`,
-      name: u.fullName,
-      email: u.email,
-      role: u.role,
-      agentEmail: u.agentEmail || "Admin",
-      // 💥 ম্যাজিক ফিক্স: 3.99999999 কে 4.00 বা 3.99 বানানো হলো! 💥
-      balance: Number(u.balance || 0).toFixed(2),
-      status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
-      todayOTP: 0, 
-      // 💥 ম্যাজিক ফিক্স: রেটকেও ২ দশমিক করে দেওয়া হলো! 💥
-      rate: Number(u.otpRate || 0.50).toFixed(2),
-      customAgentMail: u.customAgentMail || "", 
-      telegramLink: u.telegramLink || "",
-      agentMaxUsers: u.agentMaxUsers || 100,
-      isApiActive: u.isApiActive || false        
+    // 💥 বাংলাদেশ টাইমের আজকের ডেট 💥
+    const todayStr = getBDDateString();
+
+    const formattedUsers = await Promise.all(users.map(async (u) => {
+      
+      // 💥 এডমিন প্যানেলেও এখন সবার আজকের রিয়েল ওটিপি কাউন্ট দেখাবে 💥
+      const todayOtpCount = await Order.countDocuments({
+         userEmail: new RegExp(`^${u.email}$`, 'i'), 
+         dateString: todayStr,
+         status: "DONE"
+      });
+
+      return {
+        id: u._id,
+        uid: `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`,
+        name: u.fullName,
+        email: u.email,
+        role: u.role,
+        agentEmail: u.agentEmail || "Admin",
+        balance: Number(u.balance || 0).toFixed(2),
+        status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
+        todayOTP: todayOtpCount, // রাত ১২টায় জিরো হয়ে যাবে!
+        rate: Number(u.otpRate || 0.50).toFixed(2),
+        customAgentMail: u.customAgentMail || "", 
+        telegramLink: u.telegramLink || "",
+        agentMaxUsers: u.agentMaxUsers || 100,
+        isApiActive: u.isApiActive || false        
+      };
     }));
 
     return NextResponse.json({ users: formattedUsers }, { status: 200 });
