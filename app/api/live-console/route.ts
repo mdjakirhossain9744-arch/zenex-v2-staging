@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// 💥 আপনার দেওয়া আসল MNIT API Key বসানো হলো 💥
+// 💥 আপনার দেওয়া আসল MNIT API Key 💥
 const MNIT_API_KEY = "M_7VX25KAJI";
 
 let cachedData: any = null;
 let lastFetchTime: number = 0;
-const CACHE_DURATION = 5000; // ৫ সেকেন্ড ক্যাশ (সার্ভার ও API কে সেফ রাখতে)
+const CACHE_DURATION = 5000; // ৫ সেকেন্ড ক্যাশ
 
 export async function GET() {
   try {
@@ -21,7 +21,12 @@ export async function GET() {
       method: "GET",
       headers: {
         "mapikey": MNIT_API_KEY, 
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        // 💥 Cloudflare 403 Bypass (Dalvik Android User-Agent) 💥
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive"
       },
       cache: "no-store",
     });
@@ -31,7 +36,6 @@ export async function GET() {
        return NextResponse.json({ success: false, error: "Too many requests. Retrying..." }, { status: 429 });
     }
 
-    // API Key ভুল হলে সরাসরি স্ক্রিনে দেখাবে
     if (response.status === 401) {
        return NextResponse.json({ success: false, error: "Invalid MNIT API Key! Access Denied." }, { status: 401 });
     }
@@ -42,7 +46,6 @@ export async function GET() {
 
     const result = await response.json();
     
-    // ম্যাজিক: ডাটা চেক করে ফ্রন্টএন্ডে পাঠানো হচ্ছে
     if (result && result.data && Array.isArray(result.data.otps)) {
        const formattedLogs = result.data.otps.map((item: any) => ({
           number: item.number,
@@ -58,7 +61,6 @@ export async function GET() {
        return NextResponse.json(cachedData);
     }
 
-    // যদি ডাটা না আসে তবে এরর শো করবে
     return NextResponse.json({ success: false, error: "No OTP data found in provider response" });
 
   } catch (error: any) {
