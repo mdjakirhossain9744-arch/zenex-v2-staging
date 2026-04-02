@@ -19,14 +19,14 @@ export async function POST(req: Request) {
 
     const memberRateMap: Record<string, number> = {};
 
-    // 💥 ১. রোল অনুযায়ী টার্গেট ইমেইল এবং ব্যালেন্স সেট করা 💥
     if (role === "agent") {
-       const members = await User.find({ $or: [{ agentEmail: email }, { customAgentMail: email }] });
+       // এজেন্টের নিজের ইমেইলটাও লিস্টে অ্যাড করা হলো, যাতে কোনোভাবেই জিরো না দেখায়
+       const members = await User.find({ $or: [{ agentEmail: email }, { customAgentMail: email }, { email: email }] });
        targetEmails = members.map(m => m.email);
        members.forEach(m => { memberRateMap[m.email] = m.otpRate || 0.50; });
        
        userRate = currentUser.agentMaxRate || 0.70;
-       balance = currentUser.agentEarning || 0; // এজেন্টের টোটাল কমিশন
+       balance = currentUser.agentEarning || 0; 
     } else if (role === "admin") {
        userRate = 0.50; 
        balance = 0; 
@@ -36,7 +36,6 @@ export async function POST(req: Request) {
        balance = currentUser.balance || 0;
     }
 
-    // 💥 ২. গত ৬০ দিনের ডাটাবেস থেকে অর্ডার ফিল্টার করা 💥
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
@@ -49,7 +48,6 @@ export async function POST(req: Request) {
 
     const groupedRawData: Record<string, any> = {};
 
-    // 💥 ৩. ম্যাজিক: MULTI OTP এবং ফ্রী সার্ভিস ক্যালকুলেশন 💥
     orders.forEach(o => {
        const d = o.dateString || new Date(o.createdAt).toISOString().split('T')[0];
        if (!groupedRawData[d]) groupedRawData[d] = { allocation: 0, success: 0, failed: 0, amount: 0 };
@@ -67,7 +65,7 @@ export async function POST(req: Request) {
                  earned = userRate * msgCount; 
               } else if (role === "agent") {
                  const mRate = memberRateMap[o.userEmail] || 0.50;
-                 earned = Math.max(0, userRate - mRate) * msgCount; // এজেন্টের রিয়েল কমিশন!
+                 earned = Math.max(0, userRate - mRate) * msgCount; 
               } else {
                  earned = userRate * msgCount;
               }
@@ -83,7 +81,9 @@ export async function POST(req: Request) {
        success: true,
        groupedRawData,
        userRate,
-       balance
+       balance,
+       // 💥 ম্যাজিক: ইউজারের পিসির টাইম যাই হোক, সার্ভার তার অরিজিনাল টাইম ফ্রন্টএন্ডকে দিয়ে দেবে!
+       serverDate: new Date().toISOString() 
     });
 
   } catch (error) {

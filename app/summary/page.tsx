@@ -16,10 +16,12 @@ export default function Summary() {
   const [overallRate, setOverallRate] = useState("0%");
   const [loading, setLoading] = useState(true);
 
-  const generateDateRange = (days: number) => {
+  // 💥 ম্যাজিক: ইউজারের ডিভাইসের টাইম বাদ দিয়ে সার্ভারের টাইম ব্যবহার করা হচ্ছে
+  const generateDateRange = (days: number, baseDateStr: string) => {
     const dates = [];
+    const baseDate = new Date(baseDateStr);
     for (let i = 0; i < days; i++) {
-      const d = new Date();
+      const d = new Date(baseDate);
       d.setDate(d.getDate() - i);
       dates.push(d.toISOString().split('T')[0]);
     }
@@ -37,7 +39,6 @@ export default function Summary() {
       setRole(currentRole);
 
       try {
-        // 💥 ডাটাবেস থেকে রিয়েল-টাইম রিপোর্ট আনা হচ্ছে 💥
         const res = await fetch("/api/summary-report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -56,7 +57,9 @@ export default function Summary() {
           else if (dateFilter === "30") daysToShow = 30;
           else if (dateFilter === "all") daysToShow = 60;
 
-          const dateTemplate = generateDateRange(daysToShow);
+          // 💥 সার্ভারের টাইম নিয়ে গ্রাফ তৈরি হবে 💥
+          const serverDate = data.serverDate || new Date().toISOString();
+          const dateTemplate = generateDateRange(daysToShow, serverDate);
           const groupedRawData = data.groupedRawData || {};
 
           const formatDateStr = (dateString: string) => {
@@ -131,7 +134,6 @@ export default function Summary() {
           </select>
         </div>
 
-        {/* 📊 Stats Cards 📊 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#3B82F6]">
               <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">{allocationLabel}</span>
@@ -152,7 +154,6 @@ export default function Summary() {
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981]">
               <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">{earningsLabel}</span>
               <div className="flex items-end gap-3 mb-2">
-                {/* 💥 এখানে ডাটাবেসের রিয়েল ব্যালেন্স/প্রফিট শো করবে 💥 */}
                 <span className="text-3xl font-black text-[#10B981]">
                   ৳ {isAdmin ? totals.amount.toFixed(2) : dbEarnings}
                 </span>
@@ -160,7 +161,6 @@ export default function Summary() {
               <span className="text-[9px] font-black text-[#10B981] bg-[#10B981]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#10B981]/20">Total Value</span>
            </div>
 
-           {/* 💥 এজেন্ট, এডমিন ও ইউজার সবার জন্য ডায়নামিক রেট কার্ড 💥 */}
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#8B5CF6]">
               <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">
                 {isAdmin ? "Platform Status" : isAgent ? "Your Max Limit" : "Your OTP Rate"}
@@ -176,7 +176,6 @@ export default function Summary() {
            </div>
         </div>
 
-        {/* 📈 Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
            <div className="bg-[#1E293B]/80 border border-[#334155] p-6 rounded-2xl shadow-lg h-[350px] flex flex-col">
               <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6">Success vs Failed Trends</h3>
@@ -219,7 +218,6 @@ export default function Summary() {
            </div>
         </div>
 
-        {/* 📋 Table */}
         <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full">
            <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
              <h3 className="text-sm font-black text-white uppercase tracking-widest">Detailed Daily Report</h3>

@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
+const MNIT_API_KEY = "M_7VX25KAJI";
+
 const getServiceName = (message: string) => {
   const msgLower = (message || "").toLowerCase();
   const popularApps = ['facebook', 'whatsapp', 'telegram', 'instagram', 'google', 'tiktok', 'apple', 'amazon', 'netflix', 'yahoo', 'twitter', 'paypal', 'discord', 'tinder', 'uber', 'viber', 'line', 'coinw'];
@@ -17,21 +19,20 @@ const getServiceName = (message: string) => {
   return "OTHER";
 };
 
+// 🔥 NextRequest ব্যবহার করা হয়েছে, তাই Vercel ক্যাশ করতে পারবে না (১৭টা ওটিপি আর আটকে থাকবে না)
 export async function GET(req: NextRequest) {
   try {
     const clientTime = req.nextUrl.searchParams.get('t') || Date.now();
     
-    // 💥 ম্যাজিক ১: MNIT এর গ্লোবাল ড্যাশবোর্ডের লিংক এবং অরিজিনাল টোকেন বসানো হলো! 💥
-    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/mdashboard/console/info?_cb=${clientTime}&rnd=${Math.random()}`;
+    // 💥 অফিশিয়াল পাবলিক এপিআই: এটা কুকি এক্সপায়ারের ঝামেলা ছাড়াই লাইভ গ্লোবাল ডাটা দেয় 💥
+    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?_cb=${clientTime}&rnd=${Math.random()}`;
 
     const response = await fetch(mnitUrl, {
       method: "GET",
       headers: {
-        "accept": "application/json, text/plain, */*",
-        "mauthtoken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJNX0pZQUlDNDBZQiIsInJvbGUiOiJ1c2VyIiwiYWNjZXNzX3BhdGgiOlsiL2Rhc2hib2FyZCJdLCJleHBpcnkiOjE3NzQ4NjMxNTMsImNyZWF0ZWQiOjE3NzQ3NzY3NTMsIjJvbzkiOiJNc0giLCJleHAiOjE3NzQ4NjMxNTMsImlhdCI6MTc3NDc3Njc1Mywic3ViIjoiTV9KWUFJQzQwWUIifQ.8sBKg2STzGb-oKFgmzib30nD_zVzznFqWD9yrM2AE8U",
-        "cookie": "_ga=GA1.1.1498317933.1764484283; mauthtoken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJNX0pZQUlDNDBZQiIsInJvbGUiOiJ1c2VyIiwiYWNjZXNzX3BhdGgiOlsiL2Rhc2hib2FyZCJdLCJleHBpcnkiOjE3NzQ4NjMxNTMsImNyZWF0ZWQiOjE3NzQ3NzY3NTMsIjJvbzkiOiJNc0giLCJleHAiOjE3NzQ4NjMxNTMsImlhdCI6MTc3NDc3Njc1Mywic3ViIjoiTV9KWUFJQzQwWUIifQ.8sBKg2STzGb-oKFgmzib30nD_zVzznFqWD9yrM2AE8U;",
-        "referer": "https://x.mnitnetwork.com/mdashboard/console",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "mapikey": MNIT_API_KEY, 
+        "Content-Type": "application/json",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0"
@@ -44,20 +45,11 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await response.json();
-    let rawOtps: any[] = [];
-    
-    // গ্লোবাল ডাটা ঠিকমতো বের করা হচ্ছে
-    if (result && result.data) {
-       if (Array.isArray(result.data)) rawOtps = result.data;
-       else if (Array.isArray(result.data.otps)) rawOtps = result.data.otps;
-       else if (Array.isArray(result.data.records)) rawOtps = result.data.records;
-    } else if (result && Array.isArray(result.otps)) {
-       rawOtps = result.otps;
-    }
+    const rawOtps = result?.data?.otps || [];
 
     const formattedLogs = rawOtps.map((item: any) => {
-      const num = item.number || item.phone || item.num || "";
-      const otpText = item.otp || item.sms || item.msg || item.fullMessage || "";
+      const num = item.number || item.phone || "";
+      const otpText = item.otp || item.sms || "";
       
       return {
         id: item.nid || item.id || `${num}_${Math.random()}`,
