@@ -74,6 +74,7 @@ export async function POST(req: Request) {
         const incomingMsg = (orderData.fullMessage || "").trim();
         const currentMsg = freshOrder.fullMessage || "";
 
+        // 💥 ম্যাজিক ১: যদি এই ওটিপি আগেই সেভ হয়ে থাকে, তাহলে আর ব্যালেন্স কাটবে না! (ফ্লিকারিং ফিক্স)
         if (incomingMsg && currentMsg.includes(incomingMsg)) {
           return NextResponse.json({ success: true, message: "Already processed this exact OTP text." });
         }
@@ -87,13 +88,13 @@ export async function POST(req: Request) {
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
-        // 💥 ম্যাজিক: API ক্র্যাশ ঠেকাতে $round মুছে শুধু সিম্পল $inc ব্যবহার করা হলো 💥
+        // 💥 ম্যাজিক ২: $round মুছে ফেলেছি, ফলে API আর ক্র্যাশ করবে না। একদম ক্লিন $inc ব্যালেন্স কাটবে।
         if (!isFreeService) {
           const user = await User.findOne({ email });
           if (user) {
             const userRate = Number(user.otpRate) || 0.50;
             
-            await User.findOneAndUpdate({ email }, { $inc: { balance: userRate } });
+            await User.findOneAndUpdate({ email }, { $inc: { balance: -userRate } });
 
             if (user.agentEmail) {
               const agent = await User.findOne({
@@ -116,11 +117,12 @@ export async function POST(req: Request) {
           }
         }
 
+        // 💥 ওটিপি ডাটাবেসে পারমানেন্টলি সেভ করা হচ্ছে
         freshOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
         freshOrder.otp = orderData.otp; 
         freshOrder.status = "DONE";
         freshOrder.expireAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); 
-        await freshOrder.save(); // 💥 এখন এই লাইনটি ১০০% রান করবে, ওটিপি হারাবে না! 💥
+        await freshOrder.save(); 
 
         return NextResponse.json({ success: true, message: "Processed successfully!" });
       }
