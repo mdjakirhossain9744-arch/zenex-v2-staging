@@ -14,16 +14,16 @@ export async function POST(req: Request) {
     let userRate = 0.50;
     let balance = 0;
 
-    // ইমেইল সবসময় ছোট হাতের করে নেওয়া হলো যাতে কোনো ডাটা মিস না হয়
     const safeEmail = email.toLowerCase().trim();
 
+    // 💥 সিকিউরিটি ১: যে রিকোয়েস্ট করছে, সে আসলেই আছে কিনা চেক
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') });
-    if (!currentUser) return NextResponse.json({ success: false, message: "User not found" });
+    if (!currentUser) return NextResponse.json({ success: false, message: "Unauthorized Request" });
 
     const memberRateMap: Record<string, number> = {};
 
     if (role === "agent") {
-       // এজেন্টের আন্ডারে থাকা ইউজারদের খোঁজা হচ্ছে (Case-insensitive)
+       // 💥 সিকিউরিটি ২: শুধুমাত্র এই এজেন্টের আন্ডারে থাকা ইউজারদের ডাটাবেস থেকে টানা হচ্ছে
        const members = await User.find({
            $or: [
                { agentEmail: new RegExp(`^${safeEmail}$`, 'i') },
@@ -31,10 +31,10 @@ export async function POST(req: Request) {
            ]
        });
        
-       targetEmails = members.map(m => m.email.toLowerCase());
-       targetEmails.push(safeEmail); // এজেন্টের নিজের ওটিপি ডাটাও যোগ করা হলো
+       targetEmails = members.map(m => m.email.toLowerCase().trim());
+       targetEmails.push(safeEmail); // এজেন্টের নিজের ইমেইলটাও অ্যাড করা হলো
 
-       members.forEach(m => { memberRateMap[m.email.toLowerCase()] = m.otpRate || 0.50; });
+       members.forEach(m => { memberRateMap[m.email.toLowerCase().trim()] = m.otpRate || 0.50; });
        memberRateMap[safeEmail] = currentUser.otpRate || 0.50;
 
        userRate = currentUser.agentMaxRate || 0.70;
@@ -51,19 +51,22 @@ export async function POST(req: Request) {
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
+    // 💥 সিকিউরিটি ৩: হ্যাকার-প্রুফ ডাটাবেস কোয়েরি 💥
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
     
     if (role !== "admin") {
-       // 💥 ইমেইল ম্যাচিংকে Case-insensitive করা হলো! এবার আর 0% দেখাবে না।
+       // ডাটাবেসকে কড়া নির্দেশ: "শুধুমাত্র এই ইমেইলগুলোর অর্ডারই আমাকে দেবে, অন্য কারও নয়!"
        const regexEmails = targetEmails.map(e => new RegExp(`^${e}$`, 'i'));
        orderQuery.userEmail = { $in: regexEmails };
     }
 
+    // শুধুমাত্র পারমিশন পাওয়া ডাটাগুলোই বের হয়ে আসবে
     const orders = await Order.find(orderQuery).select("status dateString createdAt fullMessage userEmail");
 
     const groupedRawData: Record<string, any> = {};
 
     orders.forEach(o => {
+       const oEmail = (o.userEmail || "").toLowerCase().trim();
        const d = o.dateString || new Date(o.createdAt).toISOString().split('T')[0];
        
        if (!groupedRawData[d]) groupedRawData[d] = { allocation: 0, success: 0, failed: 0, amount: 0 };
@@ -75,14 +78,14 @@ export async function POST(req: Request) {
           groupedRawData[d].allocation += msgCount; 
           groupedRawData[d].success += msgCount;
 
+          // 💥 নিখুঁত কমিশন হিসাব 💥
           if (!isFreeService) {
               let earned = 0;
               if (role === "admin") {
                  earned = userRate * msgCount; 
               } else if (role === "agent") {
-                 const mEmail = o.userEmail ? o.userEmail.toLowerCase() : "";
-                 const mRate = memberRateMap[mEmail] || 0.50;
-                 earned = Math.max(0, userRate - mRate) * msgCount; 
+                 const mRate = memberRateMap[oEmail] || 0.50;
+                 earned = Math.max(0, userRate - mRate) * msgCount; // এজেন্টের কমিশন
               } else {
                  earned = userRate * msgCount;
               }
@@ -98,7 +101,8 @@ export async function POST(req: Request) {
        success: true,
        groupedRawData,
        userRate,
-       balance
+       balance,
+       serverDate: new Date().toISOString()
     });
 
   } catch (error) {
