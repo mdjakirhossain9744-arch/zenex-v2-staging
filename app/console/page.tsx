@@ -8,8 +8,7 @@ export default function Console() {
   const [liveLogs, setLiveLogs] = useState<any[]>([]);
   const [graphData, setGraphData] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  // 💥 প্রতি ২ সেকেন্ডে রিফ্রেশ 💥
-  const [countdown, setCountdown] = useState(2);
+  const [countdown, setCountdown] = useState(5); // 💥 ৫ সেকেন্ড 💥
   const [loading, setLoading] = useState(true);
 
   const BAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#EAB308', '#F43F5E'];
@@ -36,7 +35,7 @@ export default function Console() {
       setCountdown((prev) => {
         if (prev <= 1) {
           fetchGlobalData(); 
-          return 2; // 💥 ২ সেকেন্ড 💥
+          return 5; 
         }
         return prev - 1; 
       });
@@ -60,7 +59,6 @@ export default function Console() {
   const formatTime = (timestamp: any) => {
     if (!timestamp) return "Unknown Time";
     const date = new Date(timestamp);
-    // ডিভাইসের অরিজিনাল লাইভ টাইম
     return !isNaN(date.getTime()) ? date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : "Time Error";
   };
 
@@ -157,7 +155,7 @@ export default function Console() {
            </div>
         </div>
 
-        {/* 💥 100 Latest Live Feed 💥 */}
+        {/* Live Feed List */}
         <div className="flex flex-col gap-2.5 w-full pb-10">
            {loading && liveLogs.length === 0 ? (
               <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
@@ -176,7 +174,6 @@ export default function Console() {
                     {/* Accent Line */}
                     <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
                     
-                    {/* 💥 Row 1: Time | Operator | Country | App Badge 💥 */}
                     <div className="flex justify-between items-center ml-2 border-b border-[#334155]/50 pb-2">
                       <div className="flex items-center gap-2 md:gap-3">
                         <span className="text-[10px] md:text-xs font-black text-[#F59E0B] tracking-widest">{time}</span>
@@ -200,7 +197,6 @@ export default function Console() {
                       </span>
                     </div>
                     
-                    {/* 💥 Row 2: Number ➜ OTP 💥 */}
                     <div className="ml-2 flex flex-col md:flex-row md:items-center gap-1.5 md:gap-3 font-mono mt-1">
                       <div className="flex items-center gap-2 text-white">
                         <span className="text-sm md:text-base font-bold tracking-wider">{maskNumber(log.number)}</span>
