@@ -4,30 +4,38 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "./DashboardLayout";
 
-// বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন
+// 💥 ম্যাজিক: সেফ বাংলাদেশ টাইম (কখনো ক্র্যাশ করবে না) 💥
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
-  return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Dhaka',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-  }).format(new Date(dateObj)); 
+  try {
+    const d = new Date(dateObj);
+    if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(d);
+  } catch(e) { return "2024-01-01"; }
 };
 
 const getBDHour = (dateObj: Date | number | string = new Date()) => {
-  const hr = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Dhaka',
-      hour: 'numeric',
-      hourCycle: 'h23' 
-  }).format(new Date(dateObj));
-  return parseInt(hr, 10);
+  try {
+    const d = new Date(dateObj);
+    if (isNaN(d.getTime())) return 0;
+    const hr = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Dhaka',
+        hour: 'numeric',
+        hourCycle: 'h23' 
+    }).format(d);
+    return parseInt(hr, 10) || 0;
+  } catch(e) { return 0; }
 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState("user"); 
-  const [liveRate, setLiveRate] = useState(0.50);
+  const [liveRate, setLiveRate] = useState<any>(0.50);
 
   const [stats, setStats] = useState({
     balance: "0.00",
@@ -41,7 +49,7 @@ export default function DashboardPage() {
     totalUsers: 0,
     totalAgents: 0,
     systemLiability: "0.00",
-    globalTodayOTP: 0, // এটা এখন থেকে ১০০% পারফেক্ট কাজ করবে
+    globalTodayOTP: 0,
   });
 
   const [agentReport, setAgentReport] = useState<any[]>([]);
@@ -108,7 +116,7 @@ export default function DashboardPage() {
             fetch("/api/admin-agent-report").then(r => r.json()) 
           ]);
   
-          let actualTodayGlobalOTP = 0; // 💥 নতুন: শুধু আজকের ওটিপি গোনার জন্য
+          let actualTodayGlobalOTP = 0; 
 
           if (reportData && reportData.success) {
              setAgentReport(reportData.report);
@@ -123,9 +131,8 @@ export default function DashboardPage() {
               const time = log.time || log.createdAt || log.date || Date.now();
               const logDateStr = getBDDateString(time); 
               
-              // 💥 ম্যাজিক: শুধুমাত্র বাংলাদেশ টাইমের আজকের ওটিপি কাউন্ট হবে 💥
               if (logDateStr === todayStr) {
-                 actualTodayGlobalOTP++; // আজকের ওটিপি গোনা হচ্ছে
+                 actualTodayGlobalOTP++; 
 
                  const hour = getBDHour(time); 
                  const bucketIndex = Math.floor(hour / 4);
@@ -141,7 +148,6 @@ export default function DashboardPage() {
             setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
           }
 
-          // ইউজার ডাটা এবং সঠিক ওটিপি কাউন্ট স্টেটে সেভ করা
           if (userData.users) {
             const allUsers = userData.users;
             const liability = allUsers.reduce((sum: number, u: any) => sum + (Number(u.balance) || 0), 0);
@@ -149,7 +155,7 @@ export default function DashboardPage() {
               totalUsers: allUsers.filter((u: any) => u.role === 'user').length,
               totalAgents: allUsers.filter((u: any) => u.role === 'agent').length,
               systemLiability: liability.toFixed(2),
-              globalTodayOTP: actualTodayGlobalOTP // 💥 ফিক্সড: এখন আর ভুল সংখ্যা দেখাবে না
+              globalTodayOTP: actualTodayGlobalOTP 
             });
           }
 
@@ -209,6 +215,7 @@ export default function DashboardPage() {
           }
 
         } else {
+          // 💥 User Role Dashboard Data Fetching 💥
           fetch("/api/get-user-details", { 
             method: "POST", 
             headers: { "Content-Type": "application/json" }, 
@@ -227,43 +234,49 @@ export default function DashboardPage() {
   
           const savedNumbers = localStorage.getItem("zenex_numbers_v2");
           if (savedNumbers) {
-            const parsedLogs = JSON.parse(savedNumbers);
-  
-            let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
-            const appCounts: Record<string, { count: number, info: any }> = {};
-            let buckets = [0, 0, 0, 0, 0, 0];
-  
-            parsedLogs.forEach((log: any) => {
-              const logDate = getBDDateString(log.createdAt || Date.now());
-              
-              if (logDate === todayStr) {
-                tTotal++;
-                if (log.status === "DONE") {
-                  tSuccess++;
-                  const hour = getBDHour(log.createdAt);
-                  const bucketIndex = Math.floor(hour / 4);
-                  if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
-  
-                  const sInfo = getServiceInfo(log.fullMessage || log.otp);
-                  if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
-                  appCounts[sInfo.name].count += 1;
-                }
-              } else if (logDate === yesterdayStr) {
-                yTotal++;
-                if (log.status === "DONE") ySuccess++;
-              }
-            });
-  
-            setStats(prev => ({
-              ...prev,
-              todayTotal: tTotal,
-              todaySuccess: tSuccess,
-              yesterdayTotal: yTotal,
-              yesterdaySuccess: ySuccess,
-            }));
-  
-            setTrafficData(buckets);
-            setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
+            try {
+               const parsedLogs = JSON.parse(savedNumbers);
+     
+               let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
+               const appCounts: Record<string, { count: number, info: any }> = {};
+               let buckets = [0, 0, 0, 0, 0, 0];
+     
+               if(Array.isArray(parsedLogs)) {
+                 parsedLogs.forEach((log: any) => {
+                   const logDate = getBDDateString(log.createdAt || Date.now());
+                   
+                   if (logDate === todayStr) {
+                     tTotal++;
+                     if (log.status === "DONE") {
+                       tSuccess++;
+                       const hour = getBDHour(log.createdAt);
+                       const bucketIndex = Math.floor(hour / 4);
+                       if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
+       
+                       const sInfo = getServiceInfo(log.fullMessage || log.otp);
+                       if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
+                       appCounts[sInfo.name].count += 1;
+                     }
+                   } else if (logDate === yesterdayStr) {
+                     yTotal++;
+                     if (log.status === "DONE") ySuccess++;
+                   }
+                 });
+               }
+     
+               setStats(prev => ({
+                 ...prev,
+                 todayTotal: tTotal,
+                 todaySuccess: tSuccess,
+                 yesterdayTotal: yTotal,
+                 yesterdaySuccess: ySuccess,
+               }));
+     
+               setTrafficData(buckets);
+               setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
+            } catch (e) {
+               console.error("Local Storage Parsing Error Prevented Crash.");
+            }
           }
         }
       } catch (e) {}
@@ -309,6 +322,11 @@ export default function DashboardPage() {
               {role === 'admin' ? "Here is the global overview of your entire network today." : role === 'agent' ? "Here is your team's live performance and commission." : "Here's what's happening with your account today."}
             </p>
           </div>
+          {role === 'admin' && (
+            <span className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Super Admin
+            </span>
+          )}
         </div>
 
         {role === "admin" ? (
@@ -381,7 +399,8 @@ export default function DashboardPage() {
               </div>
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Admin Given Rate" : "Your OTP Rate"}</h3>
-                <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {liveRate.toFixed(2)}</p>
+                {/* 💥 ম্যাজিক: Number() কনভার্টার দিয়ে ক্র্যাশ ফিক্স করা হলো! 💥 */}
+                <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
               </div>
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Network Today's OTP" : "Today's Total OTP"}</h3>

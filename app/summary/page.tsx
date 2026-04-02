@@ -41,7 +41,10 @@ export default function Summary() {
       setRole(currentRole);
 
       try {
-        const res = await fetch("/api/summary-report", {
+        // 💥 ম্যাজিক: পজিশন অনুযায়ী অটোমেটিক সঠিক API সিলেক্ট হবে 💥
+        const apiEndpoint = currentRole === "agent" ? "/api/agent-summary" : "/api/summary-report";
+
+        const res = await fetch(apiEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: parsedUser.email, role: currentRole })
@@ -107,8 +110,6 @@ export default function Summary() {
 
   const pageTitle = isAdmin ? "Global System Report" : isAgent ? "Network Summary Report" : "My Performance Report";
   const allocationLabel = isAdmin ? "Global Allocation" : isAgent ? "Network Allocation" : "My Allocation";
-  
-  // 💥 ম্যাজিক: এডমিনের জন্য System Profit এর বদলে Total Payout লেখা হলো 💥
   const earningsLabel = isAdmin ? "Total Payout" : isAgent ? "Total Commission" : "My Earnings";
 
   return (
