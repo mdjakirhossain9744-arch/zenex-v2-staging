@@ -2,16 +2,10 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import LiveLog from "../../../models/LiveLog";
 
-// 💥 Next.js 14 এর ক্যাশ চিরতরে অফ করার কমান্ড 💥
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
+// 💥 Next.js এর নিজস্ব সুপার পাওয়ারফুল ৫ সেকেন্ড ক্যাশ (Serverless Freeze হবে না) 💥
+export const revalidate = 5; 
 
 const MNIT_API_KEY = "M_7VX25KAJI";
-
-let cachedData: any = null;
-let lastFetchTime: number = 0;
-const CACHE_DURATION = 5000; // ৫ সেকেন্ড ক্যাশ 
 
 const getServiceName = (message: string) => {
   const msgLower = (message || "").toLowerCase();
@@ -29,30 +23,21 @@ const getServiceName = (message: string) => {
 
 export async function GET() {
   try {
-    const currentTime = Date.now();
-    if (cachedData && (currentTime - lastFetchTime < CACHE_DURATION)) {
-      return NextResponse.json(cachedData);
-    }
-
     await connectToDatabase();
 
-    // 💥 ম্যাজিক: লিংকের শেষে ডাইনামিক টাইম বসানো হলো, যাতে Cloudflare ক্যাশ করতে না পারে 💥
-    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?nocache=${currentTime}`;
-
-    const response = await fetch(mnitUrl, {
+    const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info", {
       method: "GET",
       headers: {
         "mapikey": MNIT_API_KEY, 
         "Content-Type": "application/json",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)"
-      },
-      cache: "no-store",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
+        "Cache-Control": "no-cache"
+      }
     });
 
     if (response.ok) {
       const result = await response.json();
       if (result && result.data && Array.isArray(result.data.otps)) {
-        
         try {
           const bulkOps = result.data.otps.map((item: any) => ({
             updateOne: {
@@ -83,10 +68,15 @@ export async function GET() {
       }
     }
 
-    // 💥 সর্টিং ফিক্স: একই সেকেন্ডে আসলে আইডি অনুযায়ী সিরিয়াল করবে 💥
-    const latestLogs = await LiveLog.find().sort({ createdAt: -1, _id: -1 }).limit(100);
+    // 💥 মেইন ম্যাজিক: ডাটাবেস থেকে জোর করে শুধুমাত্র শেষ ২০ মিনিটের ডাটা আনা হচ্ছে 💥
+    const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+
+    const latestLogs = await LiveLog.find({ createdAt: { $gte: twentyMinsAgo } })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(100);
 
     const topAppsAgg = await LiveLog.aggregate([
+      { $match: { createdAt: { $gte: twentyMinsAgo } } }, // গ্রাফেও শুধু ২০ মিনিটের হিসাব
       { $group: { _id: "$service", value: { $sum: 1 } } },
       { $sort: { value: -1 } }, 
       { $limit: 8 }
@@ -99,14 +89,10 @@ export async function GET() {
       pad += " ";
     }
 
-    cachedData = { success: true, logs: latestLogs, graph: graphData };
-    lastFetchTime = currentTime;
-
-    return NextResponse.json(cachedData);
+    return NextResponse.json({ success: true, logs: latestLogs, graph: graphData });
 
   } catch (error: any) {
     console.error("Live Console Error:", error);
-    if (cachedData) return NextResponse.json(cachedData);
     return NextResponse.json({ success: false, error: "Network Error" }, { status: 500 });
   }
 }

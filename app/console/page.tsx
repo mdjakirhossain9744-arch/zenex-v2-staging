@@ -15,8 +15,8 @@ export default function Console() {
 
   const fetchGlobalData = async () => {
     try {
-      // 💥 ম্যাজিক: ব্রাউজার ক্যাশ বাইপাস করার জন্য URL এ Time যুক্ত করা হলো 💥
-      const res = await fetch(`/api/live-console?t=${Date.now()}`, { cache: 'no-store' });
+      // 💥 কোনো ফেক প্যারামিটার ছাড়াই ফ্রেশ এপিআই কল 💥
+      const res = await fetch("/api/live-console", { cache: 'no-store' });
       const data = await res.json();
       
       if (data.success) {
