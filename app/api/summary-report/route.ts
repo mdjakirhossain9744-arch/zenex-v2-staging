@@ -14,24 +14,36 @@ export async function POST(req: Request) {
     let userRate = 0.50;
     let balance = 0;
 
-    const currentUser = await User.findOne({ email });
+    // ইমেইল সবসময় ছোট হাতের করে নেওয়া হলো যাতে কোনো ডাটা মিস না হয়
+    const safeEmail = email.toLowerCase().trim();
+
+    const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') });
     if (!currentUser) return NextResponse.json({ success: false, message: "User not found" });
 
     const memberRateMap: Record<string, number> = {};
 
     if (role === "agent") {
-       // এজেন্টের নিজের ইমেইলটাও লিস্টে অ্যাড করা হলো, যাতে কোনোভাবেই জিরো না দেখায়
-       const members = await User.find({ $or: [{ agentEmail: email }, { customAgentMail: email }, { email: email }] });
-       targetEmails = members.map(m => m.email);
-       members.forEach(m => { memberRateMap[m.email] = m.otpRate || 0.50; });
+       // এজেন্টের আন্ডারে থাকা ইউজারদের খোঁজা হচ্ছে (Case-insensitive)
+       const members = await User.find({
+           $or: [
+               { agentEmail: new RegExp(`^${safeEmail}$`, 'i') },
+               { customAgentMail: new RegExp(`^${safeEmail}$`, 'i') }
+           ]
+       });
        
+       targetEmails = members.map(m => m.email.toLowerCase());
+       targetEmails.push(safeEmail); // এজেন্টের নিজের ওটিপি ডাটাও যোগ করা হলো
+
+       members.forEach(m => { memberRateMap[m.email.toLowerCase()] = m.otpRate || 0.50; });
+       memberRateMap[safeEmail] = currentUser.otpRate || 0.50;
+
        userRate = currentUser.agentMaxRate || 0.70;
        balance = currentUser.agentEarning || 0; 
     } else if (role === "admin") {
        userRate = 0.50; 
        balance = 0; 
     } else {
-       targetEmails = [email];
+       targetEmails = [safeEmail];
        userRate = currentUser.otpRate || 0.50;
        balance = currentUser.balance || 0;
     }
@@ -40,8 +52,11 @@ export async function POST(req: Request) {
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
+    
     if (role !== "admin") {
-       orderQuery.userEmail = { $in: targetEmails };
+       // 💥 ইমেইল ম্যাচিংকে Case-insensitive করা হলো! এবার আর 0% দেখাবে না।
+       const regexEmails = targetEmails.map(e => new RegExp(`^${e}$`, 'i'));
+       orderQuery.userEmail = { $in: regexEmails };
     }
 
     const orders = await Order.find(orderQuery).select("status dateString createdAt fullMessage userEmail");
@@ -50,6 +65,7 @@ export async function POST(req: Request) {
 
     orders.forEach(o => {
        const d = o.dateString || new Date(o.createdAt).toISOString().split('T')[0];
+       
        if (!groupedRawData[d]) groupedRawData[d] = { allocation: 0, success: 0, failed: 0, amount: 0 };
        
        const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("wa.me") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
@@ -64,7 +80,8 @@ export async function POST(req: Request) {
               if (role === "admin") {
                  earned = userRate * msgCount; 
               } else if (role === "agent") {
-                 const mRate = memberRateMap[o.userEmail] || 0.50;
+                 const mEmail = o.userEmail ? o.userEmail.toLowerCase() : "";
+                 const mRate = memberRateMap[mEmail] || 0.50;
                  earned = Math.max(0, userRate - mRate) * msgCount; 
               } else {
                  earned = userRate * msgCount;
@@ -81,9 +98,7 @@ export async function POST(req: Request) {
        success: true,
        groupedRawData,
        userRate,
-       balance,
-       // 💥 ম্যাজিক: ইউজারের পিসির টাইম যাই হোক, সার্ভার তার অরিজিনাল টাইম ফ্রন্টএন্ডকে দিয়ে দেবে!
-       serverDate: new Date().toISOString() 
+       balance
     });
 
   } catch (error) {

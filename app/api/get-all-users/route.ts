@@ -38,10 +38,12 @@ export async function GET(req: NextRequest) {
       email: u.email,
       role: u.role,
       agentEmail: u.agentEmail || "Admin",
-      balance: u.balance || 0,
+      // 💥 ম্যাজিক ফিক্স: 3.99999999 কে 4.00 বা 3.99 বানানো হলো! 💥
+      balance: Number(u.balance || 0).toFixed(2),
       status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
       todayOTP: 0, 
-      rate: u.otpRate || "0.50",
+      // 💥 ম্যাজিক ফিক্স: রেটকেও ২ দশমিক করে দেওয়া হলো! 💥
+      rate: Number(u.otpRate || 0.50).toFixed(2),
       customAgentMail: u.customAgentMail || "", 
       telegramLink: u.telegramLink || "",
       agentMaxUsers: u.agentMaxUsers || 100,
