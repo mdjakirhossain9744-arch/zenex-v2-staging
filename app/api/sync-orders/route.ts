@@ -15,33 +15,60 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
     }
 
-    // 💥 ১. ডাটাবেস থেকে সব নাম্বার টেনে আনা (MULTI সাপোর্ট সহ) 💥
+    // 💥 ১. ডাটাবেস থেকে সব নাম্বার টেনে আনা (Visual Bug Fixed) 💥
     if (action === "FETCH") {
       const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).limit(200);
       
-      const mappedOrders = orders.map((o) => {
-        // ডাটাবেস থেকে একাধিক মেসেজ আলাদা করা হচ্ছে (MULTI লজিক)
+      const finalOrders: any[] = [];
+
+      orders.forEach((o) => {
         const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         
-        return {
-          id: o._id.toString(),
-          dateString: o.dateString,
-          displayNumber: o.displayNumber,
-          searchNumber: o.searchNumber,
-          country: o.country,
-          operator: o.operator,
-          status: o.status,
-          otp: o.otp,
-          fullMessage: o.fullMessage,
-          seenMessages: msgArray, 
-          isDup: msgArray.length > 1, 
-          isMulti: msgArray.length > 1, 
-          createdAt: new Date(o.createdAt).getTime(),
-          receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
-        };
+        // 💥 যদি মাল্টি ওটিপি হয়, তবে ডাটাবেসের ১টি রো-কে ভেঙে আলাদা আলাদা কার্ড বানানো হচ্ছে 💥
+        if (o.status === "DONE" && msgArray.length > 1) {
+          msgArray.forEach((msg, index) => {
+            const codeMatch = msg.match(/\b\d{4,8}\b/);
+            const extractedOtp = codeMatch ? codeMatch[0] : msg;
+
+            finalOrders.push({
+              id: `${o._id.toString()}_${index}`, // ইউনিক আইডি
+              dateString: o.dateString,
+              displayNumber: o.displayNumber,
+              searchNumber: o.searchNumber,
+              country: o.country,
+              operator: o.operator,
+              status: o.status,
+              otp: extractedOtp,
+              fullMessage: msg,
+              seenMessages: msgArray, 
+              isDup: index > 0, 
+              isMulti: true, 
+              createdAt: new Date(o.createdAt).getTime(),
+              receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
+            });
+          });
+        } else {
+          // সিঙ্গেল ওটিপি বা ওয়েটিং/ফেইলড নাম্বার
+          finalOrders.push({
+            id: o._id.toString(),
+            dateString: o.dateString,
+            displayNumber: o.displayNumber,
+            searchNumber: o.searchNumber,
+            country: o.country,
+            operator: o.operator,
+            status: o.status,
+            otp: o.otp,
+            fullMessage: o.fullMessage,
+            seenMessages: msgArray,
+            isDup: false,
+            isMulti: false,
+            createdAt: new Date(o.createdAt).getTime(),
+            receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
+          });
+        }
       });
 
-      return NextResponse.json({ success: true, orders: mappedOrders });
+      return NextResponse.json({ success: true, orders: finalOrders });
     }
 
     // 💥 ২. ম্যানুয়ালি নাম্বার নিলে সেটা ডাটাবেসে সেভ করা 💥
@@ -72,48 +99,39 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: "Order not found" });
       }
 
-      // 🚨 💥 বাগ ফিক্স: যদি টাইমআউট (FAIL) বা CANCEL হয়, তবে আগেই ডাটাবেসে স্ট্যাটাস FAIL করে রিটার্ন করবে 💥
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
-        existingOrder.otp = orderData.otp || "Timeout"; // Timeout লেখাটি সেভ করবে
+        existingOrder.otp = orderData.otp || "Timeout"; 
         await existingOrder.save();
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
 
-      // 💥 যদি সত্যিকারের OTP আসে এবং স্ট্যাটাস DONE হয় 💥
       if (orderData.status === "DONE" || orderData.otp) {
         
         const incomingMsg = (orderData.fullMessage || "").trim();
         const currentMsg = existingOrder.fullMessage || "";
 
-        // 🛡️ গ্লিচ প্রটেকশন: হুবহু একই মেসেজ ২ বার আসলে ব্লক করবে (কিন্তু নতুন মেসেজ আসলে অ্যালাউ করবে)
         if (incomingMsg && currentMsg.includes(incomingMsg)) {
           return NextResponse.json({ success: true, message: "Already processed this exact OTP text." });
         }
 
-        // 🛡️ হ্যাকার প্রটেকশন: লিমিট ৫০ করা হলো (যাতে রিয়েল ইউজাররা আনলিমিটেড কোড নিতে পারে)
         const msgCount = currentMsg ? currentMsg.split(" _||_ ").length : 0;
         if (msgCount >= 50) { 
           return NextResponse.json({ success: true, message: "Max safety limit (50) reached for this number." });
         }
 
-        // 💥 যদি উপরের ফিল্টারে না আটকায়, তারমানে এটি একটি সম্পূর্ণ নতুন কোড! 💥
-
-        // ১. WhatsApp এবং Telegram চেক করা হচ্ছে (লস ঠেকানোর জন্য)
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
                               incomingMsg.toLowerCase().includes("wa.me") || 
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
         if (!isFreeService) {
-          // যদি ফ্রী সার্ভিস না হয়, তবে ইউজারের ব্যালেন্স অ্যাড হবে
           const user = await User.findOne({ email });
           if (user) {
             const userRate = Number(user.otpRate) || 0.50;
             user.balance = Number((Number(user.balance || 0) + userRate).toFixed(2));
             await user.save();
 
-            // এজেন্টের অটো-কমিশন হিসাব
             if (user.agentEmail) {
               const agent = await User.findOne({
                 $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
@@ -125,7 +143,6 @@ export async function POST(req: Request) {
                 const commission = Number((agentRate - userRate).toFixed(2));
 
                 if (commission > 0) {
-                  // 💥 FIX: এখন থেকে কমিশন এজেন্টের আর্নিং এবং মেইন ব্যালেন্স ২ জায়গাতেই যোগ হবে 💥
                   agent.agentEarning = Number((Number(agent.agentEarning || 0) + commission).toFixed(2));
                   agent.balance = Number((Number(agent.balance || 0) + commission).toFixed(2));
                   await agent.save();
@@ -135,9 +152,8 @@ export async function POST(req: Request) {
           }
         }
 
-        // ২. ডাটাবেসে নতুন মেসেজটি যুক্ত করা হচ্ছে (আগের মেসেজগুলো ডিলিট না করে)
         existingOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
-        existingOrder.otp = orderData.otp; // সর্বশেষ কোডটি আপডেট করা হলো
+        existingOrder.otp = orderData.otp; 
         existingOrder.status = "DONE";
         await existingOrder.save();
 
