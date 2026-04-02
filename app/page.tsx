@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "./DashboardLayout";
 
-// 💥 ম্যাজিক: সেফ বাংলাদেশ টাইম (কখনো ক্র্যাশ করবে না) 💥
+// 💥 ম্যাজিক: সেফ বাংলাদেশ টাইম 💥
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
   try {
     const d = new Date(dateObj);
@@ -160,7 +160,6 @@ export default function DashboardPage() {
           }
 
         } else if (parsedUser.role === "agent") {
-          // 💥 BINGO: Fetching directly from perfected agent-summary to match 100% 💥
           const [agentSummaryRes, userDetailsRes, otpRes] = await Promise.all([
             fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
@@ -178,7 +177,7 @@ export default function DashboardPage() {
           if (agentSummaryRes && agentSummaryRes.success && agentSummaryRes.groupedRawData) {
              const todayData = agentSummaryRes.groupedRawData[todayStr];
              if (todayData) {
-                 netToday = todayData.success || 0; // Exactly matches Summary!
+                 netToday = todayData.success || 0; 
              }
           }
 
@@ -218,68 +217,56 @@ export default function DashboardPage() {
           }
 
         } else {
-          // 💥 User Role Dashboard Data Fetching 💥
-          fetch("/api/get-user-details", { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify({ email: parsedUser.email }) 
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (data && data.user) {
-              const updatedRate = data.user.otpRate || 0.50;
-              setLiveRate(updatedRate); 
-              parsedUser.rate = updatedRate;
-              localStorage.setItem("user", JSON.stringify(parsedUser));
-              setStats(prev => ({ ...prev, balance: Number(data.user.balance || 0).toFixed(2) }));
-            }
-          });
-  
-          const savedNumbers = localStorage.getItem("zenex_numbers_v2");
-          if (savedNumbers) {
-            try {
-               const parsedLogs = JSON.parse(savedNumbers);
-     
-               let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
-               const appCounts: Record<string, { count: number, info: any }> = {};
-               let buckets = [0, 0, 0, 0, 0, 0];
-     
-               if(Array.isArray(parsedLogs)) {
-                 parsedLogs.forEach((log: any) => {
-                   const logDate = getBDDateString(log.createdAt || Date.now());
-                   
-                   if (logDate === todayStr) {
-                     tTotal++;
-                     if (log.status === "DONE") {
-                       tSuccess++;
-                       const hour = getBDHour(log.createdAt);
-                       const bucketIndex = Math.floor(hour / 4);
-                       if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
-       
-                       const sInfo = getServiceInfo(log.fullMessage || log.otp);
-                       if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
-                       appCounts[sInfo.name].count += 1;
-                     }
-                   } else if (logDate === yesterdayStr) {
-                     yTotal++;
-                     if (log.status === "DONE") ySuccess++;
-                   }
-                 });
+          // 💥 BINGO: User Role now strictly fetches from Database, removing LocalStorage limits! 💥
+          const [userDetailsRes, ordersRes] = await Promise.all([
+            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
+            fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
+          ]);
+
+          if (userDetailsRes && userDetailsRes.user) {
+            const updatedRate = userDetailsRes.user.otpRate || 0.50;
+            setLiveRate(updatedRate); 
+            parsedUser.rate = updatedRate;
+            localStorage.setItem("user", JSON.stringify(parsedUser));
+            setStats(prev => ({ ...prev, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
+          }
+
+          if (ordersRes && ordersRes.success && ordersRes.orders) {
+             let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
+             const appCounts: Record<string, { count: number, info: any }> = {};
+             let buckets = [0, 0, 0, 0, 0, 0];
+
+             ordersRes.orders.forEach((log: any) => {
+               const logDate = log.dateString || getBDDateString(log.createdAt);
+               
+               if (logDate === todayStr) {
+                 tTotal++;
+                 if (log.status === "DONE") {
+                   tSuccess++;
+                   const hour = getBDHour(log.createdAt);
+                   const bucketIndex = Math.floor(hour / 4);
+                   if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
+   
+                   const sInfo = getServiceInfo(log.fullMessage || log.otp);
+                   if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
+                   appCounts[sInfo.name].count += 1;
+                 }
+               } else if (logDate === yesterdayStr) {
+                 yTotal++;
+                 if (log.status === "DONE") ySuccess++;
                }
-     
-               setStats(prev => ({
-                 ...prev,
-                 todayTotal: tTotal,
-                 todaySuccess: tSuccess,
-                 yesterdayTotal: yTotal,
-                 yesterdaySuccess: ySuccess,
-               }));
-     
-               setTrafficData(buckets);
-               setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
-            } catch (e) {
-               console.error("Local Storage Parsing Error Prevented Crash.");
-            }
+             });
+
+             setStats(prev => ({
+               ...prev,
+               todayTotal: tTotal,
+               todaySuccess: tSuccess,
+               yesterdayTotal: yTotal,
+               yesterdaySuccess: ySuccess,
+             }));
+
+             setTrafficData(buckets);
+             setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
           }
         }
       } catch (e) {}

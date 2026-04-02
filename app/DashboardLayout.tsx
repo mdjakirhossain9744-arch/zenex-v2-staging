@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -12,27 +12,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   
   const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
 
-  // 💥 সিকিউর লগআউট ফাংশন ফিক্সড (কালো স্ক্রিন রিমুভড) 💥
+  // 💥 গ্লোবাল টোস্ট মেসেজ স্টেট 💥
+  const [globalToast, setGlobalToast] = useState("");
+  const pendingOrdersRef = useRef<any[]>([]);
+  const isCheckingOTPRef = useRef(false);
+
+  const showGlobalToast = useCallback((msg: string) => {
+    setGlobalToast(msg);
+    setTimeout(() => setGlobalToast(""), 5000);
+  }, []);
+
   const handleLogout = useCallback(async () => {
     try {
-      // ১. ব্যাকএন্ড থেকে কুকি ডিলিট করা
       await fetch("/api/logout", { method: "GET" });
     } catch (error) {
       console.error("Logout API failed:", error);
     } finally {
-      // ২. লোকাল স্টোরেজ থেকে সব ডাটা একদম ক্লিন করা
       localStorage.removeItem("user");
       localStorage.removeItem("zenex_login_time");
       localStorage.removeItem("zenex_saved_range");
-      
-      // ৩. 💥 ম্যাজিক: router.push বাদ দিয়ে হার্ড রিলোড! কালো স্ক্রিন জীবনেও আর আসবে না! 💥
       window.location.href = "/login";
     }
   }, []);
@@ -53,13 +57,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const checkActiveSession = async () => {
       try {
         const res = await fetch("/api/check-session", { method: "GET" });
-        if (res.status === 401) {
-          console.warn("🚨 Session expired or logged in from too many devices! Kicking out...");
-          handleLogout(); 
-        }
-      } catch (e) {
-        console.error("Session check failed");
-      }
+        if (res.status === 401) handleLogout(); 
+      } catch (e) {}
     };
 
     const checkMaintenance = async () => {
@@ -67,35 +66,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const res = await fetch("/api/system-settings");
         if(res.ok){
           const data = await res.json();
-          if (data && data.maintenance) {
-             setIsMaintenance(true);
-          } else {
-             setIsMaintenance(false);
-          }
+          setIsMaintenance(!!(data && data.maintenance));
         }
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) {}
     };
 
     const fetchRealBalance = async () => {
       if (parsedUser.role === "admin") return;
-      
       try {
         const res = await fetch("/api/get-user-details", {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
+           method: "POST", headers: { "Content-Type": "application/json" },
            body: JSON.stringify({ email: parsedUser.email })
         });
         if(res.ok){
           const data = await res.json();
-          if (data && data.user) {
-             setBalance(Number(data.user.balance || 0).toFixed(2));
-          }
+          if (data && data.user) setBalance(Number(data.user.balance || 0).toFixed(2));
         }
-      } catch (err) {
-        console.error("Failed to load real balance");
-      }
+      } catch (err) {}
     };
     
     checkActiveSession();
@@ -112,6 +99,125 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       clearInterval(balanceInterval);
     }
   }, [router, handleLogout]);
+
+  // 💥 THE MAGIC: GLOBAL BACKGROUND WEB WORKER ENGINE 💥
+  // আপনি ড্যাশবোর্ডের যেকোনো পেজে থাকেন বা ইউটিউব দেখেন, এই কোড কখনো ঘুমাবে না!
+  useEffect(() => {
+    if (!user?.email) return;
+
+    const fetchPendingOrders = async () => {
+       try {
+         const res = await fetch("/api/sync-orders", { 
+            method: "POST", headers: { "Content-Type": "application/json" }, 
+            body: JSON.stringify({ action: "FETCH", email: user.email }) 
+         });
+         const data = await res.json();
+         if (data.success && data.orders) {
+            // শুধু Wait এবং গত ১৫ মিনিটের Done অর্ডার ট্র্যাক করবে (Multi OTP এর জন্য)
+            pendingOrdersRef.current = data.orders.filter((o: any) => 
+              o.status === "WAIT" || (o.status === "DONE" && (Date.now() - o.createdAt < 900000))
+            );
+         }
+       } catch(e) {}
+    };
+
+    const checkGlobalOtps = async () => {
+       if (isCheckingOTPRef.current || pendingOrdersRef.current.length === 0) return;
+       isCheckingOTPRef.current = true;
+       try {
+         const res = await fetch(`/api/check-otp?t=${Date.now()}`);
+         const result = await res.json();
+         if (result.success && result.otps) {
+           let updatedPending = [...pendingOrdersRef.current];
+           let hasUpdates = false;
+           
+           for (let i = 0; i < updatedPending.length; i++) {
+             let item = updatedPending[i];
+             
+             if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
+                await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "FAIL", otp: "Timeout" } }) });
+                updatedPending.splice(i, 1); i--; hasUpdates = true; continue;
+             }
+
+             const cleanSearch = String(item.searchNumber).replace(/\D/g, "");
+             const last6 = cleanSearch.slice(-6);
+             const matches = result.otps.filter((o:any) => String(o.number).replace(/\D/g, "").endsWith(last6));
+
+             if (matches.length > 0) {
+                const apiMessages = matches.map((m:any) => m.otp || "");
+
+                if (item.status === "WAIT") {
+                   const firstMsg = apiMessages[0];
+                   const codeMatch = firstMsg.match(/\b\d{4,8}\b/);
+                   const finalCode = codeMatch ? codeMatch[0] : firstMsg;
+
+                   showGlobalToast(`🔔 SUCCESS: OTP Received! Code: ${finalCode}`);
+
+                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: Date.now() } }) });
+
+                   item.status = "DONE"; item.fullMessage = firstMsg; item.seenMessages = apiMessages;
+                   hasUpdates = true;
+                } 
+                else if (item.status === "DONE") {
+                   const alreadySeen = item.seenMessages || [item.fullMessage];
+                   const alreadySeenCodes = alreadySeen.map((msg: string) => { const m = msg.match(/\b\d{4,8}\b/); return m ? m[0] : msg.trim(); });
+
+                   const newMessages = apiMessages.filter((msg: string) => {
+                      const codeMatch = msg.match(/\b\d{4,8}\b/);
+                      const extractedCode = codeMatch ? codeMatch[0] : msg.trim();
+                      return !alreadySeenCodes.includes(extractedCode);
+                   });
+
+                   if (newMessages.length > 0) {
+                      for (const newMsg of newMessages) {
+                         const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
+                         const finalCode = codeMatch ? codeMatch[0] : newMsg;
+                         showGlobalToast(`🔥 MULTI OTP Received! Code: ${finalCode}`);
+                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: Date.now() } }) });
+                      }
+                      item.seenMessages = [...alreadySeen, ...newMessages];
+                      hasUpdates = true;
+                   }
+                }
+             }
+           }
+           if (hasUpdates) pendingOrdersRef.current = updatedPending;
+         }
+       } catch (e) {} finally {
+         isCheckingOTPRef.current = false;
+       }
+    };
+
+    fetchPendingOrders();
+
+    const workerCode = `
+      let tick3, tick10;
+      self.onmessage = function(e) {
+        if (e.data === 'start') {
+          tick3 = setInterval(() => self.postMessage('tick3'), 3000);
+          tick10 = setInterval(() => self.postMessage('tick10'), 10000);
+        } else if (e.data === 'stop') {
+          clearInterval(tick3);
+          clearInterval(tick10);
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob));
+
+    worker.onmessage = (e) => {
+      if (e.data === 'tick3') checkGlobalOtps();
+      if (e.data === 'tick10') fetchPendingOrders();
+    };
+
+    worker.postMessage('start');
+
+    return () => {
+      worker.postMessage('stop');
+      worker.terminate();
+    };
+  }, [user?.email, showGlobalToast]);
+
 
   if (!mounted || !isAuthorized) {
     return (
@@ -149,6 +255,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen w-full bg-[#0F172A] text-[#E2E8F0] flex font-sans selection:bg-[#3B82F6] selection:text-white relative overflow-hidden">
       
+      {/* 💥 GLOBAL OTP NOTIFICATION TOAST 💥 */}
+      {globalToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] bg-gradient-to-r from-[#10B981] to-[#059669] text-white px-6 py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.5)] font-black text-sm flex items-center gap-3 animate-bounce-in border border-[#34D399]">
+           <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+           {globalToast}
+        </div>
+      )}
+
       {isMaintenance && role === "admin" && (
         <div className="fixed top-0 left-0 w-full bg-[#F43F5E] text-white text-[10px] font-black uppercase tracking-widest text-center py-1 z-[100] animate-pulse">
           ⚠️ MAINTENANCE MODE IS ACTIVE - ALL USERS ARE BLOCKED ⚠️
@@ -309,9 +423,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      {/* 💥 Professional Version & Developer Tag (Fixed Bottom Right) 💥 */}
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] group flex flex-col items-end">
-        {/* Tooltip Content (Hidden, shown on hover) */}
         <div className="absolute bottom-full right-0 mb-3 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto w-56 md:w-64 bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden">
           <div className="p-4 border-b border-[#334155]/50 bg-gradient-to-br from-[#1E293B] to-[#0F172A]">
             <div className="flex items-center justify-between mb-1">
@@ -326,8 +438,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           
           <div className="p-4 bg-[#0F172A]/80 flex flex-col items-center">
             <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-widest mb-1 w-full text-center border-b border-[#334155] pb-2">Developed By</p>
-            
-            {/* 💥 Zenex Team with Email Hover Magic 💥 */}
             <a href="mailto:zenexpart44@gmail.com" className="relative block w-full text-center group/team cursor-pointer py-2">
                <p className="text-base md:text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C6FF] to-[#3B82F6] transition-all duration-300 group-hover/team:-translate-y-1 group-hover/team:opacity-0">
                   Zenex Team
@@ -336,12 +446,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   zenexpart44@gmail.com
                </p>
             </a>
-            
             <p className="text-[9px] text-center text-[#94A3B8]">Secure Next.js B2B Engine</p>
           </div>
         </div>
 
-        {/* Visible Badge */}
         <div className="bg-[#1E293B]/80 backdrop-blur-md border border-[#334155] text-[10px] md:text-xs font-mono font-bold text-[#94A3B8] px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-2">
           <span>V3.0.1 (Secured)</span>
           <svg className="w-3 h-3 md:w-4 md:h-4 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -349,7 +457,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </svg>
         </div>
       </div>
-
     </div>
   );
 }
