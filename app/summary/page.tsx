@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import DashboardLayout from "../DashboardLayout"; // আপনার ফোল্ডার অনুযায়ী পাথ ঠিক করে নেবেন
+import DashboardLayout from "../DashboardLayout"; 
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 export default function Summary() {
@@ -16,7 +16,6 @@ export default function Summary() {
   const [overallRate, setOverallRate] = useState("0%");
   const [loading, setLoading] = useState(true);
 
-  // 💥 ম্যাজিক: বাংলাদেশ টাইমের বেস ধরে পেছনের দিনগুলো বের করা হচ্ছে 💥
   const generateDateRange = (days: number, baseDateStr: string) => {
     const dates = [];
     const [year, month, day] = baseDateStr.split('-').map(Number);
@@ -60,7 +59,6 @@ export default function Summary() {
           else if (dateFilter === "30") daysToShow = 30;
           else if (dateFilter === "all") daysToShow = 60;
 
-          // সার্ভার থেকে আসা BD Time দিয়ে গ্রাফের রেঞ্জ তৈরি
           const serverDate = data.serverDate; 
           const dateTemplate = generateDateRange(daysToShow, serverDate);
           const groupedRawData = data.groupedRawData || {};
@@ -109,7 +107,9 @@ export default function Summary() {
 
   const pageTitle = isAdmin ? "Global System Report" : isAgent ? "Network Summary Report" : "My Performance Report";
   const allocationLabel = isAdmin ? "Global Allocation" : isAgent ? "Network Allocation" : "My Allocation";
-  const earningsLabel = isAdmin ? "System Profit" : isAgent ? "Total Commission" : "My Earnings";
+  
+  // 💥 ম্যাজিক: এডমিনের জন্য System Profit এর বদলে Total Payout লেখা হলো 💥
+  const earningsLabel = isAdmin ? "Total Payout" : isAgent ? "Total Commission" : "My Earnings";
 
   return (
     <DashboardLayout>

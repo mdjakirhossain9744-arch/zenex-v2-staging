@@ -4,21 +4,21 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "./DashboardLayout";
 
-// 💥 ম্যাজিক: বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন 💥
+// বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Dhaka',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
-  }).format(new Date(dateObj)); // Output: YYYY-MM-DD in BD Time
+  }).format(new Date(dateObj)); 
 };
 
 const getBDHour = (dateObj: Date | number | string = new Date()) => {
   const hr = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Dhaka',
       hour: 'numeric',
-      hourCycle: 'h23' // 00 to 23 hours in BD Time
+      hourCycle: 'h23' 
   }).format(new Date(dateObj));
   return parseInt(hr, 10);
 };
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     totalUsers: 0,
     totalAgents: 0,
     systemLiability: "0.00",
-    globalTodayOTP: 0,
+    globalTodayOTP: 0, // এটা এখন থেকে ১০০% পারফেক্ট কাজ করবে
   });
 
   const [agentReport, setAgentReport] = useState<any[]>([]);
@@ -94,7 +94,6 @@ export default function DashboardPage() {
       setLiveRate(parsedUser.rate || parsedUser.otpRate || 0.50);
     }
 
-    // 💥 বাংলাদেশ টাইম অনুযায়ী আজকের এবং গতকালের তারিখ 💥
     const todayStr = getBDDateString();
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -109,16 +108,7 @@ export default function DashboardPage() {
             fetch("/api/admin-agent-report").then(r => r.json()) 
           ]);
   
-          if (userData.users) {
-            const allUsers = userData.users;
-            const liability = allUsers.reduce((sum: number, u: any) => sum + (Number(u.balance) || 0), 0);
-            setAdminStats({
-              totalUsers: allUsers.filter((u: any) => u.role === 'user').length,
-              totalAgents: allUsers.filter((u: any) => u.role === 'agent').length,
-              systemLiability: liability.toFixed(2),
-              globalTodayOTP: otpData.otps ? otpData.otps.length : 0 
-            });
-          }
+          let actualTodayGlobalOTP = 0; // 💥 নতুন: শুধু আজকের ওটিপি গোনার জন্য
 
           if (reportData && reportData.success) {
              setAgentReport(reportData.report);
@@ -131,10 +121,13 @@ export default function DashboardPage() {
   
             otpData.otps.forEach((log: any) => {
               const time = log.time || log.createdAt || log.date || Date.now();
-              const logDateStr = getBDDateString(time); // BD Time Date
+              const logDateStr = getBDDateString(time); 
               
+              // 💥 ম্যাজিক: শুধুমাত্র বাংলাদেশ টাইমের আজকের ওটিপি কাউন্ট হবে 💥
               if (logDateStr === todayStr) {
-                 const hour = getBDHour(time); // BD Time Hour
+                 actualTodayGlobalOTP++; // আজকের ওটিপি গোনা হচ্ছে
+
+                 const hour = getBDHour(time); 
                  const bucketIndex = Math.floor(hour / 4);
                  if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
   
@@ -146,6 +139,18 @@ export default function DashboardPage() {
   
             setTrafficData(buckets);
             setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
+          }
+
+          // ইউজার ডাটা এবং সঠিক ওটিপি কাউন্ট স্টেটে সেভ করা
+          if (userData.users) {
+            const allUsers = userData.users;
+            const liability = allUsers.reduce((sum: number, u: any) => sum + (Number(u.balance) || 0), 0);
+            setAdminStats({
+              totalUsers: allUsers.filter((u: any) => u.role === 'user').length,
+              totalAgents: allUsers.filter((u: any) => u.role === 'agent').length,
+              systemLiability: liability.toFixed(2),
+              globalTodayOTP: actualTodayGlobalOTP // 💥 ফিক্সড: এখন আর ভুল সংখ্যা দেখাবে না
+            });
           }
 
         } else if (parsedUser.role === "agent") {
@@ -304,11 +309,6 @@ export default function DashboardPage() {
               {role === 'admin' ? "Here is the global overview of your entire network today." : role === 'agent' ? "Here is your team's live performance and commission." : "Here's what's happening with your account today."}
             </p>
           </div>
-          {role === 'admin' && (
-            <span className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Super Admin
-            </span>
-          )}
         </div>
 
         {role === "admin" ? (
