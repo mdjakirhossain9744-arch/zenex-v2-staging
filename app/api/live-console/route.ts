@@ -27,7 +27,6 @@ export async function GET() {
   try {
     await connectToDatabase();
 
-    // 💥 ম্যাজিক ১: MNIT এর Cloudflare ক্যাশ ভাঙার জন্য লাইভ টাইমস্ট্যাম্প যুক্ত করা হলো! 💥
     const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${Date.now()}`;
 
     const response = await fetch(mnitUrl, {
@@ -48,8 +47,6 @@ export async function GET() {
       if (result && result.data && Array.isArray(result.data.otps)) {
         
         const bulkOps = result.data.otps.map((item: any) => {
-          // MNIT এর অরিজিনাল টাইম নেওয়া হচ্ছে, যাতে সবগুলোর টাইম এক না হয়ে যায়
-          const mnitTime = item.created_at ? new Date(item.created_at) : new Date();
           const uniqueId = item.nid || `${item.number}_${item.otp}`;
 
           return {
@@ -64,8 +61,9 @@ export async function GET() {
                   operator: item.operator || "Other",
                   service: getServiceName(item.otp)
                 },
+                // 💥 ম্যাজিক ফিক্স: MNIT এর টাইম বাদ! আমাদের নিজস্ব সার্ভারের লাইভ টাইম বসানো হলো! 💥
                 $setOnInsert: {
-                  createdAt: mnitTime
+                  createdAt: new Date()
                 }
               },
               upsert: true
@@ -85,10 +83,10 @@ export async function GET() {
 
     const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
 
-    // 💥 ম্যাজিক ২: ডাটাবেসের ভরসায় না থেকে, কোড দিয়ে জোর করে ২০ মিনিটের পুরনো ডাটা ডিলিট! 💥
+    // ২০ মিনিটের পুরনো ডাটা ডিলিট
     await LiveLog.deleteMany({ createdAt: { $lt: twentyMinsAgo } });
 
-    // 💥 ম্যাজিক ৩: ফ্রেশ ডাটা আনা হচ্ছে 💥
+    // ফ্রেশ ডাটা আনা হচ্ছে
     const latestLogs = await LiveLog.find({ createdAt: { $gte: twentyMinsAgo } })
       .sort({ createdAt: -1, _id: -1 })
       .limit(100);
@@ -107,7 +105,6 @@ export async function GET() {
       pad += " ";
     }
 
-    // কোনো ক্যাশ ভেরিয়েবল নেই, একদম ফ্রেশ ডাটা পাঠানো হচ্ছে
     return NextResponse.json({ success: true, logs: latestLogs, graph: graphData });
 
   } catch (error: any) {

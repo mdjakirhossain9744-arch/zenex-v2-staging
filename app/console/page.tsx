@@ -15,7 +15,6 @@ export default function Console() {
 
   const fetchGlobalData = async () => {
     try {
-      // 💥 ব্রাউজারের ক্যাশ ফোর্স করে ভাঙা হলো 💥
       const res = await fetch(`/api/live-console?t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       
@@ -85,13 +84,12 @@ export default function Console() {
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 pb-16">
         
-        {/* Graphs Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
            <div className="lg:col-span-2 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
               
               <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-2 md:mb-4">
-                 Top Apps (Last 20 Mins)
+                 Top Apps Live Trend
                  <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#10B981] animate-pulse">Live Updating</span>
               </h3>
               
@@ -156,7 +154,6 @@ export default function Console() {
            </div>
         </div>
 
-        {/* Live Feed List */}
         <div className="flex flex-col gap-2.5 w-full pb-10">
            {loading && liveLogs.length === 0 ? (
               <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
@@ -172,7 +169,6 @@ export default function Console() {
                 const time = formatTime(log.createdAt); 
                 return (
                  <div key={index} className="bg-[#0B0F1A]/80 border border-[#334155] p-3 md:p-4 rounded-lg flex flex-col gap-2 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
-                    {/* Accent Line */}
                     <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
                     
                     <div className="flex justify-between items-center ml-2 border-b border-[#334155]/50 pb-2">
