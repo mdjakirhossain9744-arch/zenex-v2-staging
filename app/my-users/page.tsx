@@ -29,54 +29,64 @@ export default function AgentUsersPage() {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.users) setMyUsers(data.users);
-        if (data.maxLimit) setAgentMaxLimit(data.maxLimit); 
-        if (data.agentRate) setAgentRate(data.agentRate);
+        // 💥 EXTREME SAFETY: Ensuring arrays and numbers are correctly typed 💥
+        if (data?.users && Array.isArray(data.users)) {
+           setMyUsers(data.users);
+        }
+        if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
+        if (data?.agentRate) setAgentRate(Number(data.agentRate));
         
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error("API Fetch Error:", err);
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setRole(parsedUser.role);
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setRole(parsedUser?.role || "user");
 
-      if (parsedUser.role === "agent") {
-        setAgentMail(parsedUser.email); 
-        fetchNetworkUsers(parsedUser.email);
-        
-        const interval = setInterval(() => fetchNetworkUsers(parsedUser.email), 10000);
-        return () => clearInterval(interval);
+        if (parsedUser?.role === "agent") {
+          setAgentMail(parsedUser.email); 
+          fetchNetworkUsers(parsedUser.email);
+          
+          const interval = setInterval(() => fetchNetworkUsers(parsedUser.email), 10000);
+          return () => clearInterval(interval);
+        }
+      } catch (e) {
+        console.error("Local Storage Error:", e);
       }
     }
   }, []);
 
-  // 💥 BUG FIXED: Added Fallbacks (|| "") to prevent .toLowerCase() crash 💥
-  const filteredUsers = myUsers.filter(u => {
-    const name = u.name || "";
-    const email = u.email || "";
-    const uid = u.uid || "";
-    const query = searchQuery.toLowerCase();
+  // 💥 100% CRASH-PROOF FILTERING 💥
+  const filteredUsers = Array.isArray(myUsers) ? myUsers.filter(u => {
+    const name = String(u?.name || "").toLowerCase();
+    const email = String(u?.email || "").toLowerCase();
+    const uid = String(u?.uid || "").toLowerCase();
+    const query = String(searchQuery || "").toLowerCase();
     
-    return name.toLowerCase().includes(query) || 
-           email.toLowerCase().includes(query) || 
-           uid.toLowerCase().includes(query);
-  });
+    return name.includes(query) || email.includes(query) || uid.includes(query);
+  }) : [];
 
-  const totalUsers = myUsers.length;
-  // 💥 BUG FIXED: Status toLowerCase() protected 💥
-  const activeUsers = myUsers.filter(u => (u.status || "").toLowerCase() === 'active').length;
-  const pendingUsers = myUsers.filter(u => (u.status || "").toLowerCase() === 'pending').length;
-  const bannedUsers = myUsers.filter(u => (u.status || "").toLowerCase() === 'banned').length;
+  const totalUsers = Array.isArray(myUsers) ? myUsers.length : 0;
+  
+  const activeUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'active').length : 0;
+  const pendingUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'pending').length : 0;
+  const bannedUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'banned').length : 0;
+  
   const isSeatFull = totalUsers >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
+    if(!user) return;
     setSelectedUser(user);
-    setNewRate(user.rate || "0.50"); 
-    setNewStatus((user.status || "active").toLowerCase()); 
+    setNewRate(String(user?.rate || "0.50")); 
+    setNewStatus(String(user?.status || "active").toLowerCase()); 
     setNewPassword(""); 
     setIsModalOpen(true);
   };
@@ -85,8 +95,8 @@ export default function AgentUsersPage() {
     e.preventDefault();
     setIsSaving(true);
 
-    if (Number(newRate) > agentRate) {
-      alert(`🔴 ERROR: You cannot give a user more than your own limit! (Your Max Limit is ৳ ${agentRate.toFixed(2)})`);
+    if (Number(newRate) > Number(agentRate)) {
+      alert(`🔴 ERROR: You cannot give a user more than your own limit! (Your Max Limit is ৳ ${Number(agentRate).toFixed(2)})`);
       setIsSaving(false);
       return; 
     }
@@ -96,7 +106,7 @@ export default function AgentUsersPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: selectedUser.id,
+          userId: selectedUser?.id,
           newPassword: newPassword,
           newRate: newRate,
           newStatus: newStatus,
@@ -128,7 +138,7 @@ export default function AgentUsersPage() {
         const res = await fetch("/api/delete-user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: selectedUser.email, requesterRole: role })
+          body: JSON.stringify({ email: selectedUser?.email, requesterRole: role })
         });
         const data = await res.json();
         
@@ -219,26 +229,26 @@ export default function AgentUsersPage() {
               ) : filteredUsers.length === 0 ? (
                 <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found in your network.</td></tr>
               ) : (
-                filteredUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-[#334155]/20 transition-colors">
+                filteredUsers.map((u, i) => (
+                  <tr key={u?.id || i} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="font-bold text-[#E2E8F0]">{u.name}</p>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u.uid}</span>
-                        {u.isApiActive && (
+                        <p className="font-bold text-[#E2E8F0]">{u?.name || "Unknown"}</p>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u?.uid || "N/A"}</span>
+                        {u?.isApiActive && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">API</span>
                         )}
                       </div>
-                      <p className="text-[10px] text-[#64748B]">{u.email}</p>
+                      <p className="text-[10px] text-[#64748B]">{u?.email || "No Email"}</p>
                     </td>
                     <td className="p-4 text-center">
-                       <p className="font-black text-white text-base">{u.todayOTP}</p>
+                       <p className="font-black text-white text-base">{u?.todayOTP || 0}</p>
                     </td>
-                    <td className="p-4 font-black text-[#EAB308]">৳ {u.rate}</td>
-                    <td className="p-4 font-black text-[#10B981]">৳ {u.balance}</td>
+                    <td className="p-4 font-black text-[#EAB308]">৳ {u?.rate || "0.00"}</td>
+                    <td className="p-4 font-black text-[#10B981]">৳ {u?.balance || "0.00"}</td>
                     <td className="p-4">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.status === 'Active' ? 'bg-[#10B981]/10 text-[#10B981]' : u.status === 'Banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
-                        {u.status}
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u?.status === 'Active' ? 'bg-[#10B981]/10 text-[#10B981]' : u?.status === 'Banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
+                        {u?.status || "Pending"}
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
@@ -261,22 +271,22 @@ export default function AgentUsersPage() {
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#A855F7] to-[#EC4899] flex items-center justify-center text-white font-black">
-                   {selectedUser.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
+                   {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
-                   <h3 className="text-lg font-black text-white leading-tight">{selectedUser.name}</h3>
-                   <p className="text-[10px] font-mono text-[#A855F7] font-bold">{selectedUser.uid}</p>
+                   <h3 className="text-lg font-black text-white leading-tight">{selectedUser?.name || "Unknown"}</h3>
+                   <p className="text-[10px] font-mono text-[#A855F7] font-bold">{selectedUser?.uid || "N/A"}</p>
                  </div>
               </div>
               
               <div className="grid grid-cols-2 gap-3 mb-6">
                  <div className="bg-[#0F172A] border border-[#334155] p-3 rounded-xl">
                    <span className="text-[9px] text-[#64748B] uppercase font-bold block mb-1">Today's OTP</span>
-                   <span className="text-lg text-white font-black">{selectedUser.todayOTP}</span>
+                   <span className="text-lg text-white font-black">{selectedUser?.todayOTP || 0}</span>
                  </div>
                  <div className="bg-[#0F172A] border border-[#334155] p-3 rounded-xl">
                    <span className="text-[9px] text-[#64748B] uppercase font-bold block mb-1">User Balance</span>
-                   <span className="text-lg text-[#10B981] font-black">৳ {selectedUser.balance}</span>
+                   <span className="text-lg text-[#10B981] font-black">৳ {selectedUser?.balance || "0.00"}</span>
                  </div>
               </div>
 
@@ -292,7 +302,7 @@ export default function AgentUsersPage() {
 
                 <div>
                   <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
-                    Set User Pay Rate (Your Limit: ৳ {agentRate.toFixed(2)})
+                    Set User Pay Rate (Your Limit: ৳ {Number(agentRate || 0).toFixed(2)})
                   </label>
                   <input type="number" step="0.01" value={newRate} onChange={(e) => setNewRate(e.target.value)} required
                     className="w-full bg-[#0F172A] border border-[#334155] text-white font-black px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#EAB308]" />
