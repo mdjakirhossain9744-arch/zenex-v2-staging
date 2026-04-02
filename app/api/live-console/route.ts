@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import LiveLog from "../../../models/LiveLog";
 
+// 💥 Next.js 14 এর ক্যাশ চিরতরে অফ করার কমান্ড 💥
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 const MNIT_API_KEY = "M_7VX25KAJI";
 
 let cachedData: any = null;
 let lastFetchTime: number = 0;
-const CACHE_DURATION = 5000; // 💥 ৫ সেকেন্ড ক্যাশ 💥
+const CACHE_DURATION = 5000; // ৫ সেকেন্ড ক্যাশ 
 
 const getServiceName = (message: string) => {
   const msgLower = (message || "").toLowerCase();
@@ -32,7 +36,10 @@ export async function GET() {
 
     await connectToDatabase();
 
-    const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info", {
+    // 💥 ম্যাজিক: লিংকের শেষে ডাইনামিক টাইম বসানো হলো, যাতে Cloudflare ক্যাশ করতে না পারে 💥
+    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?nocache=${currentTime}`;
+
+    const response = await fetch(mnitUrl, {
       method: "GET",
       headers: {
         "mapikey": MNIT_API_KEY, 
@@ -57,9 +64,8 @@ export async function GET() {
                   otp: item.otp,
                   country: item.country || "GLOBAL",
                   operator: item.operator || "Other",
-                  service: getServiceName(item.otp),
+                  service: getServiceName(item.otp)
                 },
-                // 💥 ম্যাজিক: টাইম শুধু একবার সেভ হবে, এরপর আর চেঞ্জ হবে না! 💥
                 $setOnInsert: {
                   createdAt: new Date()
                 }
@@ -77,10 +83,9 @@ export async function GET() {
       }
     }
 
-    // ডাটাবেস থেকে লাস্ট ১০০টি ওটিপি আনা হচ্ছে (যেহেতু টাইম লকড, তাই রিয়েল নতুনগুলোই উপরে আসবে)
-    const latestLogs = await LiveLog.find().sort({ createdAt: -1 }).limit(100);
+    // 💥 সর্টিং ফিক্স: একই সেকেন্ডে আসলে আইডি অনুযায়ী সিরিয়াল করবে 💥
+    const latestLogs = await LiveLog.find().sort({ createdAt: -1, _id: -1 }).limit(100);
 
-    // গ্রাফের জন্য লাস্ট ২০ মিনিটের কাউন্ট
     const topAppsAgg = await LiveLog.aggregate([
       { $group: { _id: "$service", value: { $sum: 1 } } },
       { $sort: { value: -1 } }, 

@@ -8,14 +8,15 @@ export default function Console() {
   const [liveLogs, setLiveLogs] = useState<any[]>([]);
   const [graphData, setGraphData] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [countdown, setCountdown] = useState(5); // 💥 ৫ সেকেন্ড 💥
+  const [countdown, setCountdown] = useState(5);
   const [loading, setLoading] = useState(true);
 
   const BAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#EAB308', '#F43F5E'];
 
   const fetchGlobalData = async () => {
     try {
-      const res = await fetch("/api/live-console", { cache: 'no-store' });
+      // 💥 ম্যাজিক: ব্রাউজার ক্যাশ বাইপাস করার জন্য URL এ Time যুক্ত করা হলো 💥
+      const res = await fetch(`/api/live-console?t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       
       if (data.success) {
