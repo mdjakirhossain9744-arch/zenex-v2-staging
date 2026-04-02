@@ -1,17 +1,15 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-
-// 💥 ইম্পোর্ট পাথ ঠিক করা হয়েছে 💥
 import connectToDatabase from "../../lib/mongodb";
 import User from "../../../models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET || "ZENEX_SUPER_SECRET_KEY_2024";
 
-export async function GET() {
+// 💥 req: NextRequest ব্যবহার করা হয়েছে যাতে Promise Error না আসে 💥
+export async function GET(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const token = cookieStore.get("zenex_token")?.value;
+    // সরাসরি রিকোয়েস্ট থেকে কুকি রিড করা হচ্ছে
+    const token = req.cookies.get("zenex_token")?.value;
 
     if (!token) {
       return NextResponse.json({ message: "No token found" }, { status: 401 });
