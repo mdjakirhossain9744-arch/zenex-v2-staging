@@ -5,7 +5,6 @@ import User from "../../../models/User";
 
 export const dynamic = "force-dynamic";
 
-// Strict BD Time Date Formatter (YYYY-MM-DD)
 const getBDDateString = (dateObj: any = new Date()) => {
   try {
     return new Intl.DateTimeFormat('en-CA', {
@@ -28,7 +27,6 @@ export async function POST(req: Request) {
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') });
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
 
-    // 💥 BINGO FIX 1: Exact matching for Agent's Users (Copied from get-agent-users) 💥
     const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
     if (agent.customAgentMail) {
       emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
@@ -39,7 +37,6 @@ export async function POST(req: Request) {
         role: "user"
     });
 
-    // Collect all target emails
     const targetEmails = new Set<string>();
     const userRateMap: Record<string, number> = {};
 
@@ -58,7 +55,6 @@ export async function POST(req: Request) {
     const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
 
-    // 💥 BINGO FIX 2: Case-Insensitive $or array to completely bypass MongoDB case-sensitivity issues 💥
     const queryConditions: any[] = [];
     uniqueEmails.forEach(e => {
         const regex = new RegExp(`^${e}$`, 'i');
@@ -66,15 +62,20 @@ export async function POST(req: Request) {
         queryConditions.push({ email: regex });
     });
 
-    // Fetch all matching orders
-    const orders = await Order.find({ $or: queryConditions });
+    // 💥 SUPER FAST FIX: Added 60-days limit back to stop Database Overload! 💥
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+    const orders = await Order.find({ 
+        createdAt: { $gte: sixtyDaysAgo }, // This line saves the database from choking!
+        $or: queryConditions 
+    });
 
     const groupedRawData: Record<string, any> = {};
 
     orders.forEach(o => {
        const oEmail = (o.userEmail || o.email || "").toLowerCase().trim();
        
-       // 💥 Force Strict Date Parsing for accurate graph plotting 💥
        let finalDateStr = "";
        if (o.createdAt) {
            finalDateStr = getBDDateString(o.createdAt);
@@ -92,7 +93,6 @@ export async function POST(req: Request) {
        
        const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
 
-       // Processing SUCCESS status accurately
        if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
           const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
           groupedRawData[finalDateStr].allocation += msgCount; 
