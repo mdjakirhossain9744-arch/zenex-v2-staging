@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import DashboardLayout from "../DashboardLayout"; 
+import DashboardLayout from "../DashboardLayout"; // আপনার ফোল্ডার অনুযায়ী পাথ ঠিক করে নেবেন
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 export default function Summary() {
@@ -16,14 +16,17 @@ export default function Summary() {
   const [overallRate, setOverallRate] = useState("0%");
   const [loading, setLoading] = useState(true);
 
-  // 💥 ম্যাজিক: ইউজারের ডিভাইসের টাইম বাদ দিয়ে সার্ভারের টাইম ব্যবহার করা হচ্ছে
+  // 💥 ম্যাজিক: বাংলাদেশ টাইমের বেস ধরে পেছনের দিনগুলো বের করা হচ্ছে 💥
   const generateDateRange = (days: number, baseDateStr: string) => {
     const dates = [];
-    const baseDate = new Date(baseDateStr);
+    const [year, month, day] = baseDateStr.split('-').map(Number);
+    const baseDate = new Date(year, month - 1, day);
+
     for (let i = 0; i < days; i++) {
       const d = new Date(baseDate);
       d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split('T')[0]);
+      const localDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      dates.push(localDateStr);
     }
     return dates;
   };
@@ -57,8 +60,8 @@ export default function Summary() {
           else if (dateFilter === "30") daysToShow = 30;
           else if (dateFilter === "all") daysToShow = 60;
 
-          // 💥 সার্ভারের টাইম নিয়ে গ্রাফ তৈরি হবে 💥
-          const serverDate = data.serverDate || new Date().toISOString();
+          // সার্ভার থেকে আসা BD Time দিয়ে গ্রাফের রেঞ্জ তৈরি
+          const serverDate = data.serverDate; 
           const dateTemplate = generateDateRange(daysToShow, serverDate);
           const groupedRawData = data.groupedRawData || {};
 

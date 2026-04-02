@@ -5,95 +5,94 @@ import User from "../../../models/User";
 
 export const dynamic = "force-dynamic";
 
+// 💥 ম্যাজিক: সার্ভারে বাংলাদেশ টাইম ফোর্স করা হলো 💥
+const getBDDateString = (dateObj: Date | number | string = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+  }).format(new Date(dateObj));
+};
+
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const { email, role } = await req.json();
-
-    let targetEmails: string[] = [];
-    let userRate = 0.50;
-    let balance = 0;
-
     const safeEmail = email.toLowerCase().trim();
 
-    // 💥 সিকিউরিটি ১: যে রিকোয়েস্ট করছে, সে আসলেই আছে কিনা চেক
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') });
-    if (!currentUser) return NextResponse.json({ success: false, message: "Unauthorized Request" });
+    if (!currentUser) return NextResponse.json({ success: false });
 
-    const memberRateMap: Record<string, number> = {};
+    // ডাটাবেস থেকে সব ইউজার মেমরিতে এনে নিখুঁত ম্যাপ তৈরি (যাতে ডাটা মিস না হয়)
+    const allUsers = await User.find({}).select("email agentEmail customAgentMail otpRate");
+    const targetEmails = new Set<string>();
+    const rateMap: Record<string, number> = {};
+
+    let userRate = currentUser.otpRate || 0.50;
+    let balance = currentUser.balance || 0;
 
     if (role === "agent") {
-       // 💥 সিকিউরিটি ২: শুধুমাত্র এই এজেন্টের আন্ডারে থাকা ইউজারদের ডাটাবেস থেকে টানা হচ্ছে
-       const members = await User.find({
-           $or: [
-               { agentEmail: new RegExp(`^${safeEmail}$`, 'i') },
-               { customAgentMail: new RegExp(`^${safeEmail}$`, 'i') }
-           ]
-       });
-       
-       targetEmails = members.map(m => m.email.toLowerCase().trim());
-       targetEmails.push(safeEmail); // এজেন্টের নিজের ইমেইলটাও অ্যাড করা হলো
+        userRate = currentUser.agentMaxRate || 0.70;
+        balance = currentUser.agentEarning || 0;
+        targetEmails.add(safeEmail); 
 
-       members.forEach(m => { memberRateMap[m.email.toLowerCase().trim()] = m.otpRate || 0.50; });
-       memberRateMap[safeEmail] = currentUser.otpRate || 0.50;
+        allUsers.forEach(u => {
+            const uEmail = u.email.toLowerCase().trim();
+            const aEmail = (u.agentEmail || "").toLowerCase().trim();
+            const customA = (u.customAgentMail || "").toLowerCase().trim();
 
-       userRate = currentUser.agentMaxRate || 0.70;
-       balance = currentUser.agentEarning || 0; 
+            if (aEmail === safeEmail || customA === safeEmail) {
+                targetEmails.add(uEmail);
+                rateMap[uEmail] = u.otpRate || 0.50;
+            }
+        });
     } else if (role === "admin") {
-       userRate = 0.50; 
-       balance = 0; 
+        userRate = 0.50;
     } else {
-       targetEmails = [safeEmail];
-       userRate = currentUser.otpRate || 0.50;
-       balance = currentUser.balance || 0;
+        targetEmails.add(safeEmail);
     }
 
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-    // 💥 সিকিউরিটি ৩: হ্যাকার-প্রুফ ডাটাবেস কোয়েরি 💥
-    const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
-    
-    if (role !== "admin") {
-       // ডাটাবেসকে কড়া নির্দেশ: "শুধুমাত্র এই ইমেইলগুলোর অর্ডারই আমাকে দেবে, অন্য কারও নয়!"
-       const regexEmails = targetEmails.map(e => new RegExp(`^${e}$`, 'i'));
-       orderQuery.userEmail = { $in: regexEmails };
-    }
-
-    // শুধুমাত্র পারমিশন পাওয়া ডাটাগুলোই বের হয়ে আসবে
-    const orders = await Order.find(orderQuery).select("status dateString createdAt fullMessage userEmail");
+    const orders = await Order.find({ createdAt: { $gte: sixtyDaysAgo } }).select("status dateString createdAt fullMessage userEmail");
 
     const groupedRawData: Record<string, any> = {};
 
     orders.forEach(o => {
        const oEmail = (o.userEmail || "").toLowerCase().trim();
-       const d = o.dateString || new Date(o.createdAt).toISOString().split('T')[0];
        
-       if (!groupedRawData[d]) groupedRawData[d] = { allocation: 0, success: 0, failed: 0, amount: 0 };
+       // শুধুমাত্র এই এজেন্টের ইউজারের ডাটাই কাউন্ট হবে
+       if (role !== "admin" && !targetEmails.has(oEmail)) return;
+
+       // 💥 বাংলাদেশ টাইম অনুযায়ী ডাটাবেসের অরিজিনাল ডেট 💥
+       const finalDateStr = o.dateString || getBDDateString(o.createdAt);
+
+       if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { allocation: 0, success: 0, failed: 0, amount: 0 };
        
-       const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("wa.me") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
+       const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
 
        if (o.status === "DONE") {
           const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
-          groupedRawData[d].allocation += msgCount; 
-          groupedRawData[d].success += msgCount;
+          groupedRawData[finalDateStr].allocation += msgCount; 
+          groupedRawData[finalDateStr].success += msgCount;
 
-          // 💥 নিখুঁত কমিশন হিসাব 💥
           if (!isFreeService) {
               let earned = 0;
               if (role === "admin") {
                  earned = userRate * msgCount; 
               } else if (role === "agent") {
-                 const mRate = memberRateMap[oEmail] || 0.50;
-                 earned = Math.max(0, userRate - mRate) * msgCount; // এজেন্টের কমিশন
+                 const mRate = rateMap[oEmail] || 0.50;
+                 earned = Math.max(0, userRate - mRate) * msgCount; 
               } else {
                  earned = userRate * msgCount;
               }
-              groupedRawData[d].amount += earned;
+              groupedRawData[finalDateStr].amount += earned;
           }
        } else {
-          groupedRawData[d].allocation += 1;
-          groupedRawData[d].failed += 1;
+          groupedRawData[finalDateStr].allocation += 1;
+          groupedRawData[finalDateStr].failed += 1;
        }
     });
 
@@ -102,11 +101,10 @@ export async function POST(req: Request) {
        groupedRawData,
        userRate,
        balance,
-       serverDate: new Date().toISOString()
+       serverDate: getBDDateString() // 💥 সার্ভার থেকে একদম ফ্রেশ BD Time পাঠানো হলো 💥
     });
 
   } catch (error) {
-    console.error("Summary API Error:", error);
     return NextResponse.json({ success: false });
   }
 }

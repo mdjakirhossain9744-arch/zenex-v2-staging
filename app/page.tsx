@@ -4,13 +4,31 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "./DashboardLayout";
 
+// 💥 ম্যাজিক: বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন 💥
+const getBDDateString = (dateObj: Date | number | string = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+  }).format(new Date(dateObj)); // Output: YYYY-MM-DD in BD Time
+};
+
+const getBDHour = (dateObj: Date | number | string = new Date()) => {
+  const hr = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Dhaka',
+      hour: 'numeric',
+      hourCycle: 'h23' // 00 to 23 hours in BD Time
+  }).format(new Date(dateObj));
+  return parseInt(hr, 10);
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState("user"); 
   const [liveRate, setLiveRate] = useState(0.50);
 
-  // ইউজারের লাইভ স্টেট
   const [stats, setStats] = useState({
     balance: "0.00",
     todayTotal: 0,
@@ -19,7 +37,6 @@ export default function DashboardPage() {
     yesterdaySuccess: 0,
   });
 
-  // অ্যাডমিনের লাইভ স্টেট
   const [adminStats, setAdminStats] = useState({
     totalUsers: 0,
     totalAgents: 0,
@@ -27,11 +44,12 @@ export default function DashboardPage() {
     globalTodayOTP: 0,
   });
 
+  const [agentReport, setAgentReport] = useState<any[]>([]);
+  const [currentMonthName, setCurrentMonthName] = useState("");
+
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
-  // ট্রাফিকের লাইভ ডাটা স্টেট
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
-  // সার্ভিস আইকন এবং কালার বের করার ফাংশন
   const getServiceInfo = (message: string) => {
     const msgLower = (message || "").toLowerCase();
     if (msgLower.includes("facebook") || msgLower.includes("fb")) return { name: "Facebook", icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
@@ -70,22 +88,25 @@ export default function DashboardPage() {
     const userRole = parsedUser.role || "user";
     setRole(userRole);
     
-    // এজেন্ট হলে প্রথমে লোকাল স্টোরেজ থেকে agentMaxRate নিবে, না থাকলে ডিফল্ট
     if (userRole === "agent") {
       setLiveRate(parsedUser.agentMaxRate || 0.70);
     } else {
       setLiveRate(parsedUser.rate || parsedUser.otpRate || 0.50);
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    // 💥 বাংলাদেশ টাইম অনুযায়ী আজকের এবং গতকালের তারিখ 💥
+    const todayStr = getBDDateString();
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = getBDDateString(yesterdayDate);
 
     const fetchDashboardData = async () => {
       try {
         if (parsedUser.role === "admin") {
-          // অ্যাডমিনের গ্লোবাল ডাটাবেস ফেচ
-          const [userData, otpData] = await Promise.all([
+          const [userData, otpData, reportData] = await Promise.all([
             fetch("/api/get-all-users").then(r => r.json()),
-            fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json())
+            fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json()),
+            fetch("/api/admin-agent-report").then(r => r.json()) 
           ]);
   
           if (userData.users) {
@@ -98,6 +119,11 @@ export default function DashboardPage() {
               globalTodayOTP: otpData.otps ? otpData.otps.length : 0 
             });
           }
+
+          if (reportData && reportData.success) {
+             setAgentReport(reportData.report);
+             setCurrentMonthName(reportData.currentMonth);
+          }
   
           if (otpData.success && otpData.otps) {
             const appCounts: Record<string, { count: number, info: any }> = {};
@@ -105,10 +131,10 @@ export default function DashboardPage() {
   
             otpData.otps.forEach((log: any) => {
               const time = log.time || log.createdAt || log.date || Date.now();
-              const d = new Date(typeof time === 'number' && time < 10000000000 ? time * 1000 : time);
+              const logDateStr = getBDDateString(time); // BD Time Date
               
-              if (d.toISOString().split('T')[0] === todayStr) {
-                 const hour = d.getHours();
+              if (logDateStr === todayStr) {
+                 const hour = getBDHour(time); // BD Time Hour
                  const bucketIndex = Math.floor(hour / 4);
                  if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
   
@@ -123,7 +149,6 @@ export default function DashboardPage() {
           }
 
         } else if (parsedUser.role === "agent") {
-          // এজেন্টের নেটওয়ার্ক ও ডাটাবেস ফেচ
           const [agentRes, otpRes, userDetailsRes] = await Promise.all([
             fetch("/api/get-agent-users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentEmail: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json()),
@@ -137,10 +162,8 @@ export default function DashboardPage() {
              netToday = agentRes.users.reduce((sum: number, u: any) => sum + Number(u.todayOTP || 0), 0);
           }
 
-          // 💥 ডাটাবেস থেকে এজেন্টের রিয়েল ব্যালেন্স এবং অ্যাডমিন রেট কল হচ্ছে 💥
           if (userDetailsRes && userDetailsRes.user) {
              liveAgentBal = Number(userDetailsRes.user.balance || 0).toFixed(2);
-             // এজেন্টকে অ্যাডমিন যে রেট দিয়েছে সেটি agentMaxRate থেকে নেওয়া হচ্ছে
              const aRate = Number(userDetailsRes.user.agentMaxRate || 0.70);
              setLiveRate(aRate);
           }
@@ -152,7 +175,6 @@ export default function DashboardPage() {
             todaySuccess: netToday 
           }));
 
-          // এজেন্টের গ্রাফ
           if (otpRes.success && otpRes.otps && netToday > 0) {
             const appCounts: Record<string, any> = {};
             let buckets = [0, 0, 0, 0, 0, 0];
@@ -161,10 +183,10 @@ export default function DashboardPage() {
             
             sampleLogs.forEach((log: any) => {
               const time = log.time || log.createdAt || log.date || Date.now();
-              const d = new Date(typeof time === 'number' && time < 10000000000 ? time * 1000 : time);
+              const logDateStr = getBDDateString(time);
               
-              if (d.toISOString().split('T')[0] === todayStr) {
-                const hour = d.getHours();
+              if (logDateStr === todayStr) {
+                const hour = getBDHour(time);
                 const bIdx = Math.floor(hour / 4);
                 if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
 
@@ -182,7 +204,6 @@ export default function DashboardPage() {
           }
 
         } else {
-          // ইউজারের ডাটাবেস
           fetch("/api/get-user-details", { 
             method: "POST", 
             headers: { "Content-Type": "application/json" }, 
@@ -202,22 +223,19 @@ export default function DashboardPage() {
           const savedNumbers = localStorage.getItem("zenex_numbers_v2");
           if (savedNumbers) {
             const parsedLogs = JSON.parse(savedNumbers);
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
   
             let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
             const appCounts: Record<string, { count: number, info: any }> = {};
             let buckets = [0, 0, 0, 0, 0, 0];
   
             parsedLogs.forEach((log: any) => {
-              const logDate = log.dateString || new Date(log.createdAt).toISOString().split('T')[0];
+              const logDate = getBDDateString(log.createdAt || Date.now());
               
               if (logDate === todayStr) {
                 tTotal++;
                 if (log.status === "DONE") {
                   tSuccess++;
-                  const hour = new Date(log.createdAt).getHours();
+                  const hour = getBDHour(log.createdAt);
                   const bucketIndex = Math.floor(hour / 4);
                   if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
   
@@ -247,7 +265,6 @@ export default function DashboardPage() {
     };
 
     fetchDashboardData();
-    // প্রতি ১০ সেকেন্ডে ড্যাশবোর্ড কার্ডের ডাটা আপডেট করবে
     const interval = setInterval(fetchDashboardData, 10000);
     return () => clearInterval(interval);
 
@@ -295,24 +312,66 @@ export default function DashboardPage() {
         </div>
 
         {role === "admin" ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
-            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
-              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Users</h3>
-              <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalUsers}</p>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Users</h3>
+                <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalUsers}</p>
+              </div>
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#8B5CF6] flex flex-col items-center md:items-start">
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Agents</h3>
+                <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalAgents}</p>
+              </div>
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">System Liability</h3>
+                <p className="text-xl md:text-3xl font-black text-[#10B981]">৳ {adminStats.systemLiability}</p>
+              </div>
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's OTP</h3>
+                <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodayOTP}</p>
+              </div>
             </div>
-            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#8B5CF6] flex flex-col items-center md:items-start">
-              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Agents</h3>
-              <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalAgents}</p>
+
+            <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mb-10">
+               <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
+                 <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Top Agents Performance</h3>
+                    <p className="text-[10px] text-[#10B981] font-bold tracking-wider mt-1 flex items-center gap-1">
+                       <span className="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-pulse"></span> 100% Live & Authentic Data ({currentMonthName})
+                    </p>
+                 </div>
+               </div>
+               <div className="overflow-x-auto w-full">
+                 <table className="w-full text-left border-collapse min-w-[600px]">
+                   <thead>
+                     <tr className="bg-[#1E293B] text-[10px] font-black text-[#64748B] uppercase tracking-widest border-b border-[#334155]">
+                       <th className="p-4 pl-6">Rank</th>
+                       <th className="p-4">Agent Name</th>
+                       <th className="p-4 text-center">Total OTPs</th> 
+                       <th className="p-4 pr-6 text-right">Agent Commission (৳)</th> 
+                     </tr>
+                   </thead>
+                   <tbody className="text-sm font-medium text-[#E2E8F0] divide-y divide-[#334155]/50">
+                     {agentReport.length === 0 ? (
+                       <tr><td colSpan={4} className="text-center p-8 text-[#64748B] font-bold">No agent data found this month.</td></tr>
+                     ) : (
+                       agentReport.map((agent, index) => (
+                         <tr key={index} className="hover:bg-[#334155]/20 transition-colors">
+                           <td className="p-4 pl-6 font-black text-[#94A3B8]">#{index + 1}</td>
+                           <td className="p-4">
+                             <p className="font-bold text-white">{agent.agentName}</p>
+                             <p className="text-[10px] text-[#64748B] font-mono">{agent.agentEmail}</p>
+                           </td>
+                           <td className="p-4 text-center font-black text-[#3B82F6]">{agent.monthOTPs}</td>
+                           <td className="p-4 pr-6 text-right font-black text-[#10B981]">৳ {agent.agentEarnings}</td> 
+                         </tr>
+                       ))
+                     )}
+                   </tbody>
+                 </table>
+               </div>
             </div>
-            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
-              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">System Liability</h3>
-              <p className="text-xl md:text-3xl font-black text-[#10B981]">৳ {adminStats.systemLiability}</p>
-            </div>
-            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
-              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's OTP</h3>
-              <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodayOTP}</p>
-            </div>
-          </div>
+          </>
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-5">
