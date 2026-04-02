@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,6 +20,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
 
+  // 💥 সিকিউর লগআউট ফাংশন (যাতে যেকোনো জায়গা থেকে কল করা যায়) 💥
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch (error) {
+      console.error(error);
+    }
+    localStorage.removeItem("user");
+    router.push("/login");
+  }, [router]);
+
   useEffect(() => {
     setMounted(true);
     const storedUser = localStorage.getItem("user");
@@ -34,22 +45,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setUser(parsedUser);
     setIsAuthorized(true); 
 
+    // 💥 ১. Live Session Checking (Device Auto-Logout Logic) 💥
+    const checkActiveSession = async () => {
+      try {
+        const res = await fetch("/api/check-session", { method: "GET" });
+        if (res.status === 401) {
+          console.warn("🚨 Session expired or logged in from too many devices! Kicking out...");
+          handleLogout(); // সাথে সাথে লগআউট করে দেবে
+        }
+      } catch (e) {
+        console.error("Session check failed");
+      }
+    };
+
+    // 💥 ২. Maintenance Status Checking 💥
     const checkMaintenance = async () => {
       try {
         const res = await fetch("/api/system-settings");
-        const data = await res.json();
-        if (data && data.maintenance) {
-           setIsMaintenance(true);
-        } else {
-           setIsMaintenance(false);
+        if(res.ok){
+          const data = await res.json();
+          if (data && data.maintenance) {
+             setIsMaintenance(true);
+          } else {
+             setIsMaintenance(false);
+          }
         }
       } catch (e) {
         console.error(e);
       }
     };
-    checkMaintenance();
-    const maintInterval = setInterval(checkMaintenance, 5000); 
 
+    // 💥 ৩. Real-time Balance Fetching 💥
     const fetchRealBalance = async () => {
       if (parsedUser.role === "admin") return;
       
@@ -59,23 +85,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            headers: { "Content-Type": "application/json" },
            body: JSON.stringify({ email: parsedUser.email })
         });
-        const data = await res.json();
-        if (data && data.user) {
-           setBalance(data.user.balance.toFixed(2));
+        if(res.ok){
+          const data = await res.json();
+          if (data && data.user) {
+             setBalance(data.user.balance.toFixed(2));
+          }
         }
       } catch (err) {
         console.error("Failed to load real balance");
       }
     };
     
+    // Initial Calls
+    checkActiveSession();
+    checkMaintenance();
     fetchRealBalance();
-    const balanceInterval = setInterval(fetchRealBalance, 5000);
+
+    // Intervals (Polling)
+    const sessionInterval = setInterval(checkActiveSession, 30000); // প্রতি ৩০ সেকেন্ডে সেশন চেক
+    const maintInterval = setInterval(checkMaintenance, 5000); // প্রতি ৫ সেকেন্ডে মেইনটেন্যান্স চেক
+    const balanceInterval = setInterval(fetchRealBalance, 5000); // প্রতি ৫ সেকেন্ডে ব্যালেন্স চেক
     
     return () => {
+      clearInterval(sessionInterval);
       clearInterval(maintInterval);
       clearInterval(balanceInterval);
     }
-  }, [router]);
+  }, [router, handleLogout]);
 
   if (!mounted || !isAuthorized) {
     return (
@@ -100,17 +136,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
     );
   }
-
-  // সিকিউর লগআউট ফাংশন
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/logout", { method: "POST" });
-    } catch (error) {
-      console.error(error);
-    }
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
 
   const role = user?.role || "user"; 
   const userName = user?.name || "User";
@@ -197,7 +222,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/access-list" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/access-list' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Access List</Link>
           <Link href="/profile" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/profile' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Profile</Link>
 
-          {/* 💥 Notifications Link Moved Here 💥 */}
+          {/* 💥 Notifications Link 💥 */}
           <Link href="/notifications" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/notifications' ? activeBlue : inactive}`}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

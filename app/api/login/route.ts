@@ -6,6 +6,7 @@ import User from "../../../models/User";
 
 // 💥 সিক্রেট কী (এটি দিয়ে টোকেন লক করা হবে)
 const JWT_SECRET = process.env.JWT_SECRET || "ZENEX_SUPER_SECRET_KEY_2024";
+const MAX_SESSIONS = 5; // 💥 সর্বোচ্চ ৫টি ডিভাইস অ্যালাউড 💥
 
 export async function POST(req: Request) {
   try {
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ message: "এই ইমেইল বা নাম্বার দিয়ে কোনো একাউন্ট নেই!" }, { status: 404 });
+      return NextResponse.json({ message: "Incorrect Email or Password!" }, { status: 401 });
     }
 
     if (user.status === "pending") {
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
 
     const isPasswordMatch = await bcrypt.compare(password, user.password);
     if (!isPasswordMatch) {
-      return NextResponse.json({ message: "আপনার পাসওয়ার্ড ভুল হয়েছে!" }, { status: 401 });
+      return NextResponse.json({ message: "Incorrect Email or Password!" }, { status: 401 });
     }
 
     let agentTelegram = "https://t.me/zenex_official_support";
@@ -45,9 +46,21 @@ export async function POST(req: Request) {
        }
     }
 
-    // 💥 ১. JWT টোকেন তৈরি (১২ ঘণ্টার মেয়াদ) 💥
+    // 💥 Device Auto-Logout Magic (Session Management) 💥
+    const sessionId = Date.now().toString() + Math.random().toString(36).substring(2, 10);
+    let currentSessions = Array.isArray(user.activeSessions) ? user.activeSessions : [];
+    currentSessions.push(sessionId);
+
+    // যদি ৫টার বেশি ডিভাইস হয়, সবচেয়ে পুরনো সেশনগুলো রিমুভ করে দেবে
+    if (currentSessions.length > MAX_SESSIONS) {
+       currentSessions = currentSessions.slice(currentSessions.length - MAX_SESSIONS);
+    }
+    user.activeSessions = currentSessions;
+    await user.save();
+
+    // 💥 ১. JWT টোকেন তৈরি (১২ ঘণ্টার মেয়াদ এবং sessionId সহ) 💥
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
+      { id: user._id, email: user.email, role: user.role, sessionId: sessionId },
       JWT_SECRET,
       { expiresIn: "12h" }
     );
@@ -70,7 +83,7 @@ export async function POST(req: Request) {
       }
     }, { status: 200 });
 
-    // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে (হ্যাকাররা ধরতে পারবে না) 💥
+    // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে 💥
     response.cookies.set("zenex_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

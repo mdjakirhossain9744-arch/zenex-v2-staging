@@ -27,7 +27,7 @@ export function middleware(req: NextRequest) {
     if (path.startsWith("/admin") || path.startsWith("/users")) {
       if (userRole !== "admin") {
         console.warn(`🚨 Security Alert: Non-admin user tried to access admin panel!`);
-        return NextResponse.redirect(new URL("/", req.url)); // সাধারণ ড্যাশবোর্ডে পাঠিয়ে দিবে
+        return NextResponse.redirect(new URL("/", req.url)); 
       }
     }
 
