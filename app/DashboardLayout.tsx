@@ -20,7 +20,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
 
-  // 💥 সিকিউর লগআউট ফাংশন (যাতে যেকোনো জায়গা থেকে কল করা যায়) 💥
+  // 💥 সিকিউর লগআউট ফাংশন 💥
   const handleLogout = useCallback(async () => {
     try {
       await fetch("/api/logout", { method: "POST" });
@@ -51,7 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const res = await fetch("/api/check-session", { method: "GET" });
         if (res.status === 401) {
           console.warn("🚨 Session expired or logged in from too many devices! Kicking out...");
-          handleLogout(); // সাথে সাথে লগআউট করে দেবে
+          handleLogout(); 
         }
       } catch (e) {
         console.error("Session check failed");
@@ -102,9 +102,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     fetchRealBalance();
 
     // Intervals (Polling)
-    const sessionInterval = setInterval(checkActiveSession, 30000); // প্রতি ৩০ সেকেন্ডে সেশন চেক
-    const maintInterval = setInterval(checkMaintenance, 5000); // প্রতি ৫ সেকেন্ডে মেইনটেন্যান্স চেক
-    const balanceInterval = setInterval(fetchRealBalance, 5000); // প্রতি ৫ সেকেন্ডে ব্যালেন্স চেক
+    const sessionInterval = setInterval(checkActiveSession, 30000); 
+    const maintInterval = setInterval(checkMaintenance, 5000); 
+    const balanceInterval = setInterval(fetchRealBalance, 5000); 
     
     return () => {
       clearInterval(sessionInterval);
@@ -222,7 +222,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/access-list" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/access-list' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Access List</Link>
           <Link href="/profile" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/profile' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Profile</Link>
 
-          {/* 💥 Notifications Link 💥 */}
           <Link href="/notifications" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/notifications' ? activeBlue : inactive}`}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -258,7 +257,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             )}
 
-            {/* 💥 Notification Bell 💥 */}
             <div className="relative">
               <button 
                  onClick={() => setIsNotifOpen(!isNotifOpen)} 
@@ -278,7 +276,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </div>
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
                     <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
-                       <p className="text-xs text-[#E2E8F0]"><span className="text-[#3B82F6] font-bold">System:</span> Welcome to ZENEX PREMIUM V3.0! Your network is highly secured.</p>
+                       <p className="text-xs text-[#E2E8F0]"><span className="text-[#3B82F6] font-bold">System:</span> Welcome to ZENEX PREMIUM V3.0.1! Your network is highly secured.</p>
                        <span className="text-[9px] text-[#64748B] mt-1 block">Just now</span>
                     </Link>
                   </div>
@@ -310,6 +308,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            {children}
         </div>
       </main>
+
+      {/* 💥 Professional Version & Developer Tag (Fixed Bottom Right) 💥 */}
+      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] group flex flex-col items-end">
+        {/* Tooltip Content (Hidden, shown on hover) */}
+        <div className="absolute bottom-full right-0 mb-3 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto w-56 md:w-64 bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden">
+          <div className="p-4 border-b border-[#334155]/50 bg-gradient-to-br from-[#1E293B] to-[#0F172A]">
+            <div className="flex items-center justify-between mb-1">
+               <div className="flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_#10B981]"></div>
+                 <span className="text-xs font-bold text-white tracking-widest uppercase">System Core</span>
+               </div>
+               <span className="text-[9px] bg-[#334155] text-white px-2 py-0.5 rounded-md font-mono">B:3.1.5</span>
+            </div>
+            <p className="text-[11px] text-[#94A3B8] font-mono mt-2">ZENEX PREMIUM V3.0.1</p>
+          </div>
+          
+          <div className="p-4 bg-[#0F172A]/80 flex flex-col items-center">
+            <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-widest mb-1 w-full text-center border-b border-[#334155] pb-2">Developed By</p>
+            
+            {/* 💥 Zenex Team with Email Hover Magic 💥 */}
+            <a href="mailto:zenexpart44@gmail.com" className="relative block w-full text-center group/team cursor-pointer py-2">
+               <p className="text-base md:text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C6FF] to-[#3B82F6] transition-all duration-300 group-hover/team:-translate-y-1 group-hover/team:opacity-0">
+                  Zenex Team
+               </p>
+               <p className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-[#00C6FF] opacity-0 translate-y-1 group-hover/team:translate-y-0 group-hover/team:opacity-100 transition-all duration-300 underline underline-offset-2">
+                  zenexpart44@gmail.com
+               </p>
+            </a>
+            
+            <p className="text-[9px] text-center text-[#94A3B8]">Secure Next.js B2B Engine</p>
+          </div>
+        </div>
+
+        {/* Visible Badge */}
+        <div className="bg-[#1E293B]/80 backdrop-blur-md border border-[#334155] text-[10px] md:text-xs font-mono font-bold text-[#94A3B8] px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-2">
+          <span>V3.0.1 (Secured)</span>
+          <svg className="w-3 h-3 md:w-4 md:h-4 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+      </div>
+
     </div>
   );
 }

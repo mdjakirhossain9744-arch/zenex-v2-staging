@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
-import connectToDatabase from "../../../lib/mongodb";
+
+// 💥 ইম্পোর্ট পাথ ঠিক করা হয়েছে 💥
+import connectToDatabase from "../../lib/mongodb";
 import User from "../../../models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET || "ZENEX_SUPER_SECRET_KEY_2024";
