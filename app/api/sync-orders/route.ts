@@ -21,12 +21,14 @@ export async function POST(req: Request) {
       
       const finalOrders: any[] = [];
 
-      orders.forEach((o) => {
-        const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+      // 💥 টাইপস্ক্রিপ্ট এরর এড়াতে 'o: any' বসানো হলো 💥
+      orders.forEach((o: any) => {
+        const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         
         // 💥 যদি মাল্টি ওটিপি হয়, তবে ডাটাবেসের ১টি রো-কে ভেঙে আলাদা আলাদা কার্ড বানানো হচ্ছে 💥
         if (o.status === "DONE" && msgArray.length > 1) {
-          msgArray.forEach((msg, index) => {
+          // 💥 এখানে Type Error ফিক্স করা হয়েছে (msg: string, index: number) 💥
+          msgArray.forEach((msg: string, index: number) => {
             const codeMatch = msg.match(/\b\d{4,8}\b/);
             const extractedOtp = codeMatch ? codeMatch[0] : msg;
 
