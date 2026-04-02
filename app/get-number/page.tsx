@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-// বাংলাদেশ টাইম ফোর্স করা হলো (রাত ১২টায় পারফেক্টলি ডেট চেঞ্জ হবে)
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Dhaka',
@@ -18,6 +17,9 @@ export default function GetNumber() {
   const [isNational, setIsNational] = useState(false);
   const [removePlus, setRemovePlus] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 💥 NEW: Initial Load State for Skeleton Animation 💥
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState("ALL"); 
   
@@ -25,12 +27,6 @@ export default function GetNumber() {
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [selectedDate, setSelectedDate] = useState(getBDDateString());
-
-  // 💥 Refs for Web Worker latest state access 💥
-  const numbersListRef = useRef(numbersList);
-  useEffect(() => { numbersListRef.current = numbersList; }, [numbersList]);
-
-  const isCheckingRef = useRef(false); // To prevent overlapping API calls
 
   const getUserEmail = () => {
     const storedUser = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
@@ -69,7 +65,6 @@ export default function GetNumber() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // 💥 Fixed "Just Now" Bug: Accurately calculating real time 💥
   const getTimeAgo = (timestamp: number) => {
     if (!timestamp) return "Just Now";
     const secondsPast = Math.floor((currentTime - timestamp) / 1000);
@@ -79,183 +74,47 @@ export default function GetNumber() {
     return new Date(timestamp).toLocaleDateString();
   };
 
+  // 💥 OPTIMIZED DATA FETCHING (No more hanging) 💥
   const fetchDbOrders = async () => {
     const email = getUserEmail();
     if(!email) return;
     try {
       const res = await fetch("/api/sync-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "FETCH", email })
       });
       const data = await res.json();
       if(data.success && data.orders) {
         setNumbersList(data.orders);
       }
-    } catch (err) {
-      console.error("Failed to sync DB orders");
+    } catch (err) {} 
+    finally {
+      setIsInitialLoad(false); // Hide skeleton loader
     }
   };
 
-  const checkOtps = async (isManual = false) => {
-    if (isCheckingRef.current) return; // Prevent double checking
-    isCheckingRef.current = true;
-    if (isManual) setIsRefreshing(true);
-    
+  // 💥 Manual Refresh Only (Background is handled by DashboardLayout globally) 💥
+  const checkOtps = async () => {
+    setIsRefreshing(true);
     try {
       const res = await fetch(`/api/check-otp?t=${Date.now()}`);
       const result = await res.json();
-
-      if (result.success && result.otps) {
-        let updatedList = [...numbersListRef.current];
-        let newDups: any[] = [];
-
-        for (let i = 0; i < updatedList.length; i++) {
-          let item = updatedList[i];
-
-          if (item.status === "WAIT" && Date.now() - item.createdAt > 1200000) {
-             await fetch("/api/sync-orders", {
-               method: "POST",
-               headers: { "Content-Type": "application/json" },
-               body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "FAIL", otp: "Timeout", fullMessage: "" } })
-             });
-             updatedList[i] = { ...item, status: "FAIL", otp: "Timeout" };
-             continue;
-          }
-
-          if (item.isDup || item.isMulti) continue;
-
-          const cleanSearchNumber = String(item.searchNumber).replace(/\D/g, ""); 
-          const last6Digits = cleanSearchNumber.slice(-6); 
-          
-          const matchingOtps = result.otps.filter((otpObj: any) => {
-             if(!otpObj.number) return false;
-             return String(otpObj.number).replace(/\D/g, "").endsWith(last6Digits);
-          });
-
-          if (matchingOtps.length > 0) {
-             const apiMessages = matchingOtps.map((m: any) => m.otp || "");
-
-             if (item.status === "WAIT") {
-                const firstMsg = apiMessages[0];
-                const codeMatch = firstMsg.match(/\b\d{4,8}\b/); 
-                const finalCode = codeMatch ? codeMatch[0] : firstMsg;
-
-                if(isManual) showToast(`OTP Received: ${finalCode}`);
-
-                const exactReceiveTime = Date.now();
-
-                await fetch("/api/sync-orders", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: exactReceiveTime } })
-                });
-
-                updatedList[i] = { 
-                  ...item, status: "DONE", otp: finalCode, fullMessage: firstMsg, 
-                  seenMessages: apiMessages, receivedAt: exactReceiveTime 
-                };
-             } 
-             else if (item.status === "DONE") {
-                const alreadySeen = item.seenMessages || [item.fullMessage];
-                const alreadySeenCodes = alreadySeen.map((msg: string) => {
-                   const match = msg.match(/\b\d{4,8}\b/);
-                   return match ? match[0] : msg.trim();
-                });
-
-                const newMessages = apiMessages.filter((msg: string) => {
-                   const codeMatch = msg.match(/\b\d{4,8}\b/);
-                   const extractedCode = codeMatch ? codeMatch[0] : msg.trim();
-                   return !alreadySeenCodes.includes(extractedCode);
-                });
-
-                if (newMessages.length > 0) {
-                   for (const newMsg of newMessages) {
-                      const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
-                      const finalCode = codeMatch ? codeMatch[0] : newMsg;
-
-                      if(isManual) showToast(`MULTI OTP Received: ${finalCode}`);
-                      
-                      const exactReceiveTime = Date.now();
-
-                      await fetch("/api/sync-orders", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "UPDATE", email: getUserEmail(), orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: exactReceiveTime } })
-                      });
-
-                      newDups.push({
-                         ...item, 
-                         id: `${item.id}_${finalCode}`, 
-                         status: "DONE",
-                         otp: finalCode, fullMessage: newMsg, seenMessages: [], 
-                         isMulti: true, receivedAt: exactReceiveTime
-                      });
-                   }
-                   updatedList[i] = { ...item, seenMessages: [...alreadySeen, ...newMessages] };
-                }
-             }
-          }
-        }
-        setNumbersList([...newDups, ...updatedList]);
-      }
-    } catch (err) {
-      console.error("Check Error");
-    } finally {
-      isCheckingRef.current = false;
-      if (isManual) setTimeout(() => setIsRefreshing(false), 500); 
+      if (result.success) await fetchDbOrders(); // Just sync DB after manual check
+    } catch (err) {} 
+    finally {
+      setTimeout(() => setIsRefreshing(false), 500); 
     }
   };
 
-  const fetchDbOrdersRef = useRef(fetchDbOrders);
-  useEffect(() => { fetchDbOrdersRef.current = fetchDbOrders; }, [fetchDbOrders]);
-
-  const checkOtpsRef = useRef(checkOtps);
-  useEffect(() => { checkOtpsRef.current = checkOtps; }, [checkOtps]);
-
-  // 💥 THE MAGIC: UNSTOPPABLE BACKGROUND WEB WORKER 💥
-  // ব্রাউজার অন্য ট্যাবে গেলেও এই ওয়ার্কার কখনোই ঘুমাবে না!
+  // Polling UI to keep data fresh without overloading browser
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const workerCode = `
-      let tick3, tick10;
-      self.onmessage = function(e) {
-        if (e.data === 'start') {
-          tick3 = setInterval(() => self.postMessage('tick3'), 3000);
-          tick10 = setInterval(() => self.postMessage('tick10'), 10000);
-        } else if (e.data === 'stop') {
-          clearInterval(tick3);
-          clearInterval(tick10);
-        }
-      };
-    `;
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob));
-
-    worker.onmessage = (e) => {
-      if (e.data === 'tick3') {
-         const hasActiveNumbers = numbersListRef.current.some(n => n.status === "WAIT");
-         if (hasActiveNumbers) checkOtpsRef.current(false);
-      }
-      if (e.data === 'tick10') {
-         fetchDbOrdersRef.current();
-         setCurrentTime(Date.now()); // Update time properly
-         
-         // Night 12AM Date Change logic
-         const realToday = getBDDateString();
-         setSelectedDate((prevDate) => {
-            if (prevDate !== realToday && prevDate === getBDDateString(Date.now() - 86400000)) return realToday;
-            return prevDate;
-         });
-      }
-    };
-
-    worker.postMessage('start');
-
+    fetchDbOrders();
+    const syncInterval = setInterval(fetchDbOrders, 3000); // 3 sec auto-sync UI with DB
+    const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
+    
     return () => {
-      worker.postMessage('stop');
-      worker.terminate();
+       clearInterval(syncInterval);
+       clearInterval(timeInterval);
     };
   }, []);
 
@@ -267,8 +126,7 @@ export default function GetNumber() {
     setIsLoading(true);
     try {
       const response = await fetch("/api/getnum", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
       const result = await response.json();
@@ -315,9 +173,7 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
-  const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => {
-    return b.createdAt - a.createdAt; 
-  });
+  const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => b.createdAt - a.createdAt);
 
   const totalGen = dateFilteredNumbers.length;
   const successCount = dateFilteredNumbers.filter((n) => n.status === "DONE").length;
@@ -392,7 +248,7 @@ export default function GetNumber() {
            </div>
         </div>
 
-        <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4">
+        <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 min-h-[300px] flex flex-col">
            <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155]">
              <div className="flex items-center gap-2">
                <h3 className="text-[10px] md:text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
@@ -400,7 +256,7 @@ export default function GetNumber() {
                  Feed
                </h3>
                {isToday && (
-                 <button onClick={() => checkOtps(true)} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20">
+                 <button onClick={checkOtps} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20">
                    <svg className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                  </button>
                )}
@@ -415,10 +271,24 @@ export default function GetNumber() {
              </div>
            </div>
 
-           <div className="flex flex-col max-h-[60vh] overflow-y-auto custom-scrollbar w-full">
-              {sortedFilteredNumbers.length === 0 ? (
-                 <div className="p-10 flex flex-col items-center justify-center text-center">
-                    <svg className="w-8 h-8 text-[#334155] mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+           <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar w-full">
+              {/* 💥 SKELETON LOADER MAGIC 💥 */}
+              {isInitialLoad ? (
+                 Array(5).fill(0).map((_, i) => (
+                   <div key={i} className="flex flex-col p-3 border-b border-[#334155] w-full animate-pulse bg-[#1E293B]/40">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="h-4 bg-[#334155] rounded w-32 md:w-48"></div>
+                        <div className="h-3 bg-[#334155] rounded w-16"></div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <div className="h-3 bg-[#334155] rounded w-24"></div>
+                        <div className="h-3 bg-[#334155] rounded w-12 md:w-20"></div>
+                      </div>
+                   </div>
+                 ))
+              ) : sortedFilteredNumbers.length === 0 ? (
+                 <div className="h-full flex flex-col items-center justify-center text-center my-auto p-10">
+                    <svg className="w-10 h-10 text-[#334155] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                     <h3 className="text-sm font-black text-[#64748B] tracking-wide">Empty List</h3>
                  </div>
               ) : (
@@ -427,18 +297,15 @@ export default function GetNumber() {
                        <div className="flex justify-between items-center mb-1.5">
                           <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
                             <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
-                            
                             <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                               {item.country}
                             </span>
-
                             {(item.isMulti || item.isDup) && (
                                <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
                                  MULTI
                                </span>
                             )}
                           </div>
-                          
                           <div className="flex items-center gap-2">
                              <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
                              <span className={`px-1.5 py-0.5 border text-[8px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
