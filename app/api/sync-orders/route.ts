@@ -83,11 +83,31 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Max safety limit reached." });
         }
 
+        // 💥 ম্যাজিক ফিক্স: Atomic Lock! 
+        // ৩টা ওটিপি একসাথে আসলে এটা ডাটাবেসকে ক্র্যাশ বা ওভাররাইট করতে দেবে না।
+        const updatedOrder = await Order.findOneAndUpdate(
+          { _id: existingOrder._id, fullMessage: currentMsg }, 
+          { 
+            $set: {
+              fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
+              otp: orderData.otp,
+              status: "DONE",
+              expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
+            }
+          },
+          { new: true }
+        );
+
+        // যদি একই মিলি-সেকেন্ডে অন্য কোনো ওটিপি ঢুকে যায়, তাহলে এটা সেভ না করে ফ্রন্টএন্ডকে আবার ট্রাই করতে বলবে।
+        if (!updatedOrder) {
+          return NextResponse.json({ success: false, message: "Race condition locked. Retrying..." });
+        }
+
+        // আপনার অরিজিনাল ব্যালেন্স যোগ করার লজিক (একদম হুবহু রাখা হয়েছে)
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
-        // 💥 ম্যাজিক: API ক্র্যাশ ঠেকাতে $round মুছে শুধু সিম্পল $inc ব্যবহার করা হলো 💥
         if (!isFreeService) {
           const user = await User.findOne({ email });
           if (user) {
@@ -115,12 +135,6 @@ export async function POST(req: Request) {
             }
           }
         }
-
-        freshOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
-        freshOrder.otp = orderData.otp; 
-        freshOrder.status = "DONE";
-        freshOrder.expireAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); 
-        await freshOrder.save(); // 💥 এখন এই লাইনটি ১০০% রান করবে, ওটিপি হারাবে না! 💥
 
         return NextResponse.json({ success: true, message: "Processed successfully!" });
       }
