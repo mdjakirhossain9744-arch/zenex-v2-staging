@@ -2,24 +2,21 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// 💥 আপনার MNIT API Key এখানে বসান 💥
-const MNIT_API_KEY = process.env.MNIT_API_KEY || "YOUR_API_KEY_HERE";
+// 💥 আপনার দেওয়া আসল MNIT API Key বসানো হলো 💥
+const MNIT_API_KEY = "M_7VX25KAJI";
 
-// 💥 মেমরি ক্যাশ ভেরিয়েবল (সাইটকে সুপারফাস্ট রাখার জন্য) 💥
 let cachedData: any = null;
 let lastFetchTime: number = 0;
-const CACHE_DURATION = 5000; // ১০ সেকেন্ডের জন্য ডাটা ক্যাশ করে রাখবে
+const CACHE_DURATION = 5000; // ৫ সেকেন্ড ক্যাশ (সার্ভার ও API কে সেফ রাখতে)
 
 export async function GET() {
   try {
     const currentTime = Date.now();
 
-    // যদি ১০ সেকেন্ড পার না হয়, তবে সার্ভারে সেভ করা আগের ডাটা দিয়ে দিবে (MNIT কে বারবার ডিস্টার্ব করবে না)
     if (cachedData && (currentTime - lastFetchTime < CACHE_DURATION)) {
       return NextResponse.json(cachedData);
     }
 
-    // 💥 MNIT এর অফিশিয়াল Public API (No fake cookies needed!) 💥
     const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info", {
       method: "GET",
       headers: {
@@ -29,10 +26,14 @@ export async function GET() {
       cache: "no-store",
     });
 
-    // যদি MNIT ব্লক করে কিন্তু আমাদের কাছে পুরনো ক্যাশ ডাটা থাকে
     if (response.status === 429) {
        if (cachedData) return NextResponse.json(cachedData);
-       return NextResponse.json({ success: false, error: "Too many requests to provider. Retrying..." }, { status: 429 });
+       return NextResponse.json({ success: false, error: "Too many requests. Retrying..." }, { status: 429 });
+    }
+
+    // API Key ভুল হলে সরাসরি স্ক্রিনে দেখাবে
+    if (response.status === 401) {
+       return NextResponse.json({ success: false, error: "Invalid MNIT API Key! Access Denied." }, { status: 401 });
     }
 
     if (!response.ok) {
@@ -41,30 +42,28 @@ export async function GET() {
 
     const result = await response.json();
     
-    // ডাটা ঠিকঠাক আসলে সেটাকে আমাদের ফ্রন্টএন্ডের জন্য সুন্দর করে সাজানো
-    if (result && result.meta?.status === "success" && result.data?.otps) {
+    // ম্যাজিক: ডাটা চেক করে ফ্রন্টএন্ডে পাঠানো হচ্ছে
+    if (result && result.data && Array.isArray(result.data.otps)) {
        const formattedLogs = result.data.otps.map((item: any) => ({
           number: item.number,
           otp: item.otp,
           country: item.country,
           operator: item.operator,
-          time: item.created_at // ফ্রন্টএন্ডের টাইমের জন্য
+          time: item.created_at
        }));
 
-       // নতুন ডাটা ক্যাশে সেভ করা হচ্ছে
        cachedData = { success: true, data: formattedLogs };
        lastFetchTime = currentTime;
 
        return NextResponse.json(cachedData);
     }
 
-    return NextResponse.json({ success: false, error: "Invalid data format from provider" });
+    // যদি ডাটা না আসে তবে এরর শো করবে
+    return NextResponse.json({ success: false, error: "No OTP data found in provider response" });
 
-  } catch (error) {
-    console.error("Live Console API Error:", error);
-    // সার্ভার ডাউন হলেও পুরনো ক্যাশ করা ডাটা দেখাবে
+  } catch (error: any) {
+    console.error("Live Console API Error:", error.message);
     if (cachedData) return NextResponse.json(cachedData);
-    
     return NextResponse.json({ success: false, error: "Network Error or Blocked by Provider" }, { status: 500 });
   }
 }

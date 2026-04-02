@@ -68,7 +68,6 @@ export async function POST(req: Request) {
 
       if (orderData.status === "DONE" || orderData.otp) {
         
-        // 💥 Race Condition এড়াতে ফ্রেশ ডাটা আনা হচ্ছে 💥
         const freshOrder = await Order.findById(existingOrder._id);
         const incomingMsg = (orderData.fullMessage || "").trim();
         const currentMsg = freshOrder.fullMessage || "";
@@ -91,8 +90,11 @@ export async function POST(req: Request) {
           if (user) {
             const userRate = Number(user.otpRate) || 0.50;
             
-            // 💥 Atomic Operation ($inc) দিয়ে ব্যালেন্স যোগ (১০০% সিকিউর) 💥
-            await User.findOneAndUpdate({ email }, { $inc: { balance: userRate } });
+            // 💥 ম্যাজিক: Atomic Operation + $round (দশমিক সমস্যা আর কখনোই হবে না) 💥
+            await User.findOneAndUpdate(
+              { email }, 
+              [{ $set: { balance: { $round: [{ $add: [{ $ifNull: ["$balance", 0] }, userRate] }, 2] } } }]
+            );
 
             if (user.agentEmail) {
               const agent = await User.findOne({
@@ -105,10 +107,15 @@ export async function POST(req: Request) {
                 const commission = Number((agentRate - userRate).toFixed(2));
 
                 if (commission > 0) {
-                  // 💥 এজেন্টের ব্যালেন্সও Atomic Operation দিয়ে যোগ করা হলো 💥
+                  // 💥 এজেন্টের ব্যালেন্সেও $round বসিয়ে দেওয়া হলো 💥
                   await User.findOneAndUpdate(
                      { _id: agent._id }, 
-                     { $inc: { agentEarning: commission, balance: commission } }
+                     [{
+                       $set: {
+                         agentEarning: { $round: [{ $add: [{ $ifNull: ["$agentEarning", 0] }, commission] }, 2] },
+                         balance: { $round: [{ $add: [{ $ifNull: ["$balance", 0] }, commission] }, 2] }
+                       }
+                     }]
                   );
                 }
               }
