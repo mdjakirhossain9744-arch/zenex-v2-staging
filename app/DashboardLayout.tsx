@@ -14,11 +14,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   
+  // 💥 NEW: Mobile Badge Toggle State 💥
+  const [isBadgeOpen, setIsBadgeOpen] = useState(false);
+  
   const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
 
-  // 💥 গ্লোবাল টোস্ট মেসেজ স্টেট 💥
   const [globalToast, setGlobalToast] = useState("");
   const pendingOrdersRef = useRef<any[]>([]);
   const isCheckingOTPRef = useRef(false);
@@ -31,9 +33,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleLogout = useCallback(async () => {
     try {
       await fetch("/api/logout", { method: "GET" });
-    } catch (error) {
-      console.error("Logout API failed:", error);
-    } finally {
+    } catch (error) {} finally {
       localStorage.removeItem("user");
       localStorage.removeItem("zenex_login_time");
       localStorage.removeItem("zenex_saved_range");
@@ -100,8 +100,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [router, handleLogout]);
 
-  // 💥 THE MAGIC: GLOBAL BACKGROUND WEB WORKER ENGINE 💥
-  // আপনি ড্যাশবোর্ডের যেকোনো পেজে থাকেন বা ইউটিউব দেখেন, এই কোড কখনো ঘুমাবে না!
+  // 💥 GLOBAL BACKGROUND ENGINE + REAL API TIMESTAMP EXTRACTOR 💥
   useEffect(() => {
     if (!user?.email) return;
 
@@ -113,7 +112,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
          });
          const data = await res.json();
          if (data.success && data.orders) {
-            // শুধু Wait এবং গত ১৫ মিনিটের Done অর্ডার ট্র্যাক করবে (Multi OTP এর জন্য)
             pendingOrdersRef.current = data.orders.filter((o: any) => 
               o.status === "WAIT" || (o.status === "DONE" && (Date.now() - o.createdAt < 900000))
             );
@@ -144,38 +142,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              const matches = result.otps.filter((o:any) => String(o.number).replace(/\D/g, "").endsWith(last6));
 
              if (matches.length > 0) {
-                const apiMessages = matches.map((m:any) => m.otp || "");
-
                 if (item.status === "WAIT") {
-                   const firstMsg = apiMessages[0];
+                   const matchedObj = matches[0];
+                   const firstMsg = matchedObj.otp || matchedObj.msg || matchedObj.sms || "";
                    const codeMatch = firstMsg.match(/\b\d{4,8}\b/);
                    const finalCode = codeMatch ? codeMatch[0] : firstMsg;
 
+                   let realApiTime = Date.now();
+                   if (matchedObj.time) realApiTime = new Date(matchedObj.time).getTime() || Date.now();
+                   else if (matchedObj.date) realApiTime = new Date(matchedObj.date).getTime() || Date.now();
+                   else if (matchedObj.timestamp) {
+                       const ts = Number(matchedObj.timestamp);
+                       realApiTime = ts < 10000000000 ? ts * 1000 : ts; 
+                   }
+
                    showGlobalToast(`🔔 SUCCESS: OTP Received! Code: ${finalCode}`);
 
-                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: Date.now() } }) });
+                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: realApiTime } }) });
 
-                   item.status = "DONE"; item.fullMessage = firstMsg; item.seenMessages = apiMessages;
+                   item.status = "DONE"; item.fullMessage = firstMsg; item.seenMessages = [firstMsg];
                    hasUpdates = true;
                 } 
                 else if (item.status === "DONE") {
                    const alreadySeen = item.seenMessages || [item.fullMessage];
                    const alreadySeenCodes = alreadySeen.map((msg: string) => { const m = msg.match(/\b\d{4,8}\b/); return m ? m[0] : msg.trim(); });
 
-                   const newMessages = apiMessages.filter((msg: string) => {
+                   const newMatches = matches.filter((mObj: any) => {
+                      const msg = mObj.otp || mObj.msg || mObj.sms || "";
                       const codeMatch = msg.match(/\b\d{4,8}\b/);
                       const extractedCode = codeMatch ? codeMatch[0] : msg.trim();
                       return !alreadySeenCodes.includes(extractedCode);
                    });
 
-                   if (newMessages.length > 0) {
-                      for (const newMsg of newMessages) {
+                   if (newMatches.length > 0) {
+                      for (const newMatch of newMatches) {
+                         const newMsg = newMatch.otp || newMatch.msg || newMatch.sms || "";
                          const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
                          const finalCode = codeMatch ? codeMatch[0] : newMsg;
+
+                         let realApiTime = Date.now();
+                         if (newMatch.time) realApiTime = new Date(newMatch.time).getTime() || Date.now();
+                         else if (newMatch.date) realApiTime = new Date(newMatch.date).getTime() || Date.now();
+                         else if (newMatch.timestamp) {
+                             const ts = Number(newMatch.timestamp);
+                             realApiTime = ts < 10000000000 ? ts * 1000 : ts;
+                         }
+
                          showGlobalToast(`🔥 MULTI OTP Received! Code: ${finalCode}`);
-                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: Date.now() } }) });
+                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: realApiTime } }) });
+                         alreadySeen.push(newMsg);
                       }
-                      item.seenMessages = [...alreadySeen, ...newMessages];
+                      item.seenMessages = alreadySeen;
                       hasUpdates = true;
                    }
                 }
@@ -255,7 +272,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen w-full bg-[#0F172A] text-[#E2E8F0] flex font-sans selection:bg-[#3B82F6] selection:text-white relative overflow-hidden">
       
-      {/* 💥 GLOBAL OTP NOTIFICATION TOAST 💥 */}
       {globalToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] bg-gradient-to-r from-[#10B981] to-[#059669] text-white px-6 py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.5)] font-black text-sm flex items-center gap-3 animate-bounce-in border border-[#34D399]">
            <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -423,36 +439,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] group flex flex-col items-end">
-        <div className="absolute bottom-full right-0 mb-3 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto w-56 md:w-64 bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden">
-          <div className="p-4 border-b border-[#334155]/50 bg-gradient-to-br from-[#1E293B] to-[#0F172A]">
-            <div className="flex items-center justify-between mb-1">
-               <div className="flex items-center gap-2">
+      {/* 💥 NEW: Sleek Pill Badge Design 💥 */}
+      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-center justify-end group">
+        
+        {/* Tooltip Card (Horizontal Pill) */}
+        <div className={`absolute right-full mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 ${isBadgeOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-4 pointer-events-none'} md:group-hover:opacity-100 md:group-hover:translate-x-0 md:group-hover:pointer-events-auto`}>
+           <div className="flex items-center gap-4 px-4 py-2.5 whitespace-nowrap">
+              <div className="flex items-center gap-2 border-r border-[#334155] pr-4">
                  <div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_#10B981]"></div>
-                 <span className="text-xs font-bold text-white tracking-widest uppercase">System Core</span>
-               </div>
-               <span className="text-[9px] bg-[#334155] text-white px-2 py-0.5 rounded-md font-mono">B:3.1.5</span>
-            </div>
-            <p className="text-[11px] text-[#94A3B8] font-mono mt-2">ZENEX PREMIUM V3.0.1</p>
-          </div>
-          
-          <div className="p-4 bg-[#0F172A]/80 flex flex-col items-center">
-            <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-widest mb-1 w-full text-center border-b border-[#334155] pb-2">Developed By</p>
-            <a href="mailto:zenexpart44@gmail.com" className="relative block w-full text-center group/team cursor-pointer py-2">
-               <p className="text-base md:text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C6FF] to-[#3B82F6] transition-all duration-300 group-hover/team:-translate-y-1 group-hover/team:opacity-0">
-                  Zenex Team
-               </p>
-               <p className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-[#00C6FF] opacity-0 translate-y-1 group-hover/team:translate-y-0 group-hover/team:opacity-100 transition-all duration-300 underline underline-offset-2">
-                  zenexpart44@gmail.com
-               </p>
-            </a>
-            <p className="text-[9px] text-center text-[#94A3B8]">Secure Next.js B2B Engine</p>
-          </div>
+                 <span className="text-[10px] font-black text-white tracking-widest uppercase">System Core <span className="text-[#94A3B8]">B:3.1.5</span></span>
+              </div>
+              <a href="mailto:zenexpart44@gmail.com" className="text-[10px] font-black text-[#00C6FF] hover:text-white transition-colors underline underline-offset-2">
+                 Developed by Zenex Team
+              </a>
+           </div>
         </div>
 
-        <div className="bg-[#1E293B]/80 backdrop-blur-md border border-[#334155] text-[10px] md:text-xs font-mono font-bold text-[#94A3B8] px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-2">
+        {/* Floating Badge Button */}
+        <div 
+          onClick={() => setIsBadgeOpen(!isBadgeOpen)}
+          className="bg-[#1E293B]/90 backdrop-blur-md border border-[#334155] text-[10px] md:text-xs font-mono font-bold text-[#94A3B8] px-4 py-2.5 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-2"
+        >
           <span>V3.0.1 (Secured)</span>
-          <svg className="w-3 h-3 md:w-4 md:h-4 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className={`w-4 h-4 text-[#10B981] transition-transform duration-300 ${isBadgeOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         </div>
