@@ -50,7 +50,6 @@ export async function POST(req: Request) {
         userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
         country: orderData.country, operator: orderData.operator, status: orderData.status,
         otp: orderData.otp, fullMessage: orderData.fullMessage, dateString: orderData.dateString,
-        // 💥 তৈরি করার সময় ১ দিনের (২৪ ঘণ্টা) মেয়াদ দেওয়া হলো 💥
         expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
@@ -64,7 +63,6 @@ export async function POST(req: Request) {
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
         existingOrder.otp = orderData.otp || "Timeout"; 
-        // 💥 ফেইল হলে মেয়াদ ২৪ ঘণ্টাই থাকবে 💥
         existingOrder.expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await existingOrder.save();
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
@@ -89,15 +87,13 @@ export async function POST(req: Request) {
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
+        // 💥 ম্যাজিক: API ক্র্যাশ ঠেকাতে $round মুছে শুধু সিম্পল $inc ব্যবহার করা হলো 💥
         if (!isFreeService) {
           const user = await User.findOne({ email });
           if (user) {
             const userRate = Number(user.otpRate) || 0.50;
             
-            await User.findOneAndUpdate(
-              { email }, 
-              [{ $set: { balance: { $round: [{ $add: [{ $ifNull: ["$balance", 0] }, userRate] }, 2] } } }]
-            );
+            await User.findOneAndUpdate({ email }, { $inc: { balance: userRate } });
 
             if (user.agentEmail) {
               const agent = await User.findOne({
@@ -112,12 +108,7 @@ export async function POST(req: Request) {
                 if (commission > 0) {
                   await User.findOneAndUpdate(
                      { _id: agent._id }, 
-                     [{
-                       $set: {
-                         agentEarning: { $round: [{ $add: [{ $ifNull: ["$agentEarning", 0] }, commission] }, 2] },
-                         balance: { $round: [{ $add: [{ $ifNull: ["$balance", 0] }, commission] }, 2] }
-                       }
-                     }]
+                     { $inc: { agentEarning: commission, balance: commission } }
                   );
                 }
               }
@@ -128,15 +119,15 @@ export async function POST(req: Request) {
         freshOrder.fullMessage = currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg;
         freshOrder.otp = orderData.otp; 
         freshOrder.status = "DONE";
-        // 💥 ম্যাজিক: সাকসেস/DONE হলে মেয়াদ বাড়িয়ে ১০ দিন করে দেওয়া হলো! 💥
         freshOrder.expireAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); 
-        await freshOrder.save();
+        await freshOrder.save(); // 💥 এখন এই লাইনটি ১০০% রান করবে, ওটিপি হারাবে না! 💥
 
         return NextResponse.json({ success: true, message: "Processed successfully!" });
       }
     }
     return NextResponse.json({ success: false, message: "Invalid action" });
   } catch (error) {
+    console.error("Sync Order API Error:", error);
     return NextResponse.json({ success: false, message: "Database Error" }, { status: 500 });
   }
 }
