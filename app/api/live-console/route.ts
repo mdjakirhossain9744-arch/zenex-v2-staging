@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server"; // 🔥 NextRequest যোগ করা হয়েছে
 
 // 💥 Vercel এর ক্যাশিং চিরতরে অফ করার কমান্ড 💥
 export const dynamic = "force-dynamic";
@@ -21,10 +21,14 @@ const getServiceName = (message: string) => {
   return "OTHER";
 };
 
-export async function GET() {
+// 🔥 ম্যাজিক: req: NextRequest অ্যাড করা হয়েছে, এতে Vercel জীবনেও ক্যাশ করতে পারবে না!
+export async function GET(req: NextRequest) {
   try {
-    // 💥 কোনো MongoDB নেই! সরাসরি MNIT থেকে ফ্রেশ ডাটা আনা হচ্ছে 💥
-    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${Date.now()}`;
+    // ফ্রন্টএন্ড থেকে পাঠানো রিয়েল-টাইম মিলি-সেকেন্ড ধরা হচ্ছে
+    const clientTime = req.nextUrl.searchParams.get('t') || Date.now();
+    
+    // 💥 MNIT-কে বাধ্য করা হচ্ছে প্রতিবার ফ্রেশ ডাটা দিতে (ডাবল ক্যাশ বাস্টার)
+    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?_cb=${clientTime}&rnd=${Math.random()}`;
 
     const response = await fetch(mnitUrl, {
       method: "GET",
@@ -32,12 +36,11 @@ export async function GET() {
         "mapikey": MNIT_API_KEY, 
         "Content-Type": "application/json",
         "User-Agent": "Dalvik/2.1.0 (Linux; Android 12)",
-        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
         "Pragma": "no-cache",
         "Expires": "0"
       },
       cache: "no-store",
-      next: { revalidate: 0 } // ক্যাশ কিল সুইচ
     });
 
     if (!response.ok) {
@@ -47,7 +50,6 @@ export async function GET() {
     const result = await response.json();
     const otps = result?.data?.otps || [];
 
-    // ১. ডাটাবেস ছাড়াই সরাসরি লিস্ট তৈরি (ফ্রন্টএন্ডের জন্য রেডি করা)
     const formattedLogs = otps.map((item: any) => ({
       id: item.nid || Math.random().toString(),
       number: item.number,
@@ -55,11 +57,9 @@ export async function GET() {
       country: item.country || "GLOBAL",
       operator: item.operator || "Other",
       service: getServiceName(item.otp),
-      // MNIT এর পাঠানো টাইম, না থাকলে আমাদের সার্ভারের বর্তমান টাইম
       createdAt: item.created_at ? new Date(item.created_at) : new Date() 
     }));
 
-    // ২. ডাটাবেস ছাড়াই সরাসরি গ্রাফের হিসাব
     const counts: Record<string, number> = {};
     formattedLogs.forEach((log: any) => {
       counts[log.service] = (counts[log.service] || 0) + 1;
@@ -68,20 +68,20 @@ export async function GET() {
     let graphData = Object.keys(counts)
       .map(key => ({ name: key, value: counts[key] }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 8); // সেরা ৮টি অ্যাপ
+      .slice(0, 8); 
 
-    // ৩. গ্রাফে মিনিমাম ৮টা বার দেখানোর জন্য ফাঁকা প্যাডিং (যেটা আগেরবার কেটে গিয়েছিল)
     let pad = " ";
     while (graphData.length < 8) {
       graphData.push({ name: pad, value: 0 });
       pad += " ";
     }
 
-    // সরাসরি ফ্রন্টএন্ডে পাঠিয়ে দেওয়া হচ্ছে
+    // রেসপন্সে রেন্ডম আইডি পাঠানো হচ্ছে যাতে ব্রাউজারও ক্যাশ না করে
     return NextResponse.json({ 
       success: true, 
       logs: formattedLogs, 
-      graph: graphData 
+      graph: graphData,
+      _timestamp: Date.now() 
     });
 
   } catch (error: any) {
