@@ -160,23 +160,26 @@ export default function DashboardPage() {
           }
 
         } else if (parsedUser.role === "agent") {
-          const [agentRes, otpRes, userDetailsRes] = await Promise.all([
-            fetch("/api/get-agent-users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentEmail: parsedUser.email }) }).then(r => r.json()),
-            fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json()),
-            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json())
+          // 💥 BINGO: Fetching directly from perfected agent-summary to match 100% 💥
+          const [agentSummaryRes, userDetailsRes, otpRes] = await Promise.all([
+            fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
+            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
+            fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json())
           ]);
 
           let netToday = 0;
           let liveAgentBal = "0.00";
 
-          if (agentRes.users) {
-             netToday = agentRes.users.reduce((sum: number, u: any) => sum + Number(u.todayOTP || 0), 0);
-          }
-
           if (userDetailsRes && userDetailsRes.user) {
              liveAgentBal = Number(userDetailsRes.user.balance || 0).toFixed(2);
-             const aRate = Number(userDetailsRes.user.agentMaxRate || 0.70);
-             setLiveRate(aRate);
+             setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0.70));
+          }
+
+          if (agentSummaryRes && agentSummaryRes.success && agentSummaryRes.groupedRawData) {
+             const todayData = agentSummaryRes.groupedRawData[todayStr];
+             if (todayData) {
+                 netToday = todayData.success || 0; // Exactly matches Summary!
+             }
           }
 
           setStats(prev => ({ 
@@ -190,7 +193,7 @@ export default function DashboardPage() {
             const appCounts: Record<string, any> = {};
             let buckets = [0, 0, 0, 0, 0, 0];
             
-            const sampleLogs = otpRes.otps.slice(0, netToday); 
+            const sampleLogs = otpRes.otps.slice(0, netToday > otpRes.otps.length ? otpRes.otps.length : netToday); 
             
             sampleLogs.forEach((log: any) => {
               const time = log.time || log.createdAt || log.date || Date.now();
@@ -399,7 +402,6 @@ export default function DashboardPage() {
               </div>
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Admin Given Rate" : "Your OTP Rate"}</h3>
-                {/* 💥 ম্যাজিক: Number() কনভার্টার দিয়ে ক্র্যাশ ফিক্স করা হলো! 💥 */}
                 <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
               </div>
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
