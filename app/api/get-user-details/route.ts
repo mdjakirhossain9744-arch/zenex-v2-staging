@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
+import Setting from "../../../models/Setting"; 
 
 // 💥 শক্তিশালী API Key জেনারেটর (ZNX_ + ২৪ ক্যারেক্টারের র‍্যান্ডম কোড) 💥
 const generateApiKey = () => {
@@ -41,7 +42,25 @@ export async function POST(req: Request) {
       await user.save(); // ডাটাবেসে সেভ করে নিলাম
     }
 
-    return NextResponse.json({ success: true, user });
+    // 💥 ইউজারের আসল এজেন্টের ডাটা খোঁজা 💥
+    let agent = null;
+    if (user.agentEmail) {
+      agent = await User.findOne({
+        $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
+        role: { $in: ["agent", "admin"] }
+      }).select("fullName customAgentMail email telegramLink telegram");
+    }
+
+    // 💥 গ্লোবাল সাপোর্ট লিংক ডাটাবেস থেকে আনা 💥
+    let globalSupportLink = "https://t.me/Zenexacademy1";
+    try {
+      const setting = await Setting.findOne({ key: "GLOBAL_SUPPORT_LINK" });
+      if (setting) globalSupportLink = setting.value;
+    } catch (e) { 
+      console.error("Setting fetch error:", e);
+    }
+
+    return NextResponse.json({ success: true, user, agent, globalSupportLink });
 
   } catch (error) {
     console.error("Error fetching user details:", error);

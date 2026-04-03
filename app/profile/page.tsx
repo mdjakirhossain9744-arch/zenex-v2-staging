@@ -19,19 +19,19 @@ export default function Profile() {
   });
 
   const [agentData, setAgentData] = useState({
-    name: "Zenex Admin",
-    telegram: "@zenex_official_support",
-    telegramLink: "https://t.me/zenex_official_support",
-    email: "admin@zenexnetwork.com",
-    status: "Online"
+    name: "No Agent Assigned",
+    telegram: "Not Provided",
+    telegramLink: "#",
+    email: "No Email",
+    status: "Offline"
   });
+
+  const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
 
   // 💥 API Key States 💥
   const [apiKey, setApiKey] = useState("");
   const [isApiActive, setIsApiActive] = useState(false);
   const [showKey, setShowKey] = useState(false);
-
-  const networkSupport = "https://t.me/zenex_official_support";
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -46,7 +46,7 @@ export default function Profile() {
         status: parsedUser.status === "pending" ? "Pending Approval" : "Account Active"
       }));
 
-      // ডাটাবেস থেকে আসল ডাটা আনা
+      // 💥 ডাটাবেস থেকে আসল ডাটা আনা (ইউজার, তার এজেন্ট এবং গ্লোবাল লিংক একসাথে) 💥
       fetch("/api/get-user-details", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -63,38 +63,40 @@ export default function Profile() {
             address: data.user.address || "",
             name: data.user.fullName || prev.name
           }));
+
+          // এজেন্টের ডাটা সেট করা
+          if (data.agent) {
+             let validLink = data.agent.telegramLink || data.agent.telegram || "";
+             if (validLink && validLink.startsWith("@")) {
+                validLink = `https://t.me/${validLink.substring(1)}`;
+             } else if (validLink && !validLink.startsWith("http://") && !validLink.startsWith("https://")) {
+                validLink = `https://${validLink}`;
+             }
+             
+             setAgentData({
+                name: data.agent.fullName || "Your Assigned Agent",
+                telegram: data.agent.telegramLink || data.agent.telegram || "Not Provided",
+                telegramLink: validLink || "#",
+                email: data.agent.customAgentMail || data.agent.email,
+                status: "Online"
+             });
+          } else {
+             setAgentData({
+                name: "Admin Directly",
+                telegram: "Admin Support",
+                telegramLink: data.globalSupportLink,
+                email: "admin@zenexnetwork.com",
+                status: "Online"
+             });
+          }
+
+          // গ্লোবাল লিংক সেট করা
+          if (data.globalSupportLink) {
+             setGlobalSupportLink(data.globalSupportLink);
+          }
         }
       })
-      .catch(err => console.error("Failed to fetch user details"));
-
-      // এজেন্টের ডাটা আনা
-      fetch("/api/get-all-users")
-        .then(res => res.json())
-        .then(data => {
-          if (data.users) {
-            const realAgent = data.users.find((u: any) => 
-              (u.email === parsedUser.agentEmail || u.customAgentMail === parsedUser.agentEmail) && 
-              (u.role === "agent" || u.role === "admin")
-            );
-
-            if (realAgent && realAgent.email !== "admin@zenexnetwork.com") {
-               let validLink = realAgent.telegramLink || "https://t.me/zenex_official_support";
-               if (validLink.startsWith("@")) {
-                  validLink = `https://t.me/${validLink.substring(1)}`;
-               } else if (!validLink.startsWith("http://") && !validLink.startsWith("https://") && validLink !== "") {
-                  validLink = `https://${validLink}`;
-               }
-               setAgentData({
-                  name: realAgent.name || "Your Assigned Agent",
-                  telegram: realAgent.telegramLink || "@AgentSupport",
-                  telegramLink: validLink,
-                  email: realAgent.customAgentMail || realAgent.email,
-                  status: "Online"
-               });
-            }
-          }
-        })
-        .catch(err => console.error("Failed to fetch agent data"));
+      .catch(err => console.error("Failed to fetch details"));
     }
   }, []);
 
@@ -103,7 +105,6 @@ export default function Profile() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // 💥 ডাটাবেসে রিয়েল আপডেট সেভ করা 💥
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
@@ -121,8 +122,6 @@ export default function Profile() {
       if (data.success) {
         showToast("✅ Profile successfully updated!");
         setIsEditingProfile(false);
-        
-        // লোকাল স্টোরেজও আপডেট করে দেওয়া হলো যাতে রিফ্রেশ করলে নতুন নাম দেখায়
         const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
         storedUser.name = profileData.name;
         localStorage.setItem("user", JSON.stringify(storedUser));
@@ -227,6 +226,7 @@ export default function Profile() {
                  </div>
               </div>
 
+              {/* GLOBAL SUPPORT CARD */}
               <div className="bg-gradient-to-br from-[#1E293B] to-[#3B82F6]/5 border border-[#3B82F6]/20 p-6 rounded-3xl shadow-lg relative overflow-hidden group">
                  <h3 className="text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-2 relative z-10 flex items-center gap-2">
                    <svg className="w-5 h-5 text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -234,7 +234,7 @@ export default function Profile() {
                  </h3>
                  <p className="text-xs text-[#64748B] mb-4 relative z-10">Need help with APIs or the network? Join our official community.</p>
                  
-                 <a href={networkSupport} target="_blank" rel="noopener noreferrer" className="bg-[#0F172A] border border-[#334155] hover:border-[#3B82F6] text-[#E2E8F0] hover:text-white w-full py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all text-sm shadow-md">
+                 <a href={globalSupportLink} target="_blank" rel="noopener noreferrer" className="bg-[#0F172A] border border-[#334155] hover:border-[#3B82F6] text-[#E2E8F0] hover:text-white w-full py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all text-sm shadow-md">
                     Join Official Channel
                  </a>
               </div>

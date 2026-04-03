@@ -17,6 +17,7 @@ export default function AdminDashboard() {
   // 💥 Global Settings States 💥
   const [globalRate, setGlobalRate] = useState("0.50");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
 
   // 💥 Security Firewall States (Simulation for Dashboard) 💥
   const [blockedRequests, setBlockedRequests] = useState(124);
@@ -33,6 +34,7 @@ export default function AdminDashboard() {
         setIsAdmin(true); 
         checkSystemHealth();
         fetchSystemSettings();
+        fetchGlobalLink();
         
         // Randomize active connections for live effect
         const interval = setInterval(() => {
@@ -58,13 +60,23 @@ export default function AdminDashboard() {
     }
   };
 
-  // 💥 ফিক্সড: সঠিক হেলথ চেক (এখন আর API ERROR আসবে না) 💥
+  const fetchGlobalLink = async () => {
+    try {
+      const res = await fetch("/api/admin/update-support-link");
+      const data = await res.json();
+      if (data.success && data.link) {
+        setGlobalSupportLink(data.link);
+      }
+    } catch (error) {
+      console.error("Failed to fetch global link");
+    }
+  };
+
   const checkSystemHealth = async () => {
     setApiStatus("Pinging...");
     setDbStatus("Connecting...");
     try {
       const startTime = Date.now();
-      // আমরা system-settings এ পিং করছি কারণ এটি সরাসরি ডাটাবেস থেকে রেসপন্স আনে
       const res = await fetch("/api/system-settings", { cache: "no-store" });
       const endTime = Date.now();
       
@@ -100,6 +112,19 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       alert("❌ Network error while saving.");
+    }
+  };
+
+  const handleSupportLinkSave = async () => {
+    try {
+      const res = await fetch("/api/admin/update-support-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: globalSupportLink })
+      });
+      if(res.ok) alert("✅ Global Support Link Updated Successfully! Users will see this instantly.");
+    } catch (error) {
+      alert("❌ Failed to update global link.");
     }
   };
 
@@ -194,6 +219,20 @@ export default function AdminDashboard() {
                    </div>
                 </div>
 
+                {/* 💥 New Section: Global Support Link 💥 */}
+                <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50 mt-6">
+                   <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-3">Global Telegram Support Link</label>
+                   <div className="flex gap-3">
+                     <div className="relative flex-1">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#3B82F6] font-black">
+                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                        </span>
+                        <input type="text" value={globalSupportLink} onChange={(e)=>setGlobalSupportLink(e.target.value)} placeholder="https://t.me/Zenexacademy1" className="bg-[#1E293B] border border-[#334155] text-white pl-12 pr-4 py-3 rounded-xl w-full font-black text-sm focus:outline-none focus:border-[#3B82F6] transition-colors shadow-inner" />
+                     </div>
+                     <button onClick={handleSupportLinkSave} className="bg-gradient-to-r from-[#10B981] to-[#00C6FF] text-white font-black px-8 rounded-xl hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Save Link</button>
+                   </div>
+                </div>
+
                 <div className={`p-6 rounded-2xl border transition-all duration-300 ${maintenanceMode ? 'bg-[#F43F5E]/10 border-[#F43F5E] shadow-[0_0_30px_rgba(244,63,94,0.15)]' : 'bg-[#0F172A]/80 border-[#334155]'}`}>
                    <div className="flex items-center justify-between mb-4">
                      <div className="flex items-center gap-3">
@@ -266,13 +305,6 @@ export default function AdminDashboard() {
                           <span className="text-xs text-slate-300 font-mono">45.22.x.x</span>
                        </div>
                        <span className="text-[10px] text-[#64748B]">Cloudflare Bypass</span>
-                    </div>
-                    <div className="flex items-center justify-between px-3 py-2 bg-[#0F172A] rounded-lg">
-                       <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-bold text-[#F43F5E] bg-[#F43F5E]/10 px-1.5 py-0.5 rounded border border-[#F43F5E]/20">BLOCKED</span>
-                          <span className="text-xs text-slate-300 font-mono">103.112.x.x</span>
-                       </div>
-                       <span className="text-[10px] text-[#64748B]">Invalid Token</span>
                     </div>
                  </div>
               </div>
