@@ -20,16 +20,15 @@ export async function POST(req: Request) {
     const { email, role } = await req.json();
     const safeEmail = email.toLowerCase().trim();
 
-    const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') });
+    const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
     if (!currentUser) return NextResponse.json({ success: false });
 
     let userRate = 0.50;
     let balance = 0;
     let targetEmail = "";
 
-    // 💥 ম্যাজিক: এজেন্টের সব কোড মুছে ফেলা হলো। এটা এখন শুধু এডমিন আর ইউজারের জন্য! 💥
     if (role === "admin") {
-        userRate = 0.50; // এডমিনের ডিফল্ট রেট
+        userRate = 0.50; 
     } else {
         userRate = currentUser.otpRate || 0.50;
         balance = currentUser.balance || 0;
@@ -41,32 +40,38 @@ export async function POST(req: Request) {
 
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
     
-    // এডমিন না হলে শুধু নিজের ইমেইলের ডাটা আনবে
     if (role !== "admin") {
        orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     }
 
-    const orders = await Order.find(orderQuery).select("status dateString createdAt fullMessage");
+    // 🚀 ROCKET SPEED FIX: .lean() apply kora holo 🚀
+    const orders = await Order.find(orderQuery)
+        .select("status dateString createdAt fullMessage userEmail")
+        .lean();
 
     const groupedRawData: Record<string, any> = {};
 
-    orders.forEach(o => {
+    orders.forEach((o: any) => {
        const finalDateStr = o.dateString || getBDDateString(o.createdAt);
 
-       if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { allocation: 0, success: 0, failed: 0, amount: 0 };
+       if (!groupedRawData[finalDateStr]) {
+           // 💥 Data perfectly formatted for Dashboard 💥
+           groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+       }
        
        const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
 
-       if (o.status === "DONE") {
+       if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
           const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
+          groupedRawData[finalDateStr].total += msgCount; 
           groupedRawData[finalDateStr].allocation += msgCount; 
           groupedRawData[finalDateStr].success += msgCount;
 
-          // এডমিন এবং ইউজারের ইনকাম হিসাব
           if (!isFreeService) {
               groupedRawData[finalDateStr].amount += (userRate * msgCount);
           }
        } else {
+          groupedRawData[finalDateStr].total += 1;
           groupedRawData[finalDateStr].allocation += 1;
           groupedRawData[finalDateStr].failed += 1;
        }
@@ -81,6 +86,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
+    console.error("Summary Report Error:", error);
     return NextResponse.json({ success: false });
   }
 }

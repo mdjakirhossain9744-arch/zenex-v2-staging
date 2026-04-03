@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const { email } = await req.json();
     const safeAgentEmail = email.toLowerCase().trim();
 
-    const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') });
+    const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
 
     const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const networkUsers = await User.find({
         $or: emailConditions,
         role: "user"
-    });
+    }).select("email otpRate").lean();
 
     const targetEmails = new Set<string>();
     const userRateMap: Record<string, number> = {};
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     if (agent.customAgentMail) targetEmails.add(agent.customAgentMail.toLowerCase().trim());
     userRateMap[safeAgentEmail] = agent.otpRate || 0.50;
 
-    networkUsers.forEach(u => {
+    networkUsers.forEach((u: any) => {
         if (u.email) {
             const e = u.email.toLowerCase().trim();
             targetEmails.add(e);
@@ -62,18 +62,20 @@ export async function POST(req: Request) {
         queryConditions.push({ email: regex });
     });
 
-    // 💥 SUPER FAST FIX: Added 60-days limit back to stop Database Overload! 💥
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
+    // 🚀 ROCKET SPEED FIX: .select() + .lean() applied 🚀
     const orders = await Order.find({ 
-        createdAt: { $gte: sixtyDaysAgo }, // This line saves the database from choking!
+        createdAt: { $gte: sixtyDaysAgo }, 
         $or: queryConditions 
-    });
+    })
+    .select("status createdAt dateString fullMessage userEmail email")
+    .lean(); 
 
     const groupedRawData: Record<string, any> = {};
 
-    orders.forEach(o => {
+    orders.forEach((o: any) => {
        const oEmail = (o.userEmail || o.email || "").toLowerCase().trim();
        
        let finalDateStr = "";
@@ -88,13 +90,15 @@ export async function POST(req: Request) {
        }
 
        if (!groupedRawData[finalDateStr]) {
-           groupedRawData[finalDateStr] = { allocation: 0, success: 0, failed: 0, amount: 0 };
+           // 💥 Data separation perfectly aligned with frontend 💥
+           groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        }
        
        const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
 
        if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
           const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
+          groupedRawData[finalDateStr].total += msgCount; 
           groupedRawData[finalDateStr].allocation += msgCount; 
           groupedRawData[finalDateStr].success += msgCount;
 
@@ -104,6 +108,7 @@ export async function POST(req: Request) {
               groupedRawData[finalDateStr].amount += commission;
           }
        } else {
+          groupedRawData[finalDateStr].total += 1;
           groupedRawData[finalDateStr].allocation += 1;
           groupedRawData[finalDateStr].failed += 1;
        }
