@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
 export default function AgentUsersPage() {
@@ -21,28 +21,27 @@ export default function AgentUsersPage() {
   const [newStatus, setNewStatus] = useState("active");
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchNetworkUsers = (email: string) => {
-    fetch("/api/get-agent-users", {
+  // 💥 THE MAGIC: Silent Background Fetcher (Zero Reload) 💥
+  const fetchNetworkUsers = useCallback((email: string, isSilent = false) => {
+    if (!isSilent) setLoading(true); // প্রথমবার শুধু স্পিনার দেখাবে, পরে ব্যাকগ্রাউন্ডে সাইলেন্টলি আনবে
+    
+    fetch(`/api/get-agent-users?t=${Date.now()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentEmail: email })
     })
       .then(res => res.json())
       .then(data => {
-        // 💥 EXTREME SAFETY: Ensuring arrays and numbers are correctly typed 💥
-        if (data?.users && Array.isArray(data.users)) {
-           setMyUsers(data.users);
-        }
+        if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
         if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
         if (data?.agentRate) setAgentRate(Number(data.agentRate));
-        
         setLoading(false);
       })
       .catch((err) => {
         console.error("API Fetch Error:", err);
         setLoading(false);
       });
-  };
+  }, []);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -53,18 +52,21 @@ export default function AgentUsersPage() {
 
         if (parsedUser?.role === "agent") {
           setAgentMail(parsedUser.email); 
-          fetchNetworkUsers(parsedUser.email);
+          fetchNetworkUsers(parsedUser.email, false); // Initial Load
           
-          const interval = setInterval(() => fetchNetworkUsers(parsedUser.email), 10000);
+          // 💥 10-Second Auto Sync: নতুন ইউজার আসলেই অটোমেটিক লিস্টে চলে আসবে 💥
+          const interval = setInterval(() => {
+             fetchNetworkUsers(parsedUser.email, true); 
+          }, 10000);
+          
           return () => clearInterval(interval);
         }
       } catch (e) {
         console.error("Local Storage Error:", e);
       }
     }
-  }, []);
+  }, [fetchNetworkUsers]);
 
-  // 💥 100% CRASH-PROOF FILTERING 💥
   const filteredUsers = Array.isArray(myUsers) ? myUsers.filter(u => {
     const name = String(u?.name || "").toLowerCase();
     const email = String(u?.email || "").toLowerCase();
@@ -75,11 +77,9 @@ export default function AgentUsersPage() {
   }) : [];
 
   const totalUsers = Array.isArray(myUsers) ? myUsers.length : 0;
-  
   const activeUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'active').length : 0;
   const pendingUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'pending').length : 0;
   const bannedUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'banned').length : 0;
-  
   const isSeatFull = totalUsers >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
@@ -119,7 +119,7 @@ export default function AgentUsersPage() {
       if (res.ok) {
         alert("✅ Successfully Updated User!");
         setIsModalOpen(false);
-        fetchNetworkUsers(agentMail); 
+        fetchNetworkUsers(agentMail, true); // Update list silently
       } else {
         alert(data.message || "Failed to update user!");
       }
@@ -145,7 +145,7 @@ export default function AgentUsersPage() {
         if (data.success) {
           alert(`✅ User has been permanently removed!`);
           setIsModalOpen(false);
-          fetchNetworkUsers(agentMail); 
+          fetchNetworkUsers(agentMail, true); 
         } else {
           alert(`❌ Failed: ${data.message}`);
         }
@@ -163,9 +163,16 @@ export default function AgentUsersPage() {
         
         <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
-            <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-[#A855F7] to-[#EC4899] bg-clip-text text-transparent uppercase tracking-wider">
-              My Network Users
-            </h2>
+            <div className="flex items-center gap-3">
+               <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-[#A855F7] to-[#EC4899] bg-clip-text text-transparent uppercase tracking-wider">
+                 My Network Users
+               </h2>
+               {/* 🔴 Live Status Dot */}
+               <span className="flex h-3 w-3 relative">
+                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                 <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+               </span>
+            </div>
             <p className="text-sm text-[#94A3B8] mt-1">Manage your team, set custom OTP rates, and update passwords.</p>
           </div>
           <div className="relative w-full lg:w-auto">
@@ -265,7 +272,7 @@ export default function AgentUsersPage() {
 
         {/* User Manage Modal */}
         {isModalOpen && selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
 
