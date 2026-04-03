@@ -110,13 +110,22 @@ export default function DashboardPage() {
     const fetchDashboardData = async () => {
       try {
         if (parsedUser.role === "admin") {
-          const [userData, otpData, reportData] = await Promise.all([
+          // 💥 ADMIN FIX: Fetching directly from summary-report API for 100% Sync 💥
+          const [userData, otpData, reportData, summaryRes] = await Promise.all([
             fetch("/api/get-all-users").then(r => r.json()),
             fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json()),
-            fetch("/api/admin-agent-report").then(r => r.json()) 
+            fetch("/api/admin-agent-report").then(r => r.json()),
+            fetch("/api/summary-report", { 
+               method: "POST", headers: { "Content-Type": "application/json" }, 
+               body: JSON.stringify({ email: parsedUser.email, role: "admin" }) 
+            }).then(r => r.json()).catch(() => ({}))
           ]);
   
           let actualTodayGlobalOTP = 0; 
+          if (summaryRes && summaryRes.success && summaryRes.groupedRawData) {
+             const todayData = summaryRes.groupedRawData[todayStr];
+             if (todayData) actualTodayGlobalOTP = todayData.success || 0;
+          }
 
           if (reportData && reportData.success) {
              setAgentReport(reportData.report);
@@ -132,8 +141,6 @@ export default function DashboardPage() {
               const logDateStr = getBDDateString(time); 
               
               if (logDateStr === todayStr) {
-                 actualTodayGlobalOTP++; 
-
                  const hour = getBDHour(time); 
                  const bucketIndex = Math.floor(hour / 4);
                  if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
@@ -217,7 +224,7 @@ export default function DashboardPage() {
           }
 
         } else {
-          // 💥 BINGO: User Role now strictly fetches from Database, removing LocalStorage limits! 💥
+          // User Role Dashboard Data Fetching
           const [userDetailsRes, ordersRes] = await Promise.all([
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
