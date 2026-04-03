@@ -13,8 +13,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  
-  // 💥 NEW: Mobile Badge Toggle State 💥
   const [isBadgeOpen, setIsBadgeOpen] = useState(false);
   
   const [user, setUser] = useState<any>(null);
@@ -27,7 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const showGlobalToast = useCallback((msg: string) => {
     setGlobalToast(msg);
-    setTimeout(() => setGlobalToast(""), 5000);
+    setTimeout(() => setGlobalToast(""), 4000); 
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -100,7 +98,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [router, handleLogout]);
 
-  // 💥 GLOBAL BACKGROUND ENGINE + REAL API TIMESTAMP EXTRACTOR 💥
   useEffect(() => {
     if (!user?.email) return;
 
@@ -156,7 +153,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                        realApiTime = ts < 10000000000 ? ts * 1000 : ts; 
                    }
 
-                   showGlobalToast(`🔔 SUCCESS: OTP Received! Code: ${finalCode}`);
+                   window.dispatchEvent(new CustomEvent('otp-received-instant', { 
+                     detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: firstMsg, isMulti: false } 
+                   }));
+
+                   showGlobalToast(`${finalCode} (New OTP)`);
 
                    await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: realApiTime } }) });
 
@@ -188,7 +189,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                              realApiTime = ts < 10000000000 ? ts * 1000 : ts;
                          }
 
-                         showGlobalToast(`🔥 MULTI OTP Received! Code: ${finalCode}`);
+                         window.dispatchEvent(new CustomEvent('otp-received-instant', { 
+                           detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: newMsg, isMulti: true } 
+                         }));
+
+                         showGlobalToast(`${finalCode} (Multi OTP)`);
+
                          await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: realApiTime } }) });
                          alreadySeen.push(newMsg);
                       }
@@ -273,9 +279,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen w-full bg-[#0F172A] text-[#E2E8F0] flex font-sans selection:bg-[#3B82F6] selection:text-white relative overflow-hidden">
       
       {globalToast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] bg-gradient-to-r from-[#10B981] to-[#059669] text-white px-6 py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.5)] font-black text-sm flex items-center gap-3 animate-bounce-in border border-[#34D399]">
-           <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-           {globalToast}
+        <div className="fixed top-6 md:top-8 left-1/2 -translate-x-1/2 z-[9999] bg-[#1E293B]/80 backdrop-blur-xl text-white px-5 py-2.5 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.5)] font-bold text-xs md:text-sm flex items-center gap-3 animate-bounce-in border border-[#334155]/50 transition-all">
+           <div className="w-5 h-5 rounded-full bg-[#10B981]/20 flex items-center justify-center">
+              <span className="w-2 h-2 bg-[#10B981] rounded-full animate-pulse shadow-[0_0_8px_#10B981]"></span>
+           </div>
+           <span className="tracking-wider">{globalToast}</span>
         </div>
       )}
 
@@ -439,29 +447,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      {/* 💥 NEW: Sleek Pill Badge Design 💥 */}
-      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-center justify-end group">
+      {/* 💥 MODIFIED: Small Icon on Mobile, Full Badge on PC 💥 */}
+      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-end md:items-center justify-end group">
         
-        {/* Tooltip Card (Horizontal Pill) */}
-        <div className={`absolute right-full mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 ${isBadgeOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-4 pointer-events-none'} md:group-hover:opacity-100 md:group-hover:translate-x-0 md:group-hover:pointer-events-auto`}>
-           <div className="flex items-center gap-4 px-4 py-2.5 whitespace-nowrap">
-              <div className="flex items-center gap-2 border-r border-[#334155] pr-4">
+        {/* Tooltip Card (Pops UP on mobile, LEFT on PC) */}
+        <div className={`absolute bottom-full mb-3 right-0 md:bottom-auto md:mb-0 md:right-full md:mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl md:rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 origin-bottom-right md:origin-right ${isBadgeOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'} md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}>
+           <div className="flex flex-col md:flex-row items-center md:gap-4 px-4 py-3 md:py-2.5 whitespace-nowrap">
+              <div className="flex items-center gap-2 md:border-r border-[#334155] pb-2 md:pb-0 border-b md:border-b-0 w-full md:w-auto md:pr-4 justify-center md:justify-start">
                  <div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_#10B981]"></div>
                  <span className="text-[10px] font-black text-white tracking-widest uppercase">System Core <span className="text-[#94A3B8]">B:3.1.5</span></span>
               </div>
-              <a href="mailto:zenexpart44@gmail.com" className="text-[10px] font-black text-[#00C6FF] hover:text-white transition-colors underline underline-offset-2">
-                 Developed by Zenex Team
-              </a>
+              <div className="pt-2 md:pt-0 flex flex-col items-center md:items-start">
+                 <span className="text-[10px] font-black text-[#10B981] md:hidden uppercase mb-1">V3.0.1 (Secured)</span>
+                 <a href="mailto:zenexpart44@gmail.com" className="text-[10px] font-black text-[#00C6FF] hover:text-white transition-colors underline underline-offset-2">
+                   Developed by Zenex Team
+                 </a>
+              </div>
            </div>
         </div>
 
         {/* Floating Badge Button */}
         <div 
           onClick={() => setIsBadgeOpen(!isBadgeOpen)}
-          className="bg-[#1E293B]/90 backdrop-blur-md border border-[#334155] text-[10px] md:text-xs font-mono font-bold text-[#94A3B8] px-4 py-2.5 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-2"
+          className="bg-[#1E293B]/90 backdrop-blur-md border border-[#334155] text-[#94A3B8] p-2.5 md:px-4 md:py-2.5 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center justify-center gap-2"
         >
-          <span>V3.0.1 (Secured)</span>
-          <svg className={`w-4 h-4 text-[#10B981] transition-transform duration-300 ${isBadgeOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {/* Mobile Icon: Just a Verified Shield */}
+          <svg className="w-5 h-5 text-[#10B981] md:hidden block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+
+          {/* PC Layout */}
+          <span className="hidden md:block text-[10px] md:text-xs font-mono font-bold">V3.0.1 (Secured)</span>
+          <svg className={`hidden md:block w-4 h-4 text-[#10B981] transition-transform duration-300 ${isBadgeOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         </div>

@@ -18,7 +18,6 @@ export default function GetNumber() {
   const [removePlus, setRemovePlus] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // 💥 NEW: Initial Load State for Skeleton Animation 💥
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState("ALL"); 
@@ -74,7 +73,6 @@ export default function GetNumber() {
     return new Date(timestamp).toLocaleDateString();
   };
 
-  // 💥 OPTIMIZED DATA FETCHING (No more hanging) 💥
   const fetchDbOrders = async () => {
     const email = getUserEmail();
     if(!email) return;
@@ -89,30 +87,48 @@ export default function GetNumber() {
       }
     } catch (err) {} 
     finally {
-      setIsInitialLoad(false); // Hide skeleton loader
+      setIsInitialLoad(false); 
     }
   };
 
-  // 💥 Manual Refresh Only (Background is handled by DashboardLayout globally) 💥
   const checkOtps = async () => {
     setIsRefreshing(true);
     try {
       const res = await fetch(`/api/check-otp?t=${Date.now()}`);
       const result = await res.json();
-      if (result.success) await fetchDbOrders(); // Just sync DB after manual check
+      if (result.success) await fetchDbOrders(); 
     } catch (err) {} 
     finally {
       setTimeout(() => setIsRefreshing(false), 500); 
     }
   };
 
-  // Polling UI to keep data fresh without overloading browser
+  // 💥 ZERO-DELAY INSTANT OTP LISTENER 💥
   useEffect(() => {
+    const handleInstantOtp = (e: any) => {
+      const { searchNumber, otp, fullMessage, isMulti } = e.detail;
+      
+      setNumbersList((prev) => prev.map((item) => {
+        if (item.searchNumber === searchNumber) {
+           if (!isMulti && item.status === "WAIT") {
+             return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
+           } else if (isMulti) {
+             const newSeen = item.seenMessages ? [...item.seenMessages, fullMessage] : [item.fullMessage, fullMessage];
+             return { ...item, status: "DONE", otp, fullMessage, seenMessages: newSeen, receivedAt: Date.now(), isMulti: true };
+           }
+        }
+        return item;
+      }));
+    };
+
+    window.addEventListener('otp-received-instant', handleInstantOtp);
+
     fetchDbOrders();
-    const syncInterval = setInterval(fetchDbOrders, 3000); // 3 sec auto-sync UI with DB
+    const syncInterval = setInterval(fetchDbOrders, 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
     return () => {
+       window.removeEventListener('otp-received-instant', handleInstantOtp);
        clearInterval(syncInterval);
        clearInterval(timeInterval);
     };
@@ -272,7 +288,6 @@ export default function GetNumber() {
            </div>
 
            <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar w-full">
-              {/* 💥 SKELETON LOADER MAGIC 💥 */}
               {isInitialLoad ? (
                  Array(5).fill(0).map((_, i) => (
                    <div key={i} className="flex flex-col p-3 border-b border-[#334155] w-full animate-pulse bg-[#1E293B]/40">
