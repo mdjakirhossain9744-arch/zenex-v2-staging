@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-export default function AgentUsersPage() {
+export default function UsersDirectoryPage() {
   const [role, setRole] = useState("user");
-  const [agentMail, setAgentMail] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [agentRate, setAgentRate] = useState<number>(0.70); 
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,26 +21,36 @@ export default function AgentUsersPage() {
   const [newStatus, setNewStatus] = useState("active");
   const [isSaving, setIsSaving] = useState(false);
 
-  // 💥 THE MAGIC: Silent Background Fetcher (Zero Reload) 💥
-  const fetchNetworkUsers = useCallback((email: string, isSilent = false) => {
-    if (!isSilent) setLoading(true); // প্রথমবার শুধু স্পিনার দেখাবে, পরে ব্যাকগ্রাউন্ডে সাইলেন্টলি আনবে
-    
-    fetch(`/api/get-agent-users?t=${Date.now()}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentEmail: email })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
-        if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
-        if (data?.agentRate) setAgentRate(Number(data.agentRate));
-        setLoading(false);
+  // 💥 THE MAGIC: Unified Silent Fetcher (Admin + Agent) 💥
+  const fetchNetworkUsers = useCallback((email: string, userRole: string, isSilent = false) => {
+    if (!isSilent) setLoading(true); 
+
+    if (userRole === "admin") {
+      // 👑 ADMIN: Fetch ALL Users 👑
+      fetch(`/api/get-all-users?t=${Date.now()}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
+          setAgentMaxLimit(999999); // Admin has no limits
+          setLoading(false);
+        })
+        .catch(err => { console.error(err); setLoading(false); });
+    } else {
+      // 🕵️ AGENT: Fetch Only Their Users 🕵️
+      fetch(`/api/get-agent-users?t=${Date.now()}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentEmail: email })
       })
-      .catch((err) => {
-        console.error("API Fetch Error:", err);
-        setLoading(false);
-      });
+        .then(res => res.json())
+        .then(data => {
+          if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
+          if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
+          if (data?.agentRate) setAgentRate(Number(data.agentRate));
+          setLoading(false);
+        })
+        .catch(err => { console.error(err); setLoading(false); });
+    }
   }, []);
 
   useEffect(() => {
@@ -48,15 +58,16 @@ export default function AgentUsersPage() {
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
-        setRole(parsedUser?.role || "user");
+        const currentRole = parsedUser?.role || "user";
+        setRole(currentRole);
 
-        if (parsedUser?.role === "agent") {
-          setAgentMail(parsedUser.email); 
-          fetchNetworkUsers(parsedUser.email, false); // Initial Load
+        if (currentRole === "agent" || currentRole === "admin") {
+          setUserEmail(parsedUser.email); 
+          fetchNetworkUsers(parsedUser.email, currentRole, false); // Initial Load
           
-          // 💥 10-Second Auto Sync: নতুন ইউজার আসলেই অটোমেটিক লিস্টে চলে আসবে 💥
+          // 💥 10-Second Auto Sync (Zero Reload) 💥
           const interval = setInterval(() => {
-             fetchNetworkUsers(parsedUser.email, true); 
+             fetchNetworkUsers(parsedUser.email, currentRole, true); 
           }, 10000);
           
           return () => clearInterval(interval);
@@ -72,7 +83,6 @@ export default function AgentUsersPage() {
     const email = String(u?.email || "").toLowerCase();
     const uid = String(u?.uid || "").toLowerCase();
     const query = String(searchQuery || "").toLowerCase();
-    
     return name.includes(query) || email.includes(query) || uid.includes(query);
   }) : [];
 
@@ -80,7 +90,7 @@ export default function AgentUsersPage() {
   const activeUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'active').length : 0;
   const pendingUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'pending').length : 0;
   const bannedUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'banned').length : 0;
-  const isSeatFull = totalUsers >= agentMaxLimit;
+  const isSeatFull = role === "agent" && totalUsers >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
     if(!user) return;
@@ -95,7 +105,8 @@ export default function AgentUsersPage() {
     e.preventDefault();
     setIsSaving(true);
 
-    if (Number(newRate) > Number(agentRate)) {
+    // Only check rate limit for Agents. Admins can set any rate.
+    if (role === "agent" && Number(newRate) > Number(agentRate)) {
       alert(`🔴 ERROR: You cannot give a user more than your own limit! (Your Max Limit is ৳ ${Number(agentRate).toFixed(2)})`);
       setIsSaving(false);
       return; 
@@ -106,11 +117,11 @@ export default function AgentUsersPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: selectedUser?.id,
+          userId: selectedUser?.id || selectedUser?._id,
           newPassword: newPassword,
           newRate: newRate,
           newStatus: newStatus,
-          requesterEmail: agentMail, 
+          requesterEmail: userEmail, 
           requesterRole: role        
         })
       });
@@ -119,7 +130,7 @@ export default function AgentUsersPage() {
       if (res.ok) {
         alert("✅ Successfully Updated User!");
         setIsModalOpen(false);
-        fetchNetworkUsers(agentMail, true); // Update list silently
+        fetchNetworkUsers(userEmail, role, true); // Update list silently
       } else {
         alert(data.message || "Failed to update user!");
       }
@@ -145,7 +156,7 @@ export default function AgentUsersPage() {
         if (data.success) {
           alert(`✅ User has been permanently removed!`);
           setIsModalOpen(false);
-          fetchNetworkUsers(agentMail, true); 
+          fetchNetworkUsers(userEmail, role, true); 
         } else {
           alert(`❌ Failed: ${data.message}`);
         }
@@ -155,7 +166,15 @@ export default function AgentUsersPage() {
     }
   };
 
-  if (role !== "agent") return <div className="min-h-screen bg-[#0B0F1A] text-white flex items-center justify-center">Access Denied. Agents Only.</div>;
+  // Block basic users
+  if (role !== "agent" && role !== "admin") {
+    return (
+      <div className="min-h-screen bg-[#0B0F1A] text-white flex flex-col items-center justify-center font-black tracking-widest uppercase">
+        <span className="text-[#F43F5E] text-4xl mb-2">⛔</span>
+        Access Denied. Admins & Agents Only.
+      </div>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -164,8 +183,8 @@ export default function AgentUsersPage() {
         <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
             <div className="flex items-center gap-3">
-               <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-[#A855F7] to-[#EC4899] bg-clip-text text-transparent uppercase tracking-wider">
-                 My Network Users
+               <h2 className={`text-2xl md:text-3xl font-black bg-gradient-to-r bg-clip-text text-transparent uppercase tracking-wider ${role === 'admin' ? 'from-[#F43F5E] to-[#EAB308]' : 'from-[#A855F7] to-[#EC4899]'}`}>
+                 {role === "admin" ? "Global Users Directory" : "My Network Users"}
                </h2>
                {/* 🔴 Live Status Dot */}
                <span className="flex h-3 w-3 relative">
@@ -173,7 +192,9 @@ export default function AgentUsersPage() {
                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                </span>
             </div>
-            <p className="text-sm text-[#94A3B8] mt-1">Manage your team, set custom OTP rates, and update passwords.</p>
+            <p className="text-sm text-[#94A3B8] mt-1">
+              {role === "admin" ? "Master control panel for all registered users across the system." : "Manage your team, set custom OTP rates, and update passwords."}
+            </p>
           </div>
           <div className="relative w-full lg:w-auto">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -181,17 +202,17 @@ export default function AgentUsersPage() {
               type="text" 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search user by ID or Name..." 
+              placeholder="Search by ID, Name or Email..." 
               className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#A855F7] transition-colors" 
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg relative overflow-hidden border-t-2 border-t-[#A855F7]">
+          <div className={`bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg relative overflow-hidden border-t-2 ${role === 'admin' ? 'border-t-[#F43F5E]' : 'border-t-[#A855F7]'}`}>
             <p className="text-[#94A3B8] text-xs font-bold uppercase tracking-wider mb-1">Total Users</p>
             <h3 className="text-2xl md:text-3xl font-black text-white">
-              {totalUsers} <span className="text-sm text-[#64748B] font-medium">/ {agentMaxLimit}</span>
+              {totalUsers} <span className="text-sm text-[#64748B] font-medium">{role === 'admin' ? '' : `/ ${agentMaxLimit}`}</span>
             </h3>
             {isSeatFull && (
               <span className="inline-block mt-2 px-2 py-0.5 bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 text-[10px] font-black uppercase tracking-widest rounded animate-pulse">
@@ -232,18 +253,18 @@ export default function AgentUsersPage() {
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#A855F7] font-bold">Loading Your Network...</td></tr>
+                <tr><td colSpan={6} className="text-center p-8 text-[#A855F7] font-bold">Loading Database...</td></tr>
               ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found in your network.</td></tr>
+                <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found in database.</td></tr>
               ) : (
                 filteredUsers.map((u, i) => (
-                  <tr key={u?.id || i} className="hover:bg-[#334155]/20 transition-colors">
+                  <tr key={u?.id || u?._id || i} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-bold text-[#E2E8F0]">{u?.name || "Unknown"}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u?.uid || "N/A"}</span>
-                        {u?.isApiActive && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">API</span>
+                        {role === 'admin' && u?.role === 'agent' && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-widest">AGENT</span>
                         )}
                       </div>
                       <p className="text-[10px] text-[#64748B]">{u?.email || "No Email"}</p>
@@ -254,12 +275,12 @@ export default function AgentUsersPage() {
                     <td className="p-4 font-black text-[#EAB308]">৳ {u?.rate || "0.00"}</td>
                     <td className="p-4 font-black text-[#10B981]">৳ {u?.balance || "0.00"}</td>
                     <td className="p-4">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u?.status === 'Active' ? 'bg-[#10B981]/10 text-[#10B981]' : u?.status === 'Banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${String(u?.status).toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : String(u?.status).toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
                         {u?.status || "Pending"}
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      <button onClick={() => openManageModal(u)} className="bg-[#A855F7]/10 hover:bg-[#A855F7] text-[#A855F7] hover:text-white px-4 py-2 rounded-lg text-xs font-black transition-colors border border-[#A855F7]/30">
+                      <button onClick={() => openManageModal(u)} className={`px-4 py-2 rounded-lg text-xs font-black transition-colors border ${role === 'admin' ? 'bg-[#F43F5E]/10 hover:bg-[#F43F5E] text-[#F43F5E] hover:text-white border-[#F43F5E]/30' : 'bg-[#A855F7]/10 hover:bg-[#A855F7] text-[#A855F7] hover:text-white border-[#A855F7]/30'}`}>
                         Manage User
                       </button>
                     </td>
@@ -277,23 +298,12 @@ export default function AgentUsersPage() {
               <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
-                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#A855F7] to-[#EC4899] flex items-center justify-center text-white font-black">
+                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-black ${role === 'admin' ? 'bg-gradient-to-tr from-[#F43F5E] to-[#EAB308]' : 'bg-gradient-to-tr from-[#A855F7] to-[#EC4899]'}`}>
                    {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
                    <h3 className="text-lg font-black text-white leading-tight">{selectedUser?.name || "Unknown"}</h3>
-                   <p className="text-[10px] font-mono text-[#A855F7] font-bold">{selectedUser?.uid || "N/A"}</p>
-                 </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                 <div className="bg-[#0F172A] border border-[#334155] p-3 rounded-xl">
-                   <span className="text-[9px] text-[#64748B] uppercase font-bold block mb-1">Today's OTP</span>
-                   <span className="text-lg text-white font-black">{selectedUser?.todayOTP || 0}</span>
-                 </div>
-                 <div className="bg-[#0F172A] border border-[#334155] p-3 rounded-xl">
-                   <span className="text-[9px] text-[#64748B] uppercase font-bold block mb-1">User Balance</span>
-                   <span className="text-lg text-[#10B981] font-black">৳ {selectedUser?.balance || "0.00"}</span>
+                   <p className="text-[10px] font-mono text-[#94A3B8] font-bold">{selectedUser?.email}</p>
                  </div>
               </div>
 
@@ -309,18 +319,19 @@ export default function AgentUsersPage() {
 
                 <div>
                   <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
-                    Set User Pay Rate (Your Limit: ৳ {Number(agentRate || 0).toFixed(2)})
+                    Set User Pay Rate {role === "agent" ? `(Max: ৳ ${Number(agentRate || 0).toFixed(2)})` : `(Admin Override)`}
                   </label>
                   <input type="number" step="0.01" value={newRate} onChange={(e) => setNewRate(e.target.value)} required
                     className="w-full bg-[#0F172A] border border-[#334155] text-white font-black px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#EAB308]" />
                 </div>
+                
                 <div>
                   <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
                   <input type="text" placeholder="Type new password (Optional)..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#F43F5E] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155]" />
                 </div>
                 
-                <button type="submit" disabled={isSaving} className="w-full py-3.5 mt-2 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#EC4899] text-white font-black text-sm shadow-[0_0_15px_rgba(168,85,247,0.4)] transition-transform hover:-translate-y-1 disabled:opacity-50">
+                <button type="submit" disabled={isSaving} className={`w-full py-3.5 mt-2 rounded-xl text-white font-black text-sm transition-transform hover:-translate-y-1 disabled:opacity-50 ${role === 'admin' ? 'bg-gradient-to-r from-[#F43F5E] to-[#EAB308] shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-gradient-to-r from-[#A855F7] to-[#EC4899] shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}>
                   {isSaving ? "Saving..." : "Update User Details"}
                 </button>
 
