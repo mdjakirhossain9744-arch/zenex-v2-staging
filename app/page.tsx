@@ -36,6 +36,9 @@ export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState("user"); 
   const [liveRate, setLiveRate] = useState<any>(0.50);
+  
+  // 💥 Magic: Skeleton Loader State (পেজ আর হ্যাং করবে না) 💥
+  const [isPageLoading, setIsPageLoading] = useState(true);
 
   const [stats, setStats] = useState({
     balance: "0.00",
@@ -49,7 +52,7 @@ export default function DashboardPage() {
     totalUsers: 0,
     totalAgents: 0,
     systemLiability: "0.00",
-    globalTodayOTP: 0,
+    globalTodaySuccess: 0,
   });
 
   const [agentReport, setAgentReport] = useState<any[]>([]);
@@ -110,10 +113,9 @@ export default function DashboardPage() {
     const fetchDashboardData = async () => {
       try {
         if (parsedUser.role === "admin") {
-          // 💥 ADMIN FIX: Fetching directly from summary-report API for 100% Sync 💥
           const [userData, otpData, reportData, summaryRes] = await Promise.all([
             fetch("/api/get-all-users").then(r => r.json()),
-            fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json()),
+            fetch("/api/check-otp?limit=1000", { cache: "no-store" }).then(r => r.json()), 
             fetch("/api/admin-agent-report").then(r => r.json()),
             fetch("/api/summary-report", { 
                method: "POST", headers: { "Content-Type": "application/json" }, 
@@ -121,10 +123,10 @@ export default function DashboardPage() {
             }).then(r => r.json()).catch(() => ({}))
           ]);
   
-          let actualTodayGlobalOTP = 0; 
+          let actualTodayGlobalSuccess = 0; 
           if (summaryRes && summaryRes.success && summaryRes.groupedRawData) {
              const todayData = summaryRes.groupedRawData[todayStr];
-             if (todayData) actualTodayGlobalOTP = todayData.success || 0;
+             if (todayData) actualTodayGlobalSuccess = todayData.success || 0;
           }
 
           if (reportData && reportData.success) {
@@ -162,7 +164,7 @@ export default function DashboardPage() {
               totalUsers: allUsers.filter((u: any) => u.role === 'user').length,
               totalAgents: allUsers.filter((u: any) => u.role === 'agent').length,
               systemLiability: liability.toFixed(2),
-              globalTodayOTP: actualTodayGlobalOTP 
+              globalTodaySuccess: actualTodayGlobalSuccess 
             });
           }
 
@@ -170,10 +172,11 @@ export default function DashboardPage() {
           const [agentSummaryRes, userDetailsRes, otpRes] = await Promise.all([
             fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-            fetch("/api/check-otp", { cache: "no-store" }).then(r => r.json())
+            fetch("/api/check-otp?limit=500", { cache: "no-store" }).then(r => r.json()) 
           ]);
 
-          let netToday = 0;
+          let netTodayTotal = 0;
+          let netTodaySuccess = 0;
           let liveAgentBal = "0.00";
 
           if (userDetailsRes && userDetailsRes.user) {
@@ -184,22 +187,23 @@ export default function DashboardPage() {
           if (agentSummaryRes && agentSummaryRes.success && agentSummaryRes.groupedRawData) {
              const todayData = agentSummaryRes.groupedRawData[todayStr];
              if (todayData) {
-                 netToday = todayData.success || 0; 
+                 netTodaySuccess = todayData.success || 0; 
+                 netTodayTotal = todayData.total || todayData.totalOTP || netTodaySuccess; 
              }
           }
 
           setStats(prev => ({ 
             ...prev, 
             balance: liveAgentBal, 
-            todayTotal: netToday, 
-            todaySuccess: netToday 
+            todayTotal: netTodayTotal, 
+            todaySuccess: netTodaySuccess 
           }));
 
-          if (otpRes.success && otpRes.otps && netToday > 0) {
+          if (otpRes.success && otpRes.otps && netTodaySuccess > 0) {
             const appCounts: Record<string, any> = {};
             let buckets = [0, 0, 0, 0, 0, 0];
             
-            const sampleLogs = otpRes.otps.slice(0, netToday > otpRes.otps.length ? otpRes.otps.length : netToday); 
+            const sampleLogs = otpRes.otps.slice(0, netTodaySuccess > otpRes.otps.length ? otpRes.otps.length : netTodaySuccess); 
             
             sampleLogs.forEach((log: any) => {
               const time = log.time || log.createdAt || log.date || Date.now();
@@ -224,7 +228,7 @@ export default function DashboardPage() {
           }
 
         } else {
-          // User Role Dashboard Data Fetching
+          // User Role Fetching
           const [userDetailsRes, ordersRes] = await Promise.all([
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
@@ -276,7 +280,9 @@ export default function DashboardPage() {
              setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
           }
         }
-      } catch (e) {}
+      } catch (e) {} finally {
+        setIsPageLoading(false); // 💥 Data load done! Hide skeleton
+      }
     };
 
     fetchDashboardData();
@@ -302,7 +308,24 @@ export default function DashboardPage() {
     return path;
   };
 
-  if (!user) return <div className="min-h-screen bg-[#0B0F1A]"></div>;
+  // 💥 Magic: Sleek Skeleton Loader (Shows instantly on page load) 💥
+  if (isPageLoading) return (
+    <DashboardLayout>
+      <div className="p-4 md:p-10 w-full font-sans min-h-screen bg-[#0B0F1A]">
+         <div className="animate-pulse">
+            <div className="h-8 bg-[#1E293B] w-64 rounded-xl mb-3"></div>
+            <div className="h-4 bg-[#1E293B] w-96 rounded-xl mb-10"></div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-10">
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+            </div>
+            <div className="h-64 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+         </div>
+      </div>
+    </DashboardLayout>
+  );
 
   const userName = user.name ? user.name.split(" ")[0] : "User";
 
@@ -341,9 +364,10 @@ export default function DashboardPage() {
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">System Liability</h3>
                 <p className="text-xl md:text-3xl font-black text-[#10B981]">৳ {adminStats.systemLiability}</p>
               </div>
+              {/* 💥 Updated Admin Card 4 💥 */}
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's OTP</h3>
-                <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodayOTP}</p>
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's Success</h3>
+                <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodaySuccess}</p>
               </div>
             </div>
 
@@ -398,22 +422,29 @@ export default function DashboardPage() {
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Admin Given Rate" : "Your OTP Rate"}</h3>
                 <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
               </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Network Today's OTP" : "Today's Total OTP"}</h3>
-                <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">{stats.todayTotal}</p>
+              {/* 💥 Updated Card 3 💥 */}
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Network Today's Numbers" : "Today's Total Numbers"}</h3>
+                <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{stats.todayTotal}</p>
               </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#8B5CF6] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Network Live Status" : "Yesterday's Total OTP"}</h3>
-                <p className="text-lg md:text-2xl font-black text-[#F8FAFC]">{role === 'agent' ? "ACTIVE" : stats.yesterdayTotal}</p>
+              {/* 💥 Updated Card 4 💥 */}
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
+                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
+                <div className="flex items-center gap-2">
+                   <p className="text-xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
+                   {stats.todaySuccess > 0 && (
+                      <span className="flex h-2.5 w-2.5 relative ml-1">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#10B981]"></span>
+                      </span>
+                   )}
+                </div>
               </div>
             </div>
 
+            {/* ইউজারদের জন্য এক্সট্রা গ্রিড */}
             {role !== "agent" && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 mb-6 md:mb-10">
-                <div className="rounded-xl md:rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#10B981]/10 border border-[#10B981]/30 backdrop-blur-xl p-4 md:p-6 flex flex-row md:flex-col justify-between items-center md:items-start">
-                  <h3 className="text-[#10B981] text-[10px] font-black uppercase tracking-widest">Today's Success</h3>
-                  <p className="text-2xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5 mb-6 md:mb-10">
                 <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row md:flex-col justify-between items-center md:items-start">
                   <h3 className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest">Yesterday's Total Numbers</h3>
                   <p className="text-2xl md:text-3xl font-black text-[#F8FAFC]">{stats.yesterdayTotal}</p>
