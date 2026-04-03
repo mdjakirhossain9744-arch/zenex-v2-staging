@@ -37,7 +37,7 @@ export async function GET(req: Request) {
     ipMap.set(ip, ipData);
 
     // ==========================================
-    // ২. Memory Cache Logic
+    // ২. Memory Cache Logic (সুপার ফাস্ট লোড)
     // ==========================================
     if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
       return NextResponse.json(cachedData, { status: 200 });
@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       method: "GET",
       headers: {
         "mapikey": API_KEY,
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", // 💥 ম্যাজিক হেডার: Cloudflare একে মোবাইল অ্যাপ মনে করবে 💥
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
         "Accept": "application/json",
         "Connection": "keep-alive",
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -65,7 +65,6 @@ export async function GET(req: Request) {
     if (!response.ok) {
       const errText = await response.text();
       console.error("OTP API Blocked by Provider:", errText);
-      // যদি প্রোভাইডার ব্লক করে, তবে পুরনো সেভ করা ক্যাশ ডাটা পাঠাবে যেন সাইট ক্র্যাশ না করে
       if (cachedData) return NextResponse.json(cachedData, { status: 200 });
       return NextResponse.json({ success: false, error: "Provider Blocked Request" }, { status: 400 });
     }
@@ -73,7 +72,6 @@ export async function GET(req: Request) {
     const data = await response.json();
 
     if (data.meta?.status === "success") {
-      // 💥 API থেকে আসা ডাটা Array হিসেবে আছে কি না তা নিশ্চিত করা হচ্ছে
       const otpArray = Array.isArray(data.data) ? data.data : (data.data?.otps || []);
       
       // নতুন ডাটা ক্যাশে সেভ করা হচ্ছে
@@ -85,7 +83,6 @@ export async function GET(req: Request) {
     }
   } catch (error: any) {
     console.error("OTP Fetch Error:", error.message);
-    // যদি অরিজিনাল সাইট ডাউনও থাকে, আমাদের সেভ করা ক্যাশ ডাটা শো করবে
     if (cachedData) return NextResponse.json(cachedData, { status: 200 });
     
     return NextResponse.json({ success: false, error: "Network Error or API Timeout" }, { status: 500 });

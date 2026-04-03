@@ -1,314 +1,183 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "./DashboardLayout";
 
 // 💥 ম্যাজিক: সেফ বাংলাদেশ টাইম 💥
-const getBDDateString = (dateObj: Date | number | string = new Date()) => {
-  try {
-    const d = new Date(dateObj);
-    if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
-    return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Dhaka',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(d);
-  } catch(e) { return "2024-01-01"; }
+const getBDDateString = (dateObj: any = new Date()) => {
+  try { 
+    return new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' 
+    }).format(new Date(dateObj)); 
+  } catch(e) { 
+    return new Date().toISOString().split('T')[0]; 
+  }
 };
 
-const getBDHour = (dateObj: Date | number | string = new Date()) => {
-  try {
-    const d = new Date(dateObj);
-    if (isNaN(d.getTime())) return 0;
-    const hr = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Dhaka',
-        hour: 'numeric',
-        hourCycle: 'h23' 
-    }).format(d);
-    return parseInt(hr, 10) || 0;
-  } catch(e) { return 0; }
+const getBDHour = (dateObj: any = new Date()) => {
+  try { 
+    return parseInt(new Intl.DateTimeFormat('en-US', { 
+      timeZone: 'Asia/Dhaka', hour: 'numeric', hourCycle: 'h23' 
+    }).format(new Date(dateObj)), 10) || 0; 
+  } catch(e) { 
+    return 0; 
+  }
 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState("user"); 
-  const [liveRate, setLiveRate] = useState<any>(0.50);
-  
-  // 💥 Magic: Skeleton Loader State (পেজ আর হ্যাং করবে না) 💥
+  const [liveRate, setLiveRate] = useState<number>(0.50);
   const [isPageLoading, setIsPageLoading] = useState(true);
 
-  const [stats, setStats] = useState({
-    balance: "0.00",
-    todayTotal: 0,
-    todaySuccess: 0,
-    yesterdayTotal: 0,
-    yesterdaySuccess: 0,
-  });
-
-  const [adminStats, setAdminStats] = useState({
-    totalUsers: 0,
-    totalAgents: 0,
-    systemLiability: "0.00",
-    globalTodaySuccess: 0,
-  });
-
+  const [stats, setStats] = useState({ balance: "0.00", todayTotal: 0, todaySuccess: 0, yesterdayTotal: 0, yesterdaySuccess: 0 });
+  const [adminStats, setAdminStats] = useState({ totalUsers: 0, totalAgents: 0, systemLiability: "0.00", globalTodaySuccess: 0 });
   const [agentReport, setAgentReport] = useState<any[]>([]);
   const [currentMonthName, setCurrentMonthName] = useState("");
-
+  
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
-  const getServiceInfo = (message: string) => {
-    const msgLower = (message || "").toLowerCase();
-    if (msgLower.includes("facebook") || msgLower.includes("fb")) return { name: "Facebook", icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
-    if (msgLower.includes("whatsapp") || msgLower.includes("wa")) return { name: "WhatsApp", icon: "W", text: "text-[#25D366]", bg: "bg-[#25D366]/10" };
-    if (msgLower.includes("instagram") || msgLower.includes("ig")) return { name: "Instagram", icon: "IG", text: "text-[#E1306C]", bg: "bg-[#E1306C]/10" };
-    if (msgLower.includes("telegram") || msgLower.includes("tg")) return { name: "Telegram", icon: "TG", text: "text-[#0088cc]", bg: "bg-[#0088cc]/10" };
-    if (msgLower.includes("google") || msgLower.includes("gmail")) return { name: "Google", icon: "G", text: "text-[#EA4335]", bg: "bg-[#EA4335]/10" };
-    if (msgLower.includes("apple") || msgLower.includes("ap")) return { name: "Apple", icon: "A", text: "text-[#A3AAAE]", bg: "bg-[#A3AAAE]/10" };
-    if (msgLower.includes("tiktok") || msgLower.includes("tt")) return { name: "TikTok", icon: "T", text: "text-[#00F2FE]", bg: "bg-[#00F2FE]/10" };
-    return { name: "Other Network", icon: "N", text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
+  const formatTopApps = (countsObj: Record<string, number>) => {
+    return Object.entries(countsObj).map(([name, count]) => {
+      let info = { icon: "N", text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
+      if (name === "Facebook") info = { icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
+      else if (name === "WhatsApp") info = { icon: "W", text: "text-[#25D366]", bg: "bg-[#25D366]/10" };
+      else if (name === "Instagram") info = { icon: "IG", text: "text-[#E1306C]", bg: "bg-[#E1306C]/10" };
+      else if (name === "Telegram") info = { icon: "TG", text: "text-[#0088cc]", bg: "bg-[#0088cc]/10" };
+      else if (name === "Google") info = { icon: "G", text: "text-[#EA4335]", bg: "bg-[#EA4335]/10" };
+      else if (name === "TikTok") info = { icon: "T", text: "text-[#00F2FE]", bg: "bg-[#00F2FE]/10" };
+      else if (name === "Apple") info = { icon: "A", text: "text-[#A3AAAE]", bg: "bg-[#A3AAAE]/10" };
+      return { name, count, info };
+    }).sort((a, b) => b.count - a.count).slice(0, 3); 
   };
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
-    const loginTime = localStorage.getItem("zenex_login_time");
-
-    if (!storedUser) {
-      router.push("/login");
-      return;
-    }
-
-    if (loginTime) {
-      const timePassed = Date.now() - parseInt(loginTime);
-      if (timePassed > 12 * 60 * 60 * 1000) { 
-         localStorage.removeItem("user");
-         localStorage.removeItem("zenex_login_time");
-         router.push("/login");
-         return;
-      }
-    } else {
-      localStorage.setItem("zenex_login_time", Date.now().toString());
-    }
-
+    if (!storedUser) { router.push("/login"); return; }
+    
     const parsedUser = JSON.parse(storedUser);
     setUser(parsedUser);
     const userRole = parsedUser.role || "user";
     setRole(userRole);
-    
-    if (userRole === "agent") {
-      setLiveRate(parsedUser.agentMaxRate || 0.70);
-    } else {
-      setLiveRate(parsedUser.rate || parsedUser.otpRate || 0.50);
-    }
+    setLiveRate(Number(userRole === "agent" ? (parsedUser.agentMaxRate || 0.70) : (parsedUser.rate || parsedUser.otpRate || 0.50)));
 
     const todayStr = getBDDateString();
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayDate = new Date(); yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayStr = getBDDateString(yesterdayDate);
 
     const fetchDashboardData = async () => {
       try {
         if (parsedUser.role === "admin") {
-          const [userData, otpData, reportData, summaryRes] = await Promise.all([
+          const [userData, reportData, summaryRes] = await Promise.all([
             fetch("/api/get-all-users").then(r => r.json()),
-            fetch("/api/check-otp?limit=1000", { cache: "no-store" }).then(r => r.json()), 
             fetch("/api/admin-agent-report").then(r => r.json()),
-            fetch("/api/summary-report", { 
-               method: "POST", headers: { "Content-Type": "application/json" }, 
-               body: JSON.stringify({ email: parsedUser.email, role: "admin" }) 
-            }).then(r => r.json()).catch(() => ({}))
+            fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "admin" }) }).then(r => r.json())
           ]);
   
-          let actualTodayGlobalSuccess = 0; 
-          if (summaryRes && summaryRes.success && summaryRes.groupedRawData) {
-             const todayData = summaryRes.groupedRawData[todayStr];
-             if (todayData) actualTodayGlobalSuccess = todayData.success || 0;
+          if (summaryRes && summaryRes.success) {
+             const todayData = summaryRes.groupedRawData[todayStr] || { success: 0 };
+             setAdminStats(p => ({ ...p, globalTodaySuccess: todayData.success || 0 }));
+             
+             if (summaryRes.todayAppCounts) setTopPerformers(formatTopApps(summaryRes.todayAppCounts));
+             if (summaryRes.todayHourlyTraffic) setTrafficData(summaryRes.todayHourlyTraffic);
           }
-
-          if (reportData && reportData.success) {
-             setAgentReport(reportData.report);
-             setCurrentMonthName(reportData.currentMonth);
-          }
-  
-          if (otpData.success && otpData.otps) {
-            const appCounts: Record<string, { count: number, info: any }> = {};
-            let buckets = [0, 0, 0, 0, 0, 0];
-  
-            otpData.otps.forEach((log: any) => {
-              const time = log.time || log.createdAt || log.date || Date.now();
-              const logDateStr = getBDDateString(time); 
-              
-              if (logDateStr === todayStr) {
-                 const hour = getBDHour(time); 
-                 const bucketIndex = Math.floor(hour / 4);
-                 if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
-  
-                 const sInfo = getServiceInfo(log.sms || log.fullMessage || log.otp || log.msg);
-                 if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
-                 appCounts[sInfo.name].count += 1;
-              }
-            });
-  
-            setTrafficData(buckets);
-            setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
-          }
-
+          if (reportData && reportData.success) { setAgentReport(reportData.report); setCurrentMonthName(reportData.currentMonth); }
           if (userData.users) {
             const allUsers = userData.users;
             const liability = allUsers.reduce((sum: number, u: any) => sum + (Number(u.balance) || 0), 0);
-            setAdminStats({
-              totalUsers: allUsers.filter((u: any) => u.role === 'user').length,
-              totalAgents: allUsers.filter((u: any) => u.role === 'agent').length,
-              systemLiability: liability.toFixed(2),
-              globalTodaySuccess: actualTodayGlobalSuccess 
-            });
+            setAdminStats(p => ({ ...p, totalUsers: allUsers.filter((u: any) => u.role === 'user').length, totalAgents: allUsers.filter((u: any) => u.role === 'agent').length, systemLiability: liability.toFixed(2) }));
           }
 
         } else if (parsedUser.role === "agent") {
-          const [agentSummaryRes, userDetailsRes, otpRes] = await Promise.all([
+          const [agentSummaryRes, userDetailsRes] = await Promise.all([
             fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-            fetch("/api/check-otp?limit=500", { cache: "no-store" }).then(r => r.json()) 
+            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json())
           ]);
 
-          let netTodayTotal = 0;
-          let netTodaySuccess = 0;
-          let liveAgentBal = "0.00";
-
           if (userDetailsRes && userDetailsRes.user) {
-             liveAgentBal = Number(userDetailsRes.user.balance || 0).toFixed(2);
+             setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
              setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0.70));
           }
 
-          if (agentSummaryRes && agentSummaryRes.success && agentSummaryRes.groupedRawData) {
-             const todayData = agentSummaryRes.groupedRawData[todayStr];
-             if (todayData) {
-                 netTodaySuccess = todayData.success || 0; 
-                 netTodayTotal = todayData.total || todayData.totalOTP || netTodaySuccess; 
-             }
-          }
-
-          setStats(prev => ({ 
-            ...prev, 
-            balance: liveAgentBal, 
-            todayTotal: netTodayTotal, 
-            todaySuccess: netTodaySuccess 
-          }));
-
-          if (otpRes.success && otpRes.otps && netTodaySuccess > 0) {
-            const appCounts: Record<string, any> = {};
-            let buckets = [0, 0, 0, 0, 0, 0];
-            
-            const sampleLogs = otpRes.otps.slice(0, netTodaySuccess > otpRes.otps.length ? otpRes.otps.length : netTodaySuccess); 
-            
-            sampleLogs.forEach((log: any) => {
-              const time = log.time || log.createdAt || log.date || Date.now();
-              const logDateStr = getBDDateString(time);
-              
-              if (logDateStr === todayStr) {
-                const hour = getBDHour(time);
-                const bIdx = Math.floor(hour / 4);
-                if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
-
-                const sInfo = getServiceInfo(log.sms || log.fullMessage || log.otp || log.msg);
-                if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
-                appCounts[sInfo.name].count++;
-              }
-            });
-
-            setTrafficData(buckets);
-            setTopPerformers(Object.values(appCounts).sort((a:any, b:any) => b.count - a.count).slice(0, 3));
-          } else {
-            setTrafficData([0,0,0,0,0,0]);
-            setTopPerformers([]);
+          if (agentSummaryRes && agentSummaryRes.success) {
+             const todayData = agentSummaryRes.groupedRawData[todayStr] || { total: 0, success: 0 };
+             setStats(p => ({ ...p, todayTotal: todayData.total, todaySuccess: todayData.success }));
+             
+             if (agentSummaryRes.todayAppCounts) setTopPerformers(formatTopApps(agentSummaryRes.todayAppCounts));
+             if (agentSummaryRes.todayHourlyTraffic) setTrafficData(agentSummaryRes.todayHourlyTraffic);
           }
 
         } else {
-          // User Role Fetching
           const [userDetailsRes, ordersRes] = await Promise.all([
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
           ]);
 
           if (userDetailsRes && userDetailsRes.user) {
-            const updatedRate = userDetailsRes.user.otpRate || 0.50;
-            setLiveRate(updatedRate); 
-            parsedUser.rate = updatedRate;
-            localStorage.setItem("user", JSON.stringify(parsedUser));
-            setStats(prev => ({ ...prev, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
+            setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
           }
 
           if (ordersRes && ordersRes.success && ordersRes.orders) {
              let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
-             const appCounts: Record<string, { count: number, info: any }> = {};
+             const appCounts: Record<string, number> = {};
              let buckets = [0, 0, 0, 0, 0, 0];
 
              ordersRes.orders.forEach((log: any) => {
                const logDate = log.dateString || getBDDateString(log.createdAt);
-               
                if (logDate === todayStr) {
                  tTotal++;
-                 if (log.status === "DONE") {
+                 if (log.status === "DONE" || log.status === "Success") {
                    tSuccess++;
                    const hour = getBDHour(log.createdAt);
-                   const bucketIndex = Math.floor(hour / 4);
-                   if(bucketIndex >= 0 && bucketIndex <= 5) buckets[bucketIndex]++;
+                   const bIdx = Math.floor(hour / 4);
+                   if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
    
-                   const sInfo = getServiceInfo(log.fullMessage || log.otp);
-                   if (!appCounts[sInfo.name]) appCounts[sInfo.name] = { count: 0, info: sInfo };
-                   appCounts[sInfo.name].count += 1;
+                   let sName = "Other Network";
+                   const mLower = (log.fullMessage || "").toLowerCase();
+                   if (mLower.includes("facebook") || mLower.includes("fb")) sName = "Facebook";
+                   else if (mLower.includes("whatsapp") || mLower.includes("wa")) sName = "WhatsApp";
+                   else if (mLower.includes("instagram") || mLower.includes("ig")) sName = "Instagram";
+                   else if (mLower.includes("telegram") || mLower.includes("tg")) sName = "Telegram";
+                   else if (mLower.includes("google") || mLower.includes("gmail")) sName = "Google";
+                   else if (mLower.includes("tiktok") || mLower.includes("tt")) sName = "TikTok";
+                   else if (mLower.includes("apple") || mLower.includes("ap")) sName = "Apple";
+
+                   if (!appCounts[sName]) appCounts[sName] = 0;
+                   appCounts[sName]++;
                  }
                } else if (logDate === yesterdayStr) {
                  yTotal++;
-                 if (log.status === "DONE") ySuccess++;
+                 if (log.status === "DONE" || log.status === "Success") ySuccess++;
                }
              });
 
-             setStats(prev => ({
-               ...prev,
-               todayTotal: tTotal,
-               todaySuccess: tSuccess,
-               yesterdayTotal: yTotal,
-               yesterdaySuccess: ySuccess,
-             }));
-
+             setStats(p => ({ ...p, todayTotal: tTotal, todaySuccess: tSuccess, yesterdayTotal: yTotal, yesterdaySuccess: ySuccess }));
              setTrafficData(buckets);
-             setTopPerformers(Object.values(appCounts).sort((a, b) => b.count - a.count).slice(0, 3));
+             setTopPerformers(formatTopApps(appCounts));
           }
         }
-      } catch (e) {} finally {
-        setIsPageLoading(false); // 💥 Data load done! Hide skeleton
-      }
+      } catch (e) {} finally { setIsPageLoading(false); }
     };
 
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 10000);
     return () => clearInterval(interval);
-
   }, [router]);
 
   const generateTrafficPath = (data: number[]) => {
     const maxVal = Math.max(...data, 1); 
-    const points = data.map((v, i) => {
-      const x = i * 160; 
-      const y = 130 - (v / maxVal) * 110; 
-      return { x, y };
-    });
-
+    const points = data.map((v, i) => { const x = i * 160; const y = 130 - (v / maxVal) * 110; return { x, y }; });
     let path = `M ${points[0].x},${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
-      const p0 = points[i - 1];
-      const p1 = points[i];
+      const p0 = points[i - 1]; const p1 = points[i];
       path += ` C ${p0.x + 80},${p0.y} ${p1.x - 80},${p1.y} ${p1.x},${p1.y}`;
     }
     return path;
   };
 
-  // 💥 Magic: Sleek Skeleton Loader (Shows instantly on page load) 💥
   if (isPageLoading) return (
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full font-sans min-h-screen bg-[#0B0F1A]">
@@ -327,7 +196,7 @@ export default function DashboardPage() {
     </DashboardLayout>
   );
 
-  const userName = user.name ? user.name.split(" ")[0] : "User";
+  const userName = user?.name ? user.name.split(" ")[0] : "User";
 
   return (
     <DashboardLayout>
@@ -343,9 +212,9 @@ export default function DashboardPage() {
             </p>
           </div>
           {role === 'admin' && (
-            <span className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Super Admin
-            </span>
+             <span className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2">
+               <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Super Admin
+             </span>
           )}
         </div>
 
@@ -364,13 +233,20 @@ export default function DashboardPage() {
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">System Liability</h3>
                 <p className="text-xl md:text-3xl font-black text-[#10B981]">৳ {adminStats.systemLiability}</p>
               </div>
-              {/* 💥 Updated Admin Card 4 💥 */}
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
+              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start relative overflow-hidden">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's Success</h3>
-                <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodaySuccess}</p>
+                <div className="flex items-center gap-2">
+                   <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodaySuccess}</p>
+                   {adminStats.globalTodaySuccess > 0 && (
+                      <span className="flex h-2.5 w-2.5 relative ml-1">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F59E0B] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F59E0B]"></span>
+                      </span>
+                   )}
+                </div>
               </div>
             </div>
-
+            
             <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mb-10">
                <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
                  <div>
@@ -422,12 +298,10 @@ export default function DashboardPage() {
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Admin Given Rate" : "Your OTP Rate"}</h3>
                 <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
               </div>
-              {/* 💥 Updated Card 3 💥 */}
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Network Today's Numbers" : "Today's Total Numbers"}</h3>
                 <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{stats.todayTotal}</p>
               </div>
-              {/* 💥 Updated Card 4 💥 */}
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
                 <div className="flex items-center gap-2">
@@ -442,7 +316,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ইউজারদের জন্য এক্সট্রা গ্রিড */}
             {role !== "agent" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5 mb-6 md:mb-10">
                 <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row md:flex-col justify-between items-center md:items-start">
@@ -475,7 +348,7 @@ export default function DashboardPage() {
                         {app.info.icon}
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-[#E2E8F0]">{app.info.name}</p>
+                        <p className="text-sm font-bold text-[#E2E8F0]">{app.name}</p>
                         <p className="text-[10px] text-[#94A3B8] font-medium uppercase tracking-wider">Service Name</p>
                       </div>
                     </div>
