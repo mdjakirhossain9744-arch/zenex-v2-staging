@@ -19,7 +19,8 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
-    const { action, email, orderData, page = 1, limit = 50 } = body; // 💥 Pagination Params (Limit 50) 💥
+    // 💥 targetDate অ্যাড করা হলো যাতে ফ্রন্টএন্ড থেকে পাঠানো ডেটের স্ট্যাটস বের করা যায়
+    const { action, email, orderData, page = 1, limit = 50, targetDate } = body; 
 
     if (!email) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
@@ -33,6 +34,16 @@ export async function POST(req: Request) {
       
       const finalOrders: any[] = [];
       const todayStr = getBDDateString(); 
+      const fetchDate = targetDate || todayStr; // ফ্রন্টএন্ডের ডেট অথবা আজকের ডেট
+
+      // 💥 MAGIC: ডাটাবেস থেকে রিয়েল-টাইম স্ট্যাটস ক্যালকুলেট করা হচ্ছে (50 বাগ ফিক্স) 💥
+      const statQuery = { userEmail: email, dateString: fetchDate };
+      const stats = {
+          total: await Order.countDocuments(statQuery),
+          success: await Order.countDocuments({ ...statQuery, status: "DONE" }),
+          wait: await Order.countDocuments({ ...statQuery, status: "WAIT" }),
+          fail: await Order.countDocuments({ ...statQuery, status: "FAIL" }),
+      };
 
       orders.forEach((o: any) => {
         if (o.dateString !== todayStr && o.status !== "DONE") {
@@ -72,7 +83,8 @@ export async function POST(req: Request) {
           page,
           limit,
           hasMore: (skip + orders.length) < totalItems // Check if more data exists
-        }
+        },
+        stats // 💥 স্ট্যাটস ডাটা ফ্রন্টএন্ডে পাঠানো হচ্ছে
       });
     }
 

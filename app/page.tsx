@@ -154,7 +154,14 @@ export default function DashboardPage() {
                }
              });
 
-             setStats(p => ({ ...p, todayTotal: tTotal, todaySuccess: tSuccess, yesterdaySuccess: ySuccess }));
+             // 💥 MAGIC FIX: Use REAL backend stats from DB instead of frontend counted loop 💥
+             setStats(p => ({ 
+               ...p, 
+               todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 
+               todaySuccess: ordersRes.stats ? ordersRes.stats.success : tSuccess, 
+               yesterdaySuccess: ySuccess 
+             }));
+             
              setTrafficData(buckets);
              setTopPerformers(formatTopApps(appCounts));
           }
@@ -347,7 +354,6 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* 💥 ADMIN ONLY: Top Agents Performance Table (Moved to Bottom) 💥 */}
         {role === "admin" && (
             <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mt-6 mb-10">
                <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
@@ -380,12 +386,8 @@ export default function DashboardPage() {
                              <p className="font-bold text-white">{agent.agentName}</p>
                              <p className="text-[10px] text-[#64748B] font-mono">{agent.agentEmail}</p>
                            </td>
-                           {/* 💥 Today's OTPs 💥 */}
                            <td className="p-4 text-center font-black text-[#10B981]">{agent.todayOTPs || 0}</td>
-                           
-                           {/* Total OTPs */}
                            <td className="p-4 text-center font-black text-[#3B82F6]">{agent.monthOTPs || 0}</td>
-                           
                            <td className="p-4 pr-6 text-right font-black text-[#F59E0B]">৳ {agent.agentEarnings}</td> 
                          </tr>
                        ))

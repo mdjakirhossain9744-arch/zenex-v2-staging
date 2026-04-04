@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import DashboardLayout from "../DashboardLayout";
+import DashboardLayout from "../DashboardLayout"; 
 
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
@@ -27,7 +27,9 @@ export default function GetNumber() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [selectedDate, setSelectedDate] = useState(getBDDateString());
 
-  // 💥 NEW: Infinite Scroll State 💥
+  // 💥 NEW: Stats State for True Backend Counters 💥
+  const [stats, setStats] = useState({ total: 0, success: 0, wait: 0, fail: 0 });
+
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -54,7 +56,10 @@ export default function GetNumber() {
     const current = new Date(year, month - 1, day);
     current.setDate(current.getDate() + days);
     const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
-    if (newDateStr <= getBDDateString()) setSelectedDate(newDateStr);
+    if (newDateStr <= getBDDateString()) {
+       setSelectedDate(newDateStr);
+       setPage(1); // Reset pagination on date change
+    }
   };
 
   const getFormattedDate = () => {
@@ -72,33 +77,52 @@ export default function GetNumber() {
 
   const getTimeAgo = (timestamp: number) => {
     if (!timestamp) return "Just Now";
-    const secondsPast = Math.floor((currentTime - timestamp) / 1000);
+    const timeMs = new Date(timestamp).getTime();
+    if (isNaN(timeMs)) return "Just Now";
+
+    const secondsPast = Math.floor((currentTime - timeMs) / 1000);
     if (secondsPast < 60) return "Just Now";
     if (secondsPast < 3600) return `${Math.floor(secondsPast / 60)} min ago`;
     if (secondsPast < 86400) return `${Math.floor(secondsPast / 3600)} hour ago`;
-    return new Date(timestamp).toLocaleDateString();
+    
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
   };
 
-  // 💥 Smart Fetcher (Merges background sync with pagination) 💥
+  // 💥 Smart Fetcher with Duplicate Prevention & Stats 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
     try {
       const res = await fetch("/api/sync-orders", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 50 })
+        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 50, targetDate: selectedDate })
       });
       const data = await res.json();
+      
       if(data.success && data.orders) {
+        if (data.stats) setStats(data.stats); // 💥 Updates with REAL database counts
+
         if (isBackground) {
            setNumbersList((prev) => {
               const prevMap = new Map(prev.map(item => [item.id, item]));
+              const dbSearchNumbers = new Set(data.orders.map((o: any) => o.searchNumber));
+              
               const newItems: any[] = [];
               data.orders.forEach((fetchedItem: any) => {
                  if (prevMap.has(fetchedItem.id)) prevMap.set(fetchedItem.id, fetchedItem);
                  else newItems.push(fetchedItem);
               });
-              const combined = [...newItems, ...Array.from(prevMap.values())];
+              
+              let combined = [...newItems, ...Array.from(prevMap.values())];
+              
+              // 💥 MAGIC: Prevents Duplicate Issue. Removes fake ID only when Real ID arrives from DB 💥
+              combined = combined.filter(item => {
+                 if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) {
+                    return false; 
+                 }
+                 return true;
+              });
+
               return combined.sort((a, b) => b.createdAt - a.createdAt);
            });
         } else {
@@ -118,21 +142,20 @@ export default function GetNumber() {
     finally {
       setIsInitialLoad(false); 
     }
-  }, []);
+  }, [selectedDate]);
 
   const checkOtps = async () => {
     setIsRefreshing(true);
     try {
       const res = await fetch(`/api/check-otp?t=${Date.now()}`);
       const result = await res.json();
-      if (result.success) await fetchDbOrders(1, true); 
+      if (result.success) await fetchDbOrders(1, false); 
     } catch (err) {} 
     finally {
       setTimeout(() => setIsRefreshing(false), 500); 
     }
   };
 
-  // 💥 ZERO-DELAY INSTANT OTP LISTENER 💥
   useEffect(() => {
     const handleInstantOtp = (e: any) => {
       const { searchNumber, otp, fullMessage, isMulti } = e.detail;
@@ -140,6 +163,8 @@ export default function GetNumber() {
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
            if (!isMulti && item.status === "WAIT") {
+             // Instant Stats Update for smooth UX
+             setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
              return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
            } else if (isMulti) {
              const newSeen = item.seenMessages ? [...item.seenMessages, fullMessage] : [item.fullMessage, fullMessage];
@@ -163,7 +188,6 @@ export default function GetNumber() {
     };
   }, [fetchDbOrders]);
 
-  // 💥 NEW: Auto Load More (Intersection Observer) 💥
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting && hasMore && !isFetchingMore && !isInitialLoad) {
@@ -204,8 +228,9 @@ export default function GetNumber() {
         const fullNumberDisplay = result.data.full_number.startsWith("+") ? result.data.full_number : `+${result.data.full_number}`;
         const todayStr = getBDDateString();
 
+        // 💥 MAGIC: Added 'temp_' prefix to ID so it doesn't conflict with DB ID
         const newEntry = {
-          id: Date.now().toString(), dateString: todayStr, displayNumber: fullNumberDisplay, 
+          id: `temp_${Date.now()}`, dateString: todayStr, displayNumber: fullNumberDisplay, 
           searchNumber: result.data.full_number, country: result.data.country || "Unknown",
           operator: result.data.operator || "Any", status: "WAIT", otp: "Waiting...",
           fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
@@ -213,6 +238,7 @@ export default function GetNumber() {
         };
         
         setNumbersList((prev) => [newEntry, ...prev]);
+        setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); // Instant Counter Update
         setSelectedDate(todayStr);
 
         fetch("/api/sync-orders", {
@@ -240,11 +266,6 @@ export default function GetNumber() {
 
   const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => b.createdAt - a.createdAt);
 
-  const totalGen = dateFilteredNumbers.length;
-  const successCount = dateFilteredNumbers.filter((n) => n.status === "DONE").length;
-  const waitCount = dateFilteredNumbers.filter((n) => n.status === "WAIT").length;
-  const failCount = dateFilteredNumbers.filter((n) => n.status === "FAIL").length;
-
   return (
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 font-sans">
@@ -259,19 +280,19 @@ export default function GetNumber() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
            <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">
               <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Total</span>
-              <span className="text-lg font-black text-white">{totalGen}</span>
+              <span className="text-lg font-black text-white">{stats.total}</span>
            </div>
            <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#10B981]/10 border border-[#10B981]/30 p-3 flex justify-between items-center transition-all hover:border-[#10B981]">
               <span className="text-[10px] font-black text-[#10B981] uppercase tracking-widest">Success</span>
-              <span className="text-lg font-black text-[#10B981]">{successCount}</span>
+              <span className="text-lg font-black text-[#10B981]">{stats.success}</span>
            </div>
            <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#EAB308]/10 border border-[#EAB308]/30 p-3 flex justify-between items-center transition-all hover:border-[#EAB308]">
               <span className="text-[10px] font-black text-[#EAB308] uppercase tracking-widest">Wait</span>
-              <span className="text-lg font-black text-[#EAB308]">{waitCount}</span>
+              <span className="text-lg font-black text-[#EAB308]">{stats.wait}</span>
            </div>
            <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#F43F5E]/10 border border-[#F43F5E]/30 p-3 flex justify-between items-center transition-all hover:border-[#F43F5E]">
               <span className="text-[10px] font-black text-[#F43F5E] uppercase tracking-widest">Failed</span>
-              <span className="text-lg font-black text-[#F43F5E]">{failCount}</span>
+              <span className="text-lg font-black text-[#F43F5E]">{stats.fail}</span>
            </div>
         </div>
 
@@ -407,7 +428,6 @@ export default function GetNumber() {
                       </div>
                    ))}
 
-                   {/* 💥 Infinite Scroll Loader Trigger 💥 */}
                    {isFetchingMore && (
                      <div className="py-4 flex justify-center">
                         <svg className="w-5 h-5 animate-spin text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
