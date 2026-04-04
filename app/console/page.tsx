@@ -7,6 +7,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieCha
 export default function Console() {
   const [liveLogs, setLiveLogs] = useState<any[]>([]);
   const [graphData, setGraphData] = useState<any[]>([]);
+  const [carrierData, setCarrierData] = useState<any[]>([]);
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [countdown, setCountdown] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -19,11 +21,9 @@ export default function Console() {
       const data = await res.json();
       
       if (data.success) {
-        const sortedLogs = (data.logs || []).sort((a: any, b: any) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        setLiveLogs(sortedLogs);
-        setGraphData(data.graph || []);
+        setLiveLogs(data.logs || []); 
+        setGraphData(data.graph || []); 
+        setCarrierData(data.carrier || []);
       }
     } catch (error) {
       console.error("Failed to fetch live console data");
@@ -56,25 +56,16 @@ export default function Console() {
 
   const maskFullMessage = (message: string) => {
     if (!message) return "";
-    return message.replace(/\b\d{4,8}\b/g, "******");
+    return message.replace(/\b\d{4,8}\b/g, (match) => "*".repeat(match.length));
   };
 
   const formatTime = (timestamp: any) => {
     if (!timestamp) return "Unknown Time";
     const date = new Date(timestamp);
-    return !isNaN(date.getTime()) ? date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : "Time Error";
+    return !isNaN(date.getTime()) 
+      ? date.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
+      : "Time Error";
   };
-
-  const getCarrierData = () => {
-    const counts: any = {};
-    liveLogs.slice(0, 50).forEach(log => {
-      const carrier = log.operator || "Other";
-      counts[carrier] = (counts[carrier] || 0) + 1;
-    });
-    return Object.keys(counts).map(key => ({ name: key, value: counts[key] })).sort((a, b) => b.value - a.value).slice(0, 5);
-  };
-
-  const carrierData = getCarrierData();
 
   const filteredLogs = liveLogs.filter((log) => {
     const searchLower = searchQuery.toLowerCase();
@@ -96,8 +87,8 @@ export default function Console() {
                  <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#10B981] animate-pulse">Live Updating</span>
               </h3>
               
-              <div className="flex-1 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
+              <div style={{ width: '100%', height: '200px' }} className="flex-1 mt-4 relative">
+                <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
                   <BarChart data={graphData} margin={{ top: 20, right: 10, left: -20, bottom: 20 }}>
                     <XAxis dataKey="name" stroke="#64748B" fontSize={9} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" />
                     <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -113,21 +104,23 @@ export default function Console() {
               </div>
            </div>
 
-           <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col">
+           <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative">
               <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-2">Carrier Distribution</h3>
               {carrierData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={carrierData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none" isAnimationActive={false}>
-                      {carrierData.map((entry, index) => (
-                        <PieCell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', fontSize: '12px'}} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '160px' }} className="flex-1 relative">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
+                    <PieChart>
+                      <Pie data={carrierData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none" isAnimationActive={false}>
+                        {carrierData.map((entry, index) => (
+                          <PieCell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', fontSize: '12px'}} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-[#64748B] text-xs md:text-sm">Waiting for data...</div>
+                <div className="flex-1 flex items-center justify-center text-[#64748B] text-xs md:text-sm">Waiting for live data...</div>
               )}
               <div className="flex flex-wrap justify-center gap-2 mt-2">
                 {carrierData.map((entry, index) => (

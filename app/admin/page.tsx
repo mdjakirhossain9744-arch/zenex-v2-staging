@@ -9,17 +9,13 @@ export default function AdminDashboard() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 💥 System Health States 💥
   const [apiStatus, setApiStatus] = useState("Checking...");
   const [dbStatus, setDbStatus] = useState("Checking...");
   const [ping, setPing] = useState(0);
 
-  // 💥 Global Settings States 💥
-  const [globalRate, setGlobalRate] = useState("0.50");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
 
-  // 💥 Security Firewall States (Simulation for Dashboard) 💥
   const [blockedRequests, setBlockedRequests] = useState(124);
   const [activeConnections, setActiveConnections] = useState(0);
 
@@ -36,7 +32,6 @@ export default function AdminDashboard() {
         fetchSystemSettings();
         fetchGlobalLink();
         
-        // Randomize active connections for live effect
         const interval = setInterval(() => {
            setActiveConnections(Math.floor(Math.random() * 15) + 5);
         }, 5000);
@@ -51,10 +46,7 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/system-settings");
       const data = await res.json();
-      if (data) {
-        setMaintenanceMode(data.maintenance || false);
-        setGlobalRate(data.globalRate ? data.globalRate.toString() : "0.50");
-      }
+      if (data) setMaintenanceMode(data.maintenance || false);
     } catch (error) {
       console.error("Failed to load settings");
     }
@@ -64,9 +56,7 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/update-support-link");
       const data = await res.json();
-      if (data.success && data.link) {
-        setGlobalSupportLink(data.link);
-      }
+      if (data.success && data.link) setGlobalSupportLink(data.link);
     } catch (error) {
       console.error("Failed to fetch global link");
     }
@@ -97,19 +87,16 @@ export default function AdminDashboard() {
     }
   };
 
-  const saveSettings = async (newMaintenance: boolean, newRate: string) => {
+  const saveSettings = async (newMaintenance: boolean) => {
     try {
       const res = await fetch("/api/system-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maintenance: newMaintenance, globalRate: newRate })
+        body: JSON.stringify({ maintenance: newMaintenance })
       });
       
-      if(res.ok) {
-        alert("✅ System Settings Updated Successfully!");
-      } else {
-        alert("❌ Failed to update system.");
-      }
+      if(res.ok) alert("✅ System Settings Updated Successfully!");
+      else alert("❌ Failed to update system.");
     } catch (error) {
       alert("❌ Network error while saving.");
     }
@@ -131,11 +118,7 @@ export default function AdminDashboard() {
   const toggleMaintenance = () => {
     const newVal = !maintenanceMode;
     setMaintenanceMode(newVal);
-    saveSettings(newVal, globalRate);
-  };
-
-  const handleRateSave = () => {
-    saveSettings(maintenanceMode, globalRate);
+    saveSettings(newVal);
   };
 
   if (!isAdmin) {
@@ -151,7 +134,6 @@ export default function AdminDashboard() {
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full bg-[#0B0F1A] min-h-screen text-slate-200 font-sans relative overflow-hidden">
         
-        {/* Background Glowing Effects */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-64 bg-[#F43F5E] rounded-full blur-[150px] opacity-10 pointer-events-none"></div>
 
         <div className="relative z-10 mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#334155] pb-6">
@@ -169,7 +151,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 💥 Top Stats / API Health 💥 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 relative z-10">
            <div className={`p-6 rounded-2xl border flex flex-col shadow-lg transition-all ${apiStatus === 'ONLINE' ? 'bg-gradient-to-br from-[#10B981]/10 to-[#0F172A] border-[#10B981]/30' : 'bg-gradient-to-br from-[#F43F5E]/10 to-[#0F172A] border-[#F43F5E]/30'}`}>
               <div className="flex justify-between items-center mb-4">
@@ -198,7 +179,6 @@ export default function AdminDashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
            
-           {/* 💥 Configuration & Kill Switch 💥 */}
            <div className="bg-[#1E293B]/60 backdrop-blur-xl border border-[#334155] rounded-3xl p-6 md:p-8 shadow-2xl">
               <div className="flex items-center gap-3 mb-8">
                  <div className="w-10 h-10 rounded-xl bg-[#3B82F6]/20 flex items-center justify-center border border-[#3B82F6]/30">
@@ -208,18 +188,6 @@ export default function AdminDashboard() {
               </div>
 
               <div className="space-y-6">
-                <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50">
-                   <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-3">Default New User Rate (BDT)</label>
-                   <div className="flex gap-3">
-                     <div className="relative flex-1">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-black">৳</span>
-                        <input type="number" value={globalRate} onChange={(e)=>setGlobalRate(e.target.value)} step="0.01" className="bg-[#1E293B] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl w-full font-black text-lg focus:outline-none focus:border-[#3B82F6] transition-colors shadow-inner" />
-                     </div>
-                     <button onClick={handleRateSave} className="bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white font-black px-8 rounded-xl hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Save</button>
-                   </div>
-                </div>
-
-                {/* 💥 New Section: Global Support Link 💥 */}
                 <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50 mt-6">
                    <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-3">Global Telegram Support Link</label>
                    <div className="flex gap-3">
@@ -260,7 +228,6 @@ export default function AdminDashboard() {
               </div>
            </div>
 
-           {/* 💥 Advanced Security & Firewall 💥 */}
            <div className="bg-[#0F172A] border border-[#334155] rounded-3xl p-6 md:p-8 shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">

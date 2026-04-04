@@ -14,10 +14,10 @@ const userSchema = new Schema(
     status: { type: String, default: "pending" }, 
     
     balance: { type: Number, default: 0 }, 
-    otpRate: { type: Number, default: 0.50 }, // মেম্বারের রেট
+    otpRate: { type: Number, default: 0 }, // 💥 Magic Fix: ডিফল্ট রেট এখন 0.00 (এজেন্ট যা সেট করবে তাই পাবে)
 
     agentEarning: { type: Number, default: 0 }, 
-    agentMaxRate: { type: Number, default: 0.70 }, // এডমিন এজেন্টকে যে রেট দিবে
+    agentMaxRate: { type: Number, default: 0 }, // 💥 Magic Fix: ডিফল্ট 0.00
 
     customAgentMail: { type: String, default: "" }, 
     telegramLink: { type: String, default: "" },    

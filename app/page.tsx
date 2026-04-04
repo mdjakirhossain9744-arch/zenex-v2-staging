@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "./DashboardLayout";
 
-// 💥 ম্যাজিক: সেফ বাংলাদেশ টাইম 💥
 const getBDDateString = (dateObj: any = new Date()) => {
   try { 
     return new Intl.DateTimeFormat('en-CA', { 
@@ -29,7 +28,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState("user"); 
-  const [liveRate, setLiveRate] = useState<number>(0.50);
+  const [liveRate, setLiveRate] = useState<number>(0.00);
   const [isPageLoading, setIsPageLoading] = useState(true);
 
   const [stats, setStats] = useState({ balance: "0.00", todayTotal: 0, todaySuccess: 0, yesterdayTotal: 0, yesterdaySuccess: 0 });
@@ -62,7 +61,8 @@ export default function DashboardPage() {
     setUser(parsedUser);
     const userRole = parsedUser.role || "user";
     setRole(userRole);
-    setLiveRate(Number(userRole === "agent" ? (parsedUser.agentMaxRate || 0.70) : (parsedUser.rate || parsedUser.otpRate || 0.50)));
+    // Initial rate setting (will be overridden by API)
+    setLiveRate(Number(userRole === "agent" ? (parsedUser.agentMaxRate || 0) : (parsedUser.otpRate || 0)));
 
     const todayStr = getBDDateString();
     const yesterdayDate = new Date(); yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -99,7 +99,7 @@ export default function DashboardPage() {
 
           if (userDetailsRes && userDetailsRes.user) {
              setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-             setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0.70));
+             setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); // Agent Live Rate
           }
 
           if (agentSummaryRes && agentSummaryRes.success) {
@@ -111,6 +111,7 @@ export default function DashboardPage() {
           }
 
         } else {
+          // 🔥 NORMAL USER LOGIC 🔥
           const [userDetailsRes, ordersRes] = await Promise.all([
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
@@ -118,6 +119,8 @@ export default function DashboardPage() {
 
           if (userDetailsRes && userDetailsRes.user) {
             setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
+            // 💥 MAGIC FIX: Setting User's Real Rate from DB 💥
+            setLiveRate(Number(userDetailsRes.user.otpRate || 0)); 
           }
 
           if (ordersRes && ordersRes.success && ordersRes.orders) {

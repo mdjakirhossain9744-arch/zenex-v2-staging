@@ -67,8 +67,9 @@ export async function GET(req: NextRequest) {
         agentEmail: u.agentEmail || "Admin",
         balance: Number(u.balance || 0).toFixed(2),
         status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
-        todayOTP: todayOtpCount, // 💥 100% matched with Dashboard
-        rate: Number(u.otpRate || 0.50).toFixed(2),
+        todayOTP: todayOtpCount, 
+        // 💥 MAGIC FIX: 0.00 কে আর 0.50 বানাবে না!
+        rate: (u.otpRate !== undefined && u.otpRate !== null) ? Number(u.otpRate).toFixed(2) : "0.00",
         customAgentMail: u.customAgentMail || "", 
         telegramLink: u.telegramLink || "",
         agentMaxUsers: u.agentMaxUsers || 100,

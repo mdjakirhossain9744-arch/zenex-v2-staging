@@ -56,7 +56,6 @@ export async function POST(req: Request) {
         
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
-            // 💥 EXACT LOGIC: 1 Orders e 3 SMS asle 3 ta count hobe! 💥
             const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
             otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         }
@@ -76,8 +75,9 @@ export async function POST(req: Request) {
         email: u.email || "No Email",
         balance: Number(u.balance || 0).toFixed(2),
         status: finalStatus,
-        todayOTP: todayOtpCount, // 💥 Now matches dashboard 100%
-        rate: Number(u.otpRate || 0.50).toFixed(2),
+        todayOTP: todayOtpCount, 
+        // 💥 MAGIC FIX: 0.00 কে আর 0.50 বানাবে না!
+        rate: (u.otpRate !== undefined && u.otpRate !== null) ? Number(u.otpRate).toFixed(2) : "0.00",
         isApiActive: u.isApiActive || false 
       };
     });
@@ -86,7 +86,8 @@ export async function POST(req: Request) {
       users: formattedUsers, 
       maxLimit: agent.agentMaxUsers || 100, 
       agentRevenue: Number(agent.agentEarning || 0).toFixed(2),
-      agentRate: Number(agent.agentMaxRate || 0.70).toFixed(2)
+      // 💥 MAGIC FIX: এজেন্টের রেট 0.00 থাকলেও সেটাকে আর 0.70 বানাবে না!
+      agentRate: (agent.agentMaxRate !== undefined && agent.agentMaxRate !== null) ? Number(agent.agentMaxRate).toFixed(2) : "0.00"
     }, { status: 200 });
 
   } catch (error: any) { return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 }); }

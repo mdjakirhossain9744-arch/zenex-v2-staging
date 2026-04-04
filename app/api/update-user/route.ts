@@ -60,7 +60,8 @@ export async function POST(req: NextRequest) {
        let agentLimit = Math.max(maxR, otpR); 
        if (agentLimit === 0) agentLimit = 0.70; 
        
-       if (newRate && parseFloat(newRate) > agentLimit) {
+       // 💥 MAGIC FIX: 0.00 ভ্যালুও এখন সঠ���কভাবে চেক হবে! 💥
+       if (newRate !== undefined && newRate !== null && newRate !== "" && parseFloat(newRate) > agentLimit) {
           return NextResponse.json({ 
             message: `🔴 SECURITY ALERT: You cannot set a rate higher than ৳ ${agentLimit.toFixed(2)}` 
           }, { status: 400 });
@@ -71,7 +72,8 @@ export async function POST(req: NextRequest) {
     
     if (newStatus) updateData.status = newStatus.toLowerCase();
     
-    if (newRate) {
+    // 💥 MAGIC FIX: 0 বা 0.00 দিলেও এখন আর স্কিপ করবে না, সরাসরি ডাটাবেসে সেভ করবে! 💥
+    if (newRate !== undefined && newRate !== null && newRate !== "") {
        updateData.otpRate = parseFloat(newRate);
        if (realRequesterRole === "admin" && isTargetAgent) {
           updateData.agentMaxRate = parseFloat(newRate);

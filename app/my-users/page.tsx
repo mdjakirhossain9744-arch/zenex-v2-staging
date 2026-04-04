@@ -95,7 +95,11 @@ export default function UsersDirectoryPage() {
   const openManageModal = (user: any) => {
     if(!user) return;
     setSelectedUser(user);
-    setNewRate(String(user?.rate || "0.50")); 
+    
+    // 💥 MAGIC FIX: 0 কে আর False হিসেবে ধরবে না! ডাটাবেসে 0.00 থাকলে পপআপেও 0.00 ই দেখাবে!
+    const exactRate = (user?.rate !== undefined && user?.rate !== null) ? String(user.rate) : "0.00";
+    setNewRate(exactRate);
+    
     setNewStatus(String(user?.status || "active").toLowerCase()); 
     setNewPassword(""); 
     setIsModalOpen(true);
@@ -272,8 +276,9 @@ export default function UsersDirectoryPage() {
                     <td className="p-4 text-center">
                        <p className="font-black text-white text-base">{u?.todayOTP || 0}</p>
                     </td>
-                    <td className="p-4 font-black text-[#EAB308]">৳ {u?.rate || "0.00"}</td>
-                    <td className="p-4 font-black text-[#10B981]">৳ {u?.balance || "0.00"}</td>
+                    {/* 💥 MAGIC FIX: টেবিলের ভিউতেও যাতে 0.00 পারফেক্টলি শো করে */}
+                    <td className="p-4 font-black text-[#EAB308]">৳ {u?.rate !== undefined && u?.rate !== null ? Number(u.rate).toFixed(2) : "0.00"}</td>
+                    <td className="p-4 font-black text-[#10B981]">৳ {u?.balance !== undefined && u?.balance !== null ? Number(u.balance).toFixed(2) : "0.00"}</td>
                     <td className="p-4">
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${String(u?.status).toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : String(u?.status).toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
                         {u?.status || "Pending"}

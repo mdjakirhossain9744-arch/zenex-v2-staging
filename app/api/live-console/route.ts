@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import connectToDatabase from "../../lib/mongodb"; 
+import Order from "../../../models/Order"; 
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -19,56 +21,97 @@ const getServiceName = (message: string) => {
   return "OTHER";
 };
 
-// 🔥 NextRequest ব্যবহার করা হয়েছে, তাই Vercel ক্যাশ করতে পারবে না (১৭টা ওটিপি আর আটকে থাকবে না)
 export async function GET(req: NextRequest) {
   try {
+    await connectToDatabase();
+
     const clientTime = req.nextUrl.searchParams.get('t') || Date.now();
-    
-    // 💥 অফিশিয়াল পাবলিক এপিআই: এটা কুকি এক্সপায়ারের ঝামেলা ছাড়াই লাইভ গ্লোবাল ডাটা দেয় 💥
-    const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?_cb=${clientTime}&rnd=${Math.random()}`;
+    const twentyMinsAgo = Date.now() - 20 * 60 * 1000; 
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const response = await fetch(mnitUrl, {
-      method: "GET",
-      headers: {
-        "mapikey": MNIT_API_KEY, 
-        "Content-Type": "application/json",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
-      },
-      cache: "no-store",
-    });
+    // 💥 ১. নিজেদের ডাটা 💥
+    const localOrders = await Order.find({
+      status: { $in: ["DONE", "Success"] },
+      createdAt: { $gte: twentyFourHoursAgo }
+    })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
 
-    if (!response.ok) {
-       return NextResponse.json({ success: false, error: `MNIT Blocked: ${response.status}` }, { status: response.status });
+    const localLogs = localOrders.map((log: any) => ({
+      id: log._id.toString(),
+      number: log.searchNumber || log.number || "",
+      otp: log.fullMessage || log.otp || "",
+      country: log.country || "BD",
+      operator: log.operator || "Other",
+      service: getServiceName(log.fullMessage || log.otp),
+      createdAt: new Date(log.createdAt).getTime()
+    }));
+
+    // 💥 ২. MNIT Public API (EXACT ORIGINAL HEADERS TO BYPASS CLOUDFLARE) 💥
+    let mnitLogs: any[] = [];
+    try {
+      const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?_cb=${clientTime}&rnd=${Math.random()}`;
+      const response = await fetch(mnitUrl, {
+        method: "GET",
+        headers: {
+          "mapikey": MNIT_API_KEY, 
+          "Content-Type": "application/json",
+          "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0"
+        },
+        cache: "no-store",
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        let rawOtps: any[] = [];
+        if (Array.isArray(result)) rawOtps = result;
+        else if (Array.isArray(result?.data?.otps)) rawOtps = result.data.otps;
+        else if (Array.isArray(result?.data)) rawOtps = result.data;
+        else if (Array.isArray(result?.logs)) rawOtps = result.logs;
+        else if (Array.isArray(result?.otps)) rawOtps = result.otps;
+        
+        mnitLogs = rawOtps.map((item: any, index: number) => {
+          const num = item.number || item.phone || "Hidden";
+          const otpText = item.otp || item.sms || item.message || "Code";
+          return {
+            id: `mnit_${Date.now()}_${index}`,
+            number: num,
+            otp: otpText,
+            country: item.country || item.iso || "GLOBAL",
+            operator: item.operator || item.carrier || "Network",
+            service: getServiceName(otpText),
+            // 🔥 Magic Fix: Force "Just Now" time
+            createdAt: Date.now() - (index * 100) 
+          };
+        });
+      } else {
+        console.error("MNIT API Blocked:", response.status);
+      }
+    } catch (e) {
+      console.error("MNIT Fetch Error:", e);
     }
 
-    const result = await response.json();
-    const rawOtps = result?.data?.otps || [];
+    // 💥 ৩. মিক্স ও সর্টিং 💥
+    const mergedLogs = [...mnitLogs, ...localLogs].sort((a, b) => b.createdAt - a.createdAt);
+    const top100Logs = mergedLogs.slice(0, 100);
 
-    const formattedLogs = rawOtps.map((item: any) => {
-      const num = item.number || item.phone || "";
-      const otpText = item.otp || item.sms || "";
-      
-      return {
-        id: item.nid || item.id || `${num}_${Math.random()}`,
-        number: num,
-        otp: otpText,
-        country: item.country || item.iso || "GLOBAL",
-        operator: item.operator || item.carrier || "Other",
-        service: getServiceName(otpText),
-        createdAt: item.created_at ? new Date(item.created_at) : new Date() 
-      };
+    const recent20Mins = mergedLogs.filter(log => log.createdAt >= twentyMinsAgo);
+
+    const appCounts: Record<string, number> = {};
+    const carrierCounts: Record<string, number> = {};
+
+    recent20Mins.forEach((log: any) => {
+      appCounts[log.service] = (appCounts[log.service] || 0) + 1;
+      carrierCounts[log.operator] = (carrierCounts[log.operator] || 0) + 1;
     });
 
-    const counts: Record<string, number> = {};
-    formattedLogs.forEach((log: any) => {
-      counts[log.service] = (counts[log.service] || 0) + 1;
-    });
-
-    let graphData = Object.keys(counts)
-      .map(key => ({ name: key, value: counts[key] }))
+    let graphData = Object.keys(appCounts)
+      .map(key => ({ name: key, value: appCounts[key] }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8); 
 
@@ -78,15 +121,20 @@ export async function GET(req: NextRequest) {
       pad += " ";
     }
 
+    const carrierData = Object.keys(carrierCounts)
+      .map(key => ({ name: key, value: carrierCounts[key] }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
     return NextResponse.json({ 
       success: true, 
-      logs: formattedLogs, 
+      logs: top100Logs, 
       graph: graphData,
-      _timestamp: Date.now()
+      carrier: carrierData
     });
 
   } catch (error: any) {
-    console.error("Live Console Error:", error);
-    return NextResponse.json({ success: false, error: "Network Error" }, { status: 500 });
+    console.error("Live Console Merge Error:", error);
+    return NextResponse.json({ success: false, error: "Server Merge Error" }, { status: 500 });
   }
 }
