@@ -1,11 +1,12 @@
-// models/Notification.ts
+// Location: models/Notification.ts
 import mongoose, { Schema, models } from "mongoose";
 
 const notificationSchema = new Schema(
   {
+    userEmail: { type: String, default: "global" }, // 💥 ম্যাজিক: 'global' হলে সবাই দেখবে, ইমেইল থাকলে শুধু সে দেখবে!
     title: { type: String, required: true },
     description: { type: String, required: true },
-    type: { type: String, default: "INFO" }, // INFO, UPDATE, WARNING
+    type: { type: String, default: "INFO" }, // INFO, UPDATE, WARNING, SUCCESS
     color: { type: String, default: "blue" },
     views: { type: Number, default: 0 },
     likes: { type: Number, default: 0 },

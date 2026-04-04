@@ -12,9 +12,13 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   
+  // 💥 Show/Hide State for Password & PIN 💥
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  
   const [formData, setFormData] = useState({
     fullName: "", mobile: "", telegram: "", email: "", 
-    country: "BD", agentEmail: "", password: "", captcha: ""
+    country: "BD", agentEmail: "", password: "", withdrawPin: "", captcha: ""
   });
   const [progress, setProgress] = useState(0);
 
@@ -25,19 +29,28 @@ export default function RegisterPage() {
 
   useEffect(() => {
     let filled = 0;
-    const totalFields = 7; 
+    const totalFields = 8; 
     if (formData.fullName.trim().length >= 3) filled++;
     if (formData.mobile.trim().length >= 10) filled++;
     if (formData.telegram.trim().length >= 3 && !/\s/.test(formData.telegram)) filled++;
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) filled++;
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.agentEmail)) filled++;
     if (formData.password.length >= 6) filled++;
+    if (formData.withdrawPin.trim().length === 4 && /^\d+$/.test(formData.withdrawPin)) filled++;
     if (parseInt(formData.captcha) === (num1 + num2)) filled++;
     setProgress(Math.round((filled / totalFields) * 100));
   }, [formData, num1, num2]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === "withdrawPin") {
+      const numericValue = value.replace(/\D/g, ''); 
+      if (numericValue.length <= 4) {
+        setFormData({ ...formData, [name]: numericValue });
+      }
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const showToast = (message: string, type: "success" | "error") => {
@@ -49,6 +62,11 @@ export default function RegisterPage() {
     e.preventDefault();
     if (progress < 100) {
       showToast(lang === "EN" ? "Please fill all fields correctly!" : "সব তথ্য সঠিকভাবে পূরণ করুন!", "error");
+      return;
+    }
+    
+    if (formData.withdrawPin.length !== 4) {
+      showToast(lang === "EN" ? "PIN must be exactly 4 digits!" : "পিন অবশ্যই ৪ ডিজিটের হতে হবে!", "error");
       return;
     }
 
@@ -75,7 +93,6 @@ export default function RegisterPage() {
     }
   };
 
-  // ১০০% বাংলা এবং ইংরেজির ডিকশনারি
   const t = {
     title: lang === "EN" ? "Create your account" : "নতুন একাউন্ট তৈরি করুন",
     fullName: lang === "EN" ? "Full Name" : "পুরো নাম",
@@ -85,6 +102,7 @@ export default function RegisterPage() {
     country: lang === "EN" ? "Country" : "দেশ নির্বাচন করুন",
     agentEmail: lang === "EN" ? "Agent Referral Email" : "এজেন্ট রেফারেল ইমেইল",
     password: lang === "EN" ? "Create Password" : "পাসওয়ার্ড তৈরি করুন",
+    pin: lang === "EN" ? "Withdraw PIN (4-Digit)" : "উইথড্র পিন (৪-ডিজিট)",
     robot: lang === "EN" ? "Robot Check" : "রোবট চেক",
     result: lang === "EN" ? "Result" : "ফলাফল",
     btn: lang === "EN" ? "Create Account" : "একাউন্ট তৈরি করুন",
@@ -137,22 +155,22 @@ export default function RegisterPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-slate-400 mb-1">{t.fullName}</label>
-              <input type="text" name="fullName" onChange={handleChange} placeholder="John Doe" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition" required />
+              <input type="text" name="fullName" onChange={handleChange} placeholder="John Doe" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition text-white" required />
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">{t.mobile}</label>
-              <input type="tel" name="mobile" onChange={handleChange} placeholder="017xxxxxxxx" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition" required />
+              <input type="tel" name="mobile" onChange={handleChange} placeholder="017xxxxxxxx" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition text-white" required />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-slate-400 mb-1">{t.email}</label>
-              <input type="email" name="email" onChange={handleChange} placeholder="name@example.com" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition" required />
+              <input type="email" name="email" onChange={handleChange} placeholder="name@example.com" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition text-white" required />
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">{t.telegram}</label>
-              <input type="text" name="telegram" onChange={handleChange} placeholder="@username" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition" required />
+              <input type="text" name="telegram" onChange={handleChange} placeholder="@username" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition text-white" required />
             </div>
           </div>
 
@@ -180,18 +198,68 @@ export default function RegisterPage() {
             </div>
             <div>
               <label className="block text-xs text-cyan-400 mb-1">{t.agentEmail}</label>
-              <input type="email" name="agentEmail" onChange={handleChange} placeholder="agent@zenexnetwork.com" className="w-full bg-[#0F172A] border border-cyan-500/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.1)] transition" required />
+              <input type="email" name="agentEmail" onChange={handleChange} placeholder="agent@zenexnetwork.com" className="w-full bg-[#0F172A] border border-cyan-500/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.1)] transition text-white" required />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">{t.password}</label>
-            <input type="password" name="password" onChange={handleChange} placeholder="********" className="w-full bg-[#0F172A] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition" required />
+          {/* 💥 Password & Security PIN Section with Eye Button 💥 */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">{t.password}</label>
+              <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  name="password" 
+                  onChange={handleChange} 
+                  placeholder="********" 
+                  className="w-full bg-[#0F172A] border border-slate-700 rounded-lg pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:border-cyan-400 transition text-white" 
+                  required 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)} 
+                  className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-cyan-400 transition-colors"
+                >
+                  {showPassword ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-xs text-[#A855F7] font-bold mb-1">{t.pin}</label>
+              <div className="relative">
+                <input 
+                  type={showPin ? "text" : "password"} 
+                  name="withdrawPin" 
+                  value={formData.withdrawPin} 
+                  onChange={handleChange} 
+                  placeholder="****" 
+                  maxLength={4}
+                  className="w-full bg-[#0F172A] border border-[#A855F7]/50 rounded-lg pl-4 pr-10 py-2.5 text-sm text-center tracking-[0.5em] font-black focus:outline-none focus:border-[#A855F7] shadow-[0_0_8px_rgba(168,85,247,0.15)] transition text-white" 
+                  required 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPin(!showPin)} 
+                  className="absolute inset-y-0 right-3 flex items-center text-[#A855F7] hover:text-[#D8B4FE] transition-colors"
+                >
+                  {showPin ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="bg-[#0F172A] border border-slate-700 rounded-lg p-3 flex items-center justify-between mt-2">
             <span className="text-sm text-slate-300">{t.robot}: <strong className="text-cyan-400">{num1} + {num2} = ?</strong></span>
-            <input type="number" name="captcha" onChange={handleChange} placeholder={t.result} className="w-20 bg-[#0B0F1A] border border-slate-600 rounded px-2 py-1.5 text-center text-sm focus:outline-none focus:border-cyan-400" required />
+            <input type="number" name="captcha" onChange={handleChange} placeholder={t.result} className="w-20 bg-[#0B0F1A] border border-slate-600 rounded px-2 py-1.5 text-center text-sm focus:outline-none focus:border-cyan-400 text-white" required />
           </div>
 
           <button type="submit" disabled={loading} className={`w-full text-white font-medium py-3 rounded-lg shadow-lg transition-all mt-4 ${loading ? 'bg-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 hover:shadow-[0_0_20px_rgba(34,211,238,0.3)]'}`}>

@@ -1,59 +1,70 @@
-import { NextResponse } from "next/server";
+export const dynamic = 'force-dynamic';
+
+import { NextResponse, NextRequest } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
-import Order from "../../../models/Order"; 
-
-export const dynamic = "force-dynamic";
+import Order from "../../../models/Order";
 
 const getBDDateString = (dateObj: any = new Date()) => {
   try {
-    return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Dhaka',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(new Date(dateObj));
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj));
   } catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { agentEmail } = await req.json();
-    if (!agentEmail) return NextResponse.json({ message: "Agent email required" }, { status: 400 });
+    const token = req.cookies.get("zenex_token")?.value;
+    if (!token) return NextResponse.json({ message: "🔴 UNAUTHORIZED" }, { status: 401 });
 
     await connectToDatabase();
-    const safeAgentEmail = agentEmail.toLowerCase().trim();
+    
+    const body = await req.json();
+    const { agentEmail, page = 1, limit = 40, search = "" } = body; // 💥 Pagination & Search Params 💥
 
-    const agent = await User.findOne({ 
-      $or: [ { email: new RegExp(`^${safeAgentEmail}$`, 'i') }, { customAgentMail: new RegExp(`^${safeAgentEmail}$`, 'i') } ],
-      role: "agent" 
-    }).lean();
+    const agent = await User.findOne({
+      $or: [{ email: agentEmail }, { customAgentMail: agentEmail }],
+      role: "agent"
+    });
 
     if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
 
-    const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
-    if (agent.customAgentMail) emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
+    // 💥 Smart Search Query 💥
+    let query: any = {
+      $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }],
+      role: "user"
+    };
 
-    const users = await User.find({ $or: emailConditions, role: "user" }).select("-password").sort({ createdAt: -1 }).lean();
+    if (search) {
+      query = {
+        $and: [
+          { $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }] },
+          { role: "user" },
+          { $or: [{ fullName: { $regex: search, $options: "i" } }, { email: { $regex: search, $options: "i" } }] }
+        ]
+      };
+    }
 
-    // 💥 ROCKET SPEED: Fetch all orders ONCE and count Exact OTPs! 💥
+    const skip = (page - 1) * limit;
+    const totalUsers = await User.countDocuments(query);
+    
+    // .lean() for blazing fast execution
+    const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+
+    const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
     const todayStr = getBDDateString();
     const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2); 
-
-    const emails = users.map((u: any) => (u.email || "").toLowerCase().trim());
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
     const orders = await Order.find({
         createdAt: { $gte: twoDaysAgo },
-        userEmail: { $in: emails.map(e => new RegExp(`^${e}$`, 'i')) },
-        status: { $in: ["DONE", "Success", "SUCCESS"] }
+        status: { $in: ["DONE", "Success", "SUCCESS"] },
+        $or: [ { userEmail: { $in: userEmails } }, { email: { $in: userEmails } } ]
     }).select("userEmail email createdAt dateString fullMessage").lean();
 
     const otpCounts: Record<string, number> = {};
     
     orders.forEach((o: any) => {
         const finalDateStr = o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date()));
-        
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
             const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
@@ -63,31 +74,30 @@ export async function POST(req: Request) {
 
     const formattedUsers = users.map((u: any) => {
       const uEmail = (u.email || "").toLowerCase().trim();
-      const todayOtpCount = otpCounts[uEmail] || 0; 
-
-      let finalStatus = "Pending";
-      if (u.status) finalStatus = u.status.toLowerCase() === 'active' ? 'Active' : u.status.toLowerCase() === 'banned' ? 'Banned' : 'Pending';
+      const todayOtpCount = otpCounts[uEmail] || 0;
 
       return {
         id: u._id,
         uid: u._id ? `ZX-${u._id.toString().substring(18, 24).toUpperCase()}` : "ZX-UNKNOWN",
-        name: u.fullName || "Unknown User",
-        email: u.email || "No Email",
+        name: u.fullName,
+        email: u.email,
+        status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
         balance: Number(u.balance || 0).toFixed(2),
-        status: finalStatus,
         todayOTP: todayOtpCount, 
-        // 💥 MAGIC FIX: 0.00 কে আর 0.50 বানাবে না!
-        rate: (u.otpRate !== undefined && u.otpRate !== null) ? Number(u.otpRate).toFixed(2) : "0.00",
-        isApiActive: u.isApiActive || false 
+        rate: (u.otpRate !== undefined && u.otpRate !== null) ? Number(u.otpRate).toFixed(2) : "0.00"
       };
     });
 
+    const activeUsers = await User.countDocuments({ ...query, status: "active" });
+    const pendingUsers = await User.countDocuments({ ...query, status: "pending" });
+    const bannedUsers = await User.countDocuments({ ...query, status: "banned" });
+
     return NextResponse.json({ 
-      users: formattedUsers, 
-      maxLimit: agent.agentMaxUsers || 100, 
-      agentRevenue: Number(agent.agentEarning || 0).toFixed(2),
-      // 💥 MAGIC FIX: এজেন্টের রেট 0.00 থাকলেও সেটাকে আর 0.70 বানাবে না!
-      agentRate: (agent.agentMaxRate !== undefined && agent.agentMaxRate !== null) ? Number(agent.agentMaxRate).toFixed(2) : "0.00"
+        users: formattedUsers,
+        pagination: { total: totalUsers, page, limit, totalPages: Math.ceil(totalUsers / limit) || 1 },
+        stats: { activeUsers, pendingUsers, bannedUsers },
+        maxLimit: agent.agentMaxUsers || 100,
+        agentRate: agent.otpRate || 0
     }, { status: 200 });
 
   } catch (error: any) { return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 }); }

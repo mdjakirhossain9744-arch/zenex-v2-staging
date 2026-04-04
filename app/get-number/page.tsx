@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import DashboardLayout from "../DashboardLayout"; 
+import { useState, useEffect, useRef, useCallback } from "react";
+import DashboardLayout from "../DashboardLayout";
 
 const getBDDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
@@ -26,6 +26,12 @@ export default function GetNumber() {
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [selectedDate, setSelectedDate] = useState(getBDDateString());
+
+  // 💥 NEW: Infinite Scroll State 💥
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const observerRef = useRef<HTMLDivElement>(null);
 
   const getUserEmail = () => {
     const storedUser = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
@@ -73,30 +79,53 @@ export default function GetNumber() {
     return new Date(timestamp).toLocaleDateString();
   };
 
-  const fetchDbOrders = async () => {
+  // 💥 Smart Fetcher (Merges background sync with pagination) 💥
+  const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
     try {
       const res = await fetch("/api/sync-orders", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "FETCH", email })
+        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 50 })
       });
       const data = await res.json();
       if(data.success && data.orders) {
-        setNumbersList(data.orders);
+        if (isBackground) {
+           setNumbersList((prev) => {
+              const prevMap = new Map(prev.map(item => [item.id, item]));
+              const newItems: any[] = [];
+              data.orders.forEach((fetchedItem: any) => {
+                 if (prevMap.has(fetchedItem.id)) prevMap.set(fetchedItem.id, fetchedItem);
+                 else newItems.push(fetchedItem);
+              });
+              const combined = [...newItems, ...Array.from(prevMap.values())];
+              return combined.sort((a, b) => b.createdAt - a.createdAt);
+           });
+        } else {
+           if (pageNum === 1) {
+              setNumbersList(data.orders);
+           } else {
+              setNumbersList((prev) => {
+                 const prevMap = new Map(prev.map(item => [item.id, item]));
+                 data.orders.forEach((fetchedItem: any) => prevMap.set(fetchedItem.id, fetchedItem));
+                 return Array.from(prevMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+              });
+           }
+        }
+        if(data.pagination) setHasMore(data.pagination.hasMore);
       }
     } catch (err) {} 
     finally {
       setIsInitialLoad(false); 
     }
-  };
+  }, []);
 
   const checkOtps = async () => {
     setIsRefreshing(true);
     try {
       const res = await fetch(`/api/check-otp?t=${Date.now()}`);
       const result = await res.json();
-      if (result.success) await fetchDbOrders(); 
+      if (result.success) await fetchDbOrders(1, true); 
     } catch (err) {} 
     finally {
       setTimeout(() => setIsRefreshing(false), 500); 
@@ -123,8 +152,8 @@ export default function GetNumber() {
 
     window.addEventListener('otp-received-instant', handleInstantOtp);
 
-    fetchDbOrders();
-    const syncInterval = setInterval(fetchDbOrders, 3000); 
+    fetchDbOrders(1, false);
+    const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
     return () => {
@@ -132,7 +161,27 @@ export default function GetNumber() {
        clearInterval(syncInterval);
        clearInterval(timeInterval);
     };
-  }, []);
+  }, [fetchDbOrders]);
+
+  // 💥 NEW: Auto Load More (Intersection Observer) 💥
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !isFetchingMore && !isInitialLoad) {
+         loadMoreNumbers();
+      }
+    }, { threshold: 1.0 });
+    
+    if (observerRef.current) observer.observe(observerRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, isFetchingMore, isInitialLoad, page, fetchDbOrders]);
+
+  const loadMoreNumbers = async () => {
+     setIsFetchingMore(true);
+     const nextPage = page + 1;
+     await fetchDbOrders(nextPage, false);
+     setPage(nextPage);
+     setIsFetchingMore(false);
+  };
 
   const fetchNewNumber = async () => {
     if (!rangeInput) {
@@ -307,55 +356,65 @@ export default function GetNumber() {
                     <h3 className="text-sm font-black text-[#64748B] tracking-wide">Empty List</h3>
                  </div>
               ) : (
-                 sortedFilteredNumbers.map((item) => (
-                    <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
-                       <div className="flex justify-between items-center mb-1.5">
-                          <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
-                            <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
-                            <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
-                              {item.country}
-                            </span>
-                            {(item.isMulti || item.isDup) && (
-                               <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
-                                 MULTI
-                               </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                             <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
-                             <span className={`px-1.5 py-0.5 border text-[8px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
-                          </div>
-                       </div>
-                       
-                       <div className="flex justify-between items-center">
-                          <div className="flex-1 overflow-hidden pr-2">
-                             {item.status === "WAIT" ? (
-                               <div className="flex items-center gap-1.5">
-                                 <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
-                                 <span className="text-[10px] italic text-[#64748B]">{item.otp}</span>
-                               </div>
-                             ) : item.status === "FAIL" ? (
-                               <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
-                             ) : (
-                               <div className="flex flex-col">
-                                 <div onClick={() => { navigator.clipboard.writeText(item.otp); showToast("OTP Copied!"); }} className="inline-flex items-center bg-[#0F172A] border border-[#10B981]/30 px-2 py-0.5 rounded cursor-pointer hover:border-[#10B981] w-max">
-                                   <span className="text-sm font-mono font-black text-[#10B981] tracking-widest">{item.otp}</span>
+                 <>
+                   {sortedFilteredNumbers.map((item) => (
+                      <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
+                         <div className="flex justify-between items-center mb-1.5">
+                            <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
+                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
+                              <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
+                                {item.country}
+                              </span>
+                              {(item.isMulti || item.isDup) && (
+                                 <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
+                                   MULTI
+                                 </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
+                               <span className={`px-1.5 py-0.5 border text-[8px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
+                            </div>
+                         </div>
+                         
+                         <div className="flex justify-between items-center">
+                            <div className="flex-1 overflow-hidden pr-2">
+                               {item.status === "WAIT" ? (
+                                 <div className="flex items-center gap-1.5">
+                                   <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
+                                   <span className="text-[10px] italic text-[#64748B]">{item.otp}</span>
                                  </div>
-                                 {item.fullMessage && <span className="text-[9px] text-[#64748B] mt-0.5 line-clamp-1">{item.fullMessage}</span>}
-                               </div>
-                             )}
-                          </div>
-                          
-                          <div className="flex flex-col items-end text-right min-w-[60px]">
-                            <span className="text-[9px] font-bold text-[#E2E8F0] uppercase">
-                               <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
-                               {item.operator}
-                            </span>
-                            <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
-                          </div>
-                       </div>
-                    </div>
-                 ))
+                               ) : item.status === "FAIL" ? (
+                                 <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
+                               ) : (
+                                 <div className="flex flex-col">
+                                   <div onClick={() => { navigator.clipboard.writeText(item.otp); showToast("OTP Copied!"); }} className="inline-flex items-center bg-[#0F172A] border border-[#10B981]/30 px-2 py-0.5 rounded cursor-pointer hover:border-[#10B981] w-max">
+                                     <span className="text-sm font-mono font-black text-[#10B981] tracking-widest">{item.otp}</span>
+                                   </div>
+                                   {item.fullMessage && <span className="text-[9px] text-[#64748B] mt-0.5 line-clamp-1">{item.fullMessage}</span>}
+                                 </div>
+                               )}
+                            </div>
+                            
+                            <div className="flex flex-col items-end text-right min-w-[60px]">
+                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase">
+                                 <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
+                                 {item.operator}
+                              </span>
+                              <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
+                            </div>
+                         </div>
+                      </div>
+                   ))}
+
+                   {/* 💥 Infinite Scroll Loader Trigger 💥 */}
+                   {isFetchingMore && (
+                     <div className="py-4 flex justify-center">
+                        <svg className="w-5 h-5 animate-spin text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                     </div>
+                   )}
+                   <div ref={observerRef} className="h-4 w-full bg-transparent"></div>
+                 </>
               )}
            </div>
         </div>

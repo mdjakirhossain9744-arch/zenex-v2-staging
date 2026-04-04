@@ -9,6 +9,7 @@ export default function UsersDirectoryPage() {
   const [agentRate, setAgentRate] = useState<number>(0.70); 
   
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
 
@@ -16,42 +17,72 @@ export default function UsersDirectoryPage() {
   const [agentMaxLimit, setAgentMaxLimit] = useState(100);
   const [loading, setLoading] = useState(true);
 
+  // 💥 NEW: Pagination State (40 Items / Page) 💥
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUsersCount, setTotalUsersCount] = useState(0);
+  const [stats, setStats] = useState({ activeUsers: 0, pendingUsers: 0, bannedUsers: 0 });
+  const itemsPerPage = 40;
+
   const [newRate, setNewRate] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newPin, setNewPin] = useState("");
   const [newStatus, setNewStatus] = useState("active");
   const [isSaving, setIsSaving] = useState(false);
 
-  // 💥 THE MAGIC: Unified Silent Fetcher (Admin + Agent) 💥
+  // Search Debounce (Prevents API spam)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset page to 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
+
+  // 💥 THE MAGIC: Unified Paginated Fetcher 💥
   const fetchNetworkUsers = useCallback((email: string, userRole: string, isSilent = false) => {
     if (!isSilent) setLoading(true); 
 
     if (userRole === "admin") {
-      // 👑 ADMIN: Fetch ALL Users 👑
-      fetch(`/api/get-all-users?t=${Date.now()}`)
+      fetch(`/api/get-all-users?page=${currentPage}&limit=${itemsPerPage}&search=${encodeURIComponent(debouncedSearch)}&t=${Date.now()}`)
         .then(res => res.json())
         .then(data => {
           if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
-          setAgentMaxLimit(999999); // Admin has no limits
+          if (data?.pagination) {
+            setTotalPages(data.pagination.totalPages);
+            setTotalUsersCount(data.pagination.total);
+          }
+          if (data?.stats) {
+            // Admin stats format is slightly different, mapping it for UI
+            setStats({ activeUsers: data.stats.activeAccounts, pendingUsers: 0, bannedUsers: data.stats.bannedAccounts });
+          }
+          setAgentMaxLimit(999999); 
           setLoading(false);
         })
         .catch(err => { console.error(err); setLoading(false); });
     } else {
-      // 🕵️ AGENT: Fetch Only Their Users 🕵️
       fetch(`/api/get-agent-users?t=${Date.now()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentEmail: email })
+        body: JSON.stringify({ agentEmail: email, page: currentPage, limit: itemsPerPage, search: debouncedSearch })
       })
         .then(res => res.json())
         .then(data => {
           if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
+          if (data?.pagination) {
+            setTotalPages(data.pagination.totalPages);
+            setTotalUsersCount(data.pagination.total);
+          }
+          if (data?.stats) setStats(data.stats);
           if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
           if (data?.agentRate) setAgentRate(Number(data.agentRate));
           setLoading(false);
         })
         .catch(err => { console.error(err); setLoading(false); });
     }
-  }, []);
+  }, [currentPage, debouncedSearch]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -63,12 +94,11 @@ export default function UsersDirectoryPage() {
 
         if (currentRole === "agent" || currentRole === "admin") {
           setUserEmail(parsedUser.email); 
-          fetchNetworkUsers(parsedUser.email, currentRole, false); // Initial Load
+          fetchNetworkUsers(parsedUser.email, currentRole, false); 
           
-          // 💥 10-Second Auto Sync (Zero Reload) 💥
           const interval = setInterval(() => {
              fetchNetworkUsers(parsedUser.email, currentRole, true); 
-          }, 10000);
+          }, 10000); // 10s auto sync
           
           return () => clearInterval(interval);
         }
@@ -78,30 +108,18 @@ export default function UsersDirectoryPage() {
     }
   }, [fetchNetworkUsers]);
 
-  const filteredUsers = Array.isArray(myUsers) ? myUsers.filter(u => {
-    const name = String(u?.name || "").toLowerCase();
-    const email = String(u?.email || "").toLowerCase();
-    const uid = String(u?.uid || "").toLowerCase();
-    const query = String(searchQuery || "").toLowerCase();
-    return name.includes(query) || email.includes(query) || uid.includes(query);
-  }) : [];
-
-  const totalUsers = Array.isArray(myUsers) ? myUsers.length : 0;
-  const activeUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'active').length : 0;
-  const pendingUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'pending').length : 0;
-  const bannedUsers = Array.isArray(myUsers) ? myUsers.filter(u => String(u?.status || "").toLowerCase() === 'banned').length : 0;
-  const isSeatFull = role === "agent" && totalUsers >= agentMaxLimit;
+  const isSeatFull = role === "agent" && totalUsersCount >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
     if(!user) return;
     setSelectedUser(user);
     
-    // 💥 MAGIC FIX: 0 কে আর False হিসেবে ধরবে না! ডাটাবেসে 0.00 থাকলে পপআপেও 0.00 ই দেখাবে!
     const exactRate = (user?.rate !== undefined && user?.rate !== null) ? String(user.rate) : "0.00";
     setNewRate(exactRate);
     
     setNewStatus(String(user?.status || "active").toLowerCase()); 
     setNewPassword(""); 
+    setNewPin(""); 
     setIsModalOpen(true);
   };
 
@@ -109,7 +127,6 @@ export default function UsersDirectoryPage() {
     e.preventDefault();
     setIsSaving(true);
 
-    // Only check rate limit for Agents. Admins can set any rate.
     if (role === "agent" && Number(newRate) > Number(agentRate)) {
       alert(`🔴 ERROR: You cannot give a user more than your own limit! (Your Max Limit is ৳ ${Number(agentRate).toFixed(2)})`);
       setIsSaving(false);
@@ -123,6 +140,7 @@ export default function UsersDirectoryPage() {
         body: JSON.stringify({
           userId: selectedUser?.id || selectedUser?._id,
           newPassword: newPassword,
+          newPin: newPin, 
           newRate: newRate,
           newStatus: newStatus,
           requesterEmail: userEmail, 
@@ -134,7 +152,7 @@ export default function UsersDirectoryPage() {
       if (res.ok) {
         alert("✅ Successfully Updated User!");
         setIsModalOpen(false);
-        fetchNetworkUsers(userEmail, role, true); // Update list silently
+        fetchNetworkUsers(userEmail, role, true); 
       } else {
         alert(data.message || "Failed to update user!");
       }
@@ -170,7 +188,6 @@ export default function UsersDirectoryPage() {
     }
   };
 
-  // Block basic users
   if (role !== "agent" && role !== "admin") {
     return (
       <div className="min-h-screen bg-[#0B0F1A] text-white flex flex-col items-center justify-center font-black tracking-widest uppercase">
@@ -182,7 +199,7 @@ export default function UsersDirectoryPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-10 w-full min-h-screen bg-[#0B0F1A] text-slate-200">
+      <div className="p-4 md:p-10 w-full min-h-screen bg-[#0B0F1A] text-slate-200 pb-20">
         
         <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
@@ -190,14 +207,13 @@ export default function UsersDirectoryPage() {
                <h2 className={`text-2xl md:text-3xl font-black bg-gradient-to-r bg-clip-text text-transparent uppercase tracking-wider ${role === 'admin' ? 'from-[#F43F5E] to-[#EAB308]' : 'from-[#A855F7] to-[#EC4899]'}`}>
                  {role === "admin" ? "Global Users Directory" : "My Network Users"}
                </h2>
-               {/* 🔴 Live Status Dot */}
                <span className="flex h-3 w-3 relative">
                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                </span>
             </div>
             <p className="text-sm text-[#94A3B8] mt-1">
-              {role === "admin" ? "Master control panel for all registered users across the system." : "Manage your team, set custom OTP rates, and update passwords."}
+              {role === "admin" ? "Master control panel for all registered users across the system." : "Manage your team, set custom OTP rates, and update passwords. (Max 40/Page)"}
             </p>
           </div>
           <div className="relative w-full lg:w-auto">
@@ -216,7 +232,7 @@ export default function UsersDirectoryPage() {
           <div className={`bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg relative overflow-hidden border-t-2 ${role === 'admin' ? 'border-t-[#F43F5E]' : 'border-t-[#A855F7]'}`}>
             <p className="text-[#94A3B8] text-xs font-bold uppercase tracking-wider mb-1">Total Users</p>
             <h3 className="text-2xl md:text-3xl font-black text-white">
-              {totalUsers} <span className="text-sm text-[#64748B] font-medium">{role === 'admin' ? '' : `/ ${agentMaxLimit}`}</span>
+              {totalUsersCount} <span className="text-sm text-[#64748B] font-medium">{role === 'admin' ? '' : `/ ${agentMaxLimit}`}</span>
             </h3>
             {isSeatFull && (
               <span className="inline-block mt-2 px-2 py-0.5 bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 text-[10px] font-black uppercase tracking-widest rounded animate-pulse">
@@ -227,23 +243,23 @@ export default function UsersDirectoryPage() {
           
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#10B981]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981]">
             <p className="text-[#10B981] text-xs font-bold uppercase tracking-wider mb-1">Active Users</p>
-            <h3 className="text-2xl md:text-3xl font-black text-[#10B981]">{activeUsers}</h3>
+            <h3 className="text-2xl md:text-3xl font-black text-[#10B981]">{stats.activeUsers}</h3>
           </div>
           
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#EAB308]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#EAB308]">
             <p className="text-[#EAB308] text-xs font-bold uppercase tracking-wider mb-1">Pending</p>
-            <h3 className="text-2xl md:text-3xl font-black text-[#EAB308]">{pendingUsers}</h3>
+            <h3 className="text-2xl md:text-3xl font-black text-[#EAB308]">{stats.pendingUsers}</h3>
           </div>
 
           <div className="bg-red-500/5 backdrop-blur-xl border border-[#F43F5E]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#F43F5E] relative overflow-hidden">
             <p className="text-[#F43F5E] text-xs font-bold uppercase tracking-wider mb-1">Banned</p>
             <h3 className="text-2xl md:text-3xl font-black text-[#F43F5E]">
-              {bannedUsers}
+              {stats.bannedUsers}
             </h3>
           </div>
         </div>
 
-        <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-2xl shadow-lg overflow-x-auto">
+        <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[400px]">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
               <tr>
@@ -257,11 +273,11 @@ export default function UsersDirectoryPage() {
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#A855F7] font-bold">Loading Database...</td></tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found in database.</td></tr>
+                <tr><td colSpan={6} className="text-center p-8 text-[#A855F7] font-bold">Loading Page {currentPage}...</td></tr>
+              ) : myUsers.length === 0 ? (
+                <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
               ) : (
-                filteredUsers.map((u, i) => (
+                myUsers.map((u, i) => (
                   <tr key={u?.id || u?._id || i} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
@@ -276,7 +292,6 @@ export default function UsersDirectoryPage() {
                     <td className="p-4 text-center">
                        <p className="font-black text-white text-base">{u?.todayOTP || 0}</p>
                     </td>
-                    {/* 💥 MAGIC FIX: টেবিলের ভিউতেও যাতে 0.00 পারফেক্টলি শো করে */}
                     <td className="p-4 font-black text-[#EAB308]">৳ {u?.rate !== undefined && u?.rate !== null ? Number(u.rate).toFixed(2) : "0.00"}</td>
                     <td className="p-4 font-black text-[#10B981]">৳ {u?.balance !== undefined && u?.balance !== null ? Number(u.balance).toFixed(2) : "0.00"}</td>
                     <td className="p-4">
@@ -294,6 +309,21 @@ export default function UsersDirectoryPage() {
               )}
             </tbody>
           </table>
+          
+          {/* 💥 NEW: Server-Side Pagination Controls 💥 */}
+          {totalPages > 1 && (
+            <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 flex items-center justify-between">
+               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
+                 ← Previous
+               </button>
+               <span className="text-xs font-black text-[#94A3B8]">
+                 Page <span className="text-white">{currentPage}</span> of {totalPages}
+               </span>
+               <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
+                 Next →
+               </button>
+            </div>
+          )}
         </div>
 
         {/* User Manage Modal */}
@@ -330,10 +360,18 @@ export default function UsersDirectoryPage() {
                     className="w-full bg-[#0F172A] border border-[#334155] text-white font-black px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#EAB308]" />
                 </div>
                 
-                <div>
-                  <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
-                  <input type="text" placeholder="Type new password (Optional)..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#F43F5E] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155]" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
+                    <input type="text" placeholder="New Password..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#F43F5E] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155]" />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-[10px] text-[#10B981] uppercase font-bold mb-1">Reset Withdraw PIN</label>
+                    <input type="text" placeholder="New 4-digit PIN..." value={newPin} maxLength={4} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#10B981] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155] text-center tracking-widest font-mono" />
+                  </div>
                 </div>
                 
                 <button type="submit" disabled={isSaving} className={`w-full py-3.5 mt-2 rounded-xl text-white font-black text-sm transition-transform hover:-translate-y-1 disabled:opacity-50 ${role === 'admin' ? 'bg-gradient-to-r from-[#F43F5E] to-[#EAB308] shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-gradient-to-r from-[#A855F7] to-[#EC4899] shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}>

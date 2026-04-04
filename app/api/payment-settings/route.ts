@@ -2,9 +2,12 @@ import { NextResponse, NextRequest } from "next/server";
 import mongoose from "mongoose";
 import PaymentSetting from "../../../models/PaymentSetting";
 
+// 💥 Next.js কে ক্যাশ করতে বারণ করা হলো
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
-    // 💥 হ্যাকার প্রটেকশন: Native Token Decode (Blazing Fast) 💥
+    // 💥 হ্যাকার প্রটেকশন: Native Token Decode
     const token = req.cookies.get("zenex_token")?.value;
     
     if (!token) return NextResponse.json({ message: "🔴 UNAUTHORIZED" }, { status: 401 });
@@ -12,16 +15,21 @@ export async function POST(req: NextRequest) {
     let userRole = "user";
     try {
       const payloadBase64 = token.split('.')[1];
-      const decodedPayload = JSON.parse(atob(payloadBase64));
+      // 💥 CRASH FIX: Node.js Safe Base64 Decode
+      const decodedString = Buffer.from(payloadBase64, 'base64').toString('utf-8');
+      const decodedPayload = JSON.parse(decodedString);
       userRole = decodedPayload.role;
     } catch (err) {
       return NextResponse.json({ message: "🔴 FORBIDDEN: Invalid Token" }, { status: 403 });
     }
 
-    if (mongoose.connection.readyState === 0) {
+    // 💥 CRASH FIX: Strong DB Connection Check
+    if (mongoose.connection.readyState !== 1) {
       await mongoose.connect(process.env.MONGODB_URI as string);
     }
-    const body = await req.json();
+    
+    // 💥 CRASH FIX: Safe JSON Parse (যাতে বডি ফাঁকা থাকলেও ক্র্যাশ না করে)
+    const body = await req.json().catch(() => ({}));
     const { action, isWithdrawOpen, methods } = body;
 
     // FETCH সবার জন্য অ্যালাউ করা হলো (ইউজাররা সেটিংস দেখবে)
@@ -33,7 +41,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data: settings });
     }
 
-    // UPDATE শুধুমাত্র সুপার এডমিন করতে পারবে (Fast & Secure)
+    // UPDATE শুধুমাত্র সুপার এডমিন করতে পারবে
     if (action === "UPDATE") {
       if (userRole !== "admin") {
         return NextResponse.json({ message: "🔴 FORBIDDEN: Only admins can change settings!" }, { status: 403 });

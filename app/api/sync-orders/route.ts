@@ -19,19 +19,22 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
-    const { action, email, orderData } = body;
+    const { action, email, orderData, page = 1, limit = 50 } = body; // 💥 Pagination Params (Limit 50) 💥
 
     if (!email) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
     }
 
     if (action === "FETCH") {
-      const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).limit(200);
+      // 💥 সার্ভার সাইড পেজিনেশন লজিক 💥
+      const skip = (page - 1) * limit;
+      const totalItems = await Order.countDocuments({ userEmail: email });
+      const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).skip(skip).limit(limit);
+      
       const finalOrders: any[] = [];
-      const todayStr = getBDDateString(); // 💥 আজকের বাংলাদেশ ডেট
+      const todayStr = getBDDateString(); 
 
       orders.forEach((o: any) => {
-        // 💥 ম্যাজিক ১: রাত ১২টার পর আগের দিনের WAIT বা FAIL ওটিপি হাইড হয়ে যাবে! শুধু DONE গুলা থাকবে।
         if (o.dateString !== todayStr && o.status !== "DONE") {
             return; 
         }
@@ -59,19 +62,27 @@ export async function POST(req: Request) {
         }
       });
 
-      // 💥 ম্যাজিক ২: ফ্রন্টএন্ডে পাঠানোর আগে টাইমের ওপর বেস করে স্ট্রং সর্টিং (যাতে লাফাদাফি না করে) 💥
       finalOrders.sort((a, b) => b.createdAt - a.createdAt);
 
-      return NextResponse.json({ success: true, orders: finalOrders });
+      return NextResponse.json({ 
+        success: true, 
+        orders: finalOrders,
+        pagination: {
+          total: totalItems,
+          page,
+          limit,
+          hasMore: (skip + orders.length) < totalItems // Check if more data exists
+        }
+      });
     }
 
     if (action === "CREATE") {
-      const todayStr = getBDDateString(); // 💥 বাংলাদেশ টাইম ফোর্স করা হলো
+      const todayStr = getBDDateString(); 
       const newOrder = new Order({
         userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
         country: orderData.country, operator: orderData.operator, status: orderData.status,
         otp: orderData.otp, fullMessage: orderData.fullMessage, 
-        dateString: todayStr, // 💥
+        dateString: todayStr, 
         expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
@@ -105,7 +116,6 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Max safety limit reached." });
         }
 
-        // 💥 Atomic Lock (রেস কন্ডিশন ফিক্স) 💥
         const updatedOrder = await Order.findOneAndUpdate(
           { _id: existingOrder._id, fullMessage: currentMsg }, 
           { 

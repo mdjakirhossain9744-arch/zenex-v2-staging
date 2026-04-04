@@ -246,46 +246,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            
-            <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mb-10">
-               <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
-                 <div>
-                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Top Agents Performance</h3>
-                    <p className="text-[10px] text-[#10B981] font-bold tracking-wider mt-1 flex items-center gap-1">
-                       <span className="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-pulse"></span> 100% Live & Authentic Data ({currentMonthName})
-                    </p>
-                 </div>
-               </div>
-               <div className="overflow-x-auto w-full">
-                 <table className="w-full text-left border-collapse min-w-[600px]">
-                   <thead>
-                     <tr className="bg-[#1E293B] text-[10px] font-black text-[#64748B] uppercase tracking-widest border-b border-[#334155]">
-                       <th className="p-4 pl-6">Rank</th>
-                       <th className="p-4">Agent Name</th>
-                       <th className="p-4 text-center">Total OTPs</th> 
-                       <th className="p-4 pr-6 text-right">Agent Commission (৳)</th> 
-                     </tr>
-                   </thead>
-                   <tbody className="text-sm font-medium text-[#E2E8F0] divide-y divide-[#334155]/50">
-                     {agentReport.length === 0 ? (
-                       <tr><td colSpan={4} className="text-center p-8 text-[#64748B] font-bold">No agent data found this month.</td></tr>
-                     ) : (
-                       agentReport.map((agent, index) => (
-                         <tr key={index} className="hover:bg-[#334155]/20 transition-colors">
-                           <td className="p-4 pl-6 font-black text-[#94A3B8]">#{index + 1}</td>
-                           <td className="p-4">
-                             <p className="font-bold text-white">{agent.agentName}</p>
-                             <p className="text-[10px] text-[#64748B] font-mono">{agent.agentEmail}</p>
-                           </td>
-                           <td className="p-4 text-center font-black text-[#3B82F6]">{agent.monthOTPs}</td>
-                           <td className="p-4 pr-6 text-right font-black text-[#10B981]">৳ {agent.agentEarnings}</td> 
-                         </tr>
-                       ))
-                     )}
-                   </tbody>
-                 </table>
-               </div>
-            </div>
           </>
         ) : (
           <>
@@ -316,7 +276,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 💥 Yesterday's Success Card (Restored) 💥 */}
             {role === "user" && (
               <div className="mb-10 w-full md:w-1/4">
                  <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row justify-between items-center shadow-inner">
@@ -387,6 +346,56 @@ export default function DashboardPage() {
           </div>
 
         </div>
+
+        {/* 💥 ADMIN ONLY: Top Agents Performance Table (Moved to Bottom) 💥 */}
+        {role === "admin" && (
+            <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mt-6 mb-10">
+               <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
+                 <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Top Agents Performance</h3>
+                    <p className="text-[10px] text-[#10B981] font-bold tracking-wider mt-1 flex items-center gap-1">
+                       <span className="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-pulse"></span> 100% Live & Authentic Data ({currentMonthName})
+                    </p>
+                 </div>
+               </div>
+               <div className="overflow-x-auto w-full">
+                 <table className="w-full text-left border-collapse min-w-[700px]">
+                   <thead>
+                     <tr className="bg-[#1E293B] text-[10px] font-black text-[#64748B] uppercase tracking-widest border-b border-[#334155]">
+                       <th className="p-4 pl-6">Rank</th>
+                       <th className="p-4">Agent Name</th>
+                       <th className="p-4 text-center">Today's OTPs</th> 
+                       <th className="p-4 text-center">Total OTPs</th> 
+                       <th className="p-4 pr-6 text-right">Agent Commission (৳)</th> 
+                     </tr>
+                   </thead>
+                   <tbody className="text-sm font-medium text-[#E2E8F0] divide-y divide-[#334155]/50">
+                     {agentReport.length === 0 ? (
+                       <tr><td colSpan={5} className="text-center p-8 text-[#64748B] font-bold">No agent data found this month.</td></tr>
+                     ) : (
+                       agentReport.map((agent, index) => (
+                         <tr key={index} className="hover:bg-[#334155]/20 transition-colors">
+                           <td className="p-4 pl-6 font-black text-[#94A3B8]">#{index + 1}</td>
+                           <td className="p-4">
+                             <p className="font-bold text-white">{agent.agentName}</p>
+                             <p className="text-[10px] text-[#64748B] font-mono">{agent.agentEmail}</p>
+                           </td>
+                           {/* 💥 Today's OTPs 💥 */}
+                           <td className="p-4 text-center font-black text-[#10B981]">{agent.todayOTPs || 0}</td>
+                           
+                           {/* Total OTPs */}
+                           <td className="p-4 text-center font-black text-[#3B82F6]">{agent.monthOTPs || 0}</td>
+                           
+                           <td className="p-4 pr-6 text-right font-black text-[#F59E0B]">৳ {agent.agentEarnings}</td> 
+                         </tr>
+                       ))
+                     )}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+        )}
+
       </div>
     </DashboardLayout>
   );

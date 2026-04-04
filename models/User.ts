@@ -10,24 +10,25 @@ const userSchema = new Schema(
     agentEmail: { type: String, required: true }, 
     password: { type: String, required: true },
     
+    // 💥 ম্যাজিক: উইথড্র সিকিউরিটি পিন (ডিফল্ট 1234) 💥
+    withdrawPin: { type: String, default: "1234" },
+    
     role: { type: String, default: "user" }, 
     status: { type: String, default: "pending" }, 
     
     balance: { type: Number, default: 0 }, 
-    otpRate: { type: Number, default: 0 }, // 💥 Magic Fix: ডিফল্ট রেট এখন 0.00 (এজেন্ট যা সেট করবে তাই পাবে)
+    otpRate: { type: Number, default: 0 }, // 💥 Magic Fix: Default rate is 0.00
 
     agentEarning: { type: Number, default: 0 }, 
-    agentMaxRate: { type: Number, default: 0 }, // 💥 Magic Fix: ডিফল্ট 0.00
+    agentMaxRate: { type: Number, default: 0 }, 
 
     customAgentMail: { type: String, default: "" }, 
     telegramLink: { type: String, default: "" },    
     agentMaxUsers: { type: Number, default: 100 },  
 
-    // 💥 B2B SaaS API Features (New) 💥
-    apiKey: { type: String, default: "" }, // ইউজারের নিজস্ব সিক্রেট API Key
-    isApiActive: { type: Boolean, default: false }, // এডমিন প্যানেল থেকে API অন/অফ করার কন্ট্রোল
+    apiKey: { type: String, default: "" }, 
+    isApiActive: { type: Boolean, default: false }, 
 
-    // 💥 Device Auto-Logout Tracking (New) 💥
     activeSessions: { type: [String], default: [] },
   },
   { timestamps: true }

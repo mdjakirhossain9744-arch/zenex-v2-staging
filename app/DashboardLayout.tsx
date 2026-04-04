@@ -356,7 +356,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <p className="px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mt-4 mb-3 uppercase">Account & Tools</p>
           
-          <Link href="/payment" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/payment' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>Payment</Link>
+          {/* 💥 MAGIC: Dynamic Payment Links based on Role 💥 */}
+          {role === "admin" ? (
+             <Link href="/admin/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/payments' ? activeBlue : inactive}`}>
+               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+               Payments
+             </Link>
+          ) : (
+             <Link href="/withdraw" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/withdraw' ? activeBlue : inactive}`}>
+               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+               Withdraw
+             </Link>
+          )}
+
           <Link href="/access-list" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/access-list' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Access List</Link>
           <Link href="/profile" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/profile' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Profile</Link>
 
@@ -447,10 +459,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      {/* 💥 MODIFIED: Small Icon on Mobile, Full Badge on PC 💥 */}
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-end md:items-center justify-end group">
-        
-        {/* Tooltip Card (Pops UP on mobile, LEFT on PC) */}
         <div className={`absolute bottom-full mb-3 right-0 md:bottom-auto md:mb-0 md:right-full md:mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl md:rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 origin-bottom-right md:origin-right ${isBadgeOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'} md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}>
            <div className="flex flex-col md:flex-row items-center md:gap-4 px-4 py-3 md:py-2.5 whitespace-nowrap">
               <div className="flex items-center gap-2 md:border-r border-[#334155] pb-2 md:pb-0 border-b md:border-b-0 w-full md:w-auto md:pr-4 justify-center md:justify-start">
@@ -466,17 +475,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            </div>
         </div>
 
-        {/* Floating Badge Button */}
         <div 
           onClick={() => setIsBadgeOpen(!isBadgeOpen)}
           className="bg-[#1E293B]/90 backdrop-blur-md border border-[#334155] text-[#94A3B8] p-2.5 md:px-4 md:py-2.5 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center justify-center gap-2"
         >
-          {/* Mobile Icon: Just a Verified Shield */}
           <svg className="w-5 h-5 text-[#10B981] md:hidden block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-
-          {/* PC Layout */}
           <span className="hidden md:block text-[10px] md:text-xs font-mono font-bold">V3.0.1 (Secured)</span>
           <svg className={`hidden md:block w-4 h-4 text-[#10B981] transition-transform duration-300 ${isBadgeOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />

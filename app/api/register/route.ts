@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
+import Notification from "../../../models/Notification"; // 💥 নোটিফিকেশন ইমপোর্ট
 
-// 💥 শক্তিশালী API Key জেনারেটর (ZNX_ + ২৪ ক্যারেক্টারের র‍্যান্ডম কোড)
 const generateApiKey = () => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let key = "ZNX_";
@@ -16,24 +16,21 @@ const generateApiKey = () => {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { fullName, mobile, email, telegram, country, agentEmail, password } = body;
+    const { fullName, mobile, email, telegram, country, agentEmail, password, withdrawPin } = body;
 
     await connectToDatabase();
 
-    // ১. চেক করা হচ্ছে ইমেইল বা নাম্বার আগে থেকে আছে কি না
     const existingUser = await User.findOne({ $or: [{ email }, { mobile }] });
     if (existingUser) {
       return NextResponse.json({ message: "এই ইমেইল বা নাম্বার দিয়ে আগে থেকেই একাউন্ট আছে!" }, { status: 400 });
     }
 
-    // ২. এডমিনের আন্ডারে সরাসরি একাউন্ট খোলা সম্পূর্ণ বন্ধ (Security Lock)
     if (agentEmail === "admin@zenexnetwork.com" || agentEmail.toLowerCase() === "admin") {
       return NextResponse.json({ 
         message: "দুঃখিত! কোনো ভেরিফাইড এজেন্টের রেফারেন্স ছাড়া একাউন্ট খোলা নিষেধ। দয়া করে একজন এজেন্টের সাথে যোগাযোগ করুন।" 
       }, { status: 403 });
     }
 
-    // ৩. এজেন্ট ভেরিফিকেশন এবং সিট লিমিট চেক
     const validAgent = await User.findOne({ 
       $or: [{ customAgentMail: agentEmail }, { email: agentEmail }],
       role: "agent" 
@@ -43,7 +40,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid Agent Email! Please contact an authorized agent." }, { status: 400 });
     }
 
-    // ৪. ম্যাজিক: এজেন্টের আন্ডারে বর্তমানে কতজন ইউজার আছে সেটা গোনা হচ্ছে
     const totalAgentUsers = await User.countDocuments({
       $or: [
         { agentEmail: validAgent.email }, 
@@ -61,9 +57,10 @@ export async function POST(req: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // 💥 ইউজারের জন্য নতুন API Key তৈরি করা হচ্ছে 💥
     const newApiKey = generateApiKey();
+    
+    // 💥 ইউজার যদি পিন না দেয়, তবে ডিফল্ট 1234 সেট হবে
+    const finalPin = withdrawPin && withdrawPin.trim() !== "" ? withdrawPin : "1234";
 
     const newUser = new User({
       fullName, 
@@ -73,15 +70,25 @@ export async function POST(req: Request) {
       country, 
       agentEmail: agentEmail, 
       password: hashedPassword,
+      withdrawPin: finalPin, // 💥 পিন সেভ করা হলো
       role: "user", 
       status: "pending", 
       balance: 0, 
-      otpRate: 0.50, 
-      apiKey: newApiKey,       // ডাটাবেসে API Key সেভ হলো
-      isApiActive: false,      // ডিফল্টভাবে API অফ থাকবে (এডমিন অন করবে)
+      otpRate: 0, // 💥 মাস্টার রুলস: নতুন ইউজারের রেট 0 থাকবে 💥
+      apiKey: newApiKey,       
+      isApiActive: false,      
     });
 
     await newUser.save();
+
+    // 🔔 💥 ওয়েলকাম নোটিফিকেশন পাঠানো হলো 💥 🔔
+    await Notification.create({
+      userEmail: email,
+      title: "Welcome to ZENEX NETWORK 🎉",
+      description: `Hello ${fullName}, your account has been successfully created. Please wait for your Agent's approval to start working. Your default Withdraw PIN is 1234.`,
+      type: "INFO",
+      color: "blue"
+    });
 
     return NextResponse.json({ message: "Account Created Successfully! Waiting for Agent approval." }, { status: 201 });
 

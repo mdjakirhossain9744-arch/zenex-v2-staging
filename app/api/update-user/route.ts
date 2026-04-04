@@ -9,7 +9,6 @@ export async function POST(req: NextRequest) {
       await mongoose.connect(process.env.MONGODB_URI as string);
     }
 
-    // 💥 হ্যাকার প্রটেকশন: Native Token Decode (Blazing Fast) 💥
     const token = req.cookies.get("zenex_token")?.value;
 
     if (!token) {
@@ -34,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { 
-      userId, newPassword, newRate, newStatus, newRole, 
+      userId, newPassword, newPin, newRate, newStatus, newRole, // 💥 newPin রিসিভ করা হলো
       customMail, contactLink, maxLimit, isApiActive 
     } = body;
 
@@ -45,7 +44,6 @@ export async function POST(req: NextRequest) {
 
     const isTargetAgent = newRole === "agent" || targetUser.role === "agent";
 
-    // 💥 AGENT SECURITY CHECKS 💥
     if (realRequesterRole === "agent") {
        if (newRole === "admin") {
           return NextResponse.json({ message: "🔴 SECURITY ALERT: Agents cannot promote to Admin!" }, { status: 403 });
@@ -60,7 +58,6 @@ export async function POST(req: NextRequest) {
        let agentLimit = Math.max(maxR, otpR); 
        if (agentLimit === 0) agentLimit = 0.70; 
        
-       // 💥 MAGIC FIX: 0.00 ভ্যালুও এখন সঠ���কভাবে চেক হবে! 💥
        if (newRate !== undefined && newRate !== null && newRate !== "" && parseFloat(newRate) > agentLimit) {
           return NextResponse.json({ 
             message: `🔴 SECURITY ALERT: You cannot set a rate higher than ৳ ${agentLimit.toFixed(2)}` 
@@ -72,7 +69,6 @@ export async function POST(req: NextRequest) {
     
     if (newStatus) updateData.status = newStatus.toLowerCase();
     
-    // 💥 MAGIC FIX: 0 বা 0.00 দিলেও এখন আর স্কিপ করবে না, সরাসরি ডাটাবেসে সেভ করবে! 💥
     if (newRate !== undefined && newRate !== null && newRate !== "") {
        updateData.otpRate = parseFloat(newRate);
        if (realRequesterRole === "admin" && isTargetAgent) {
@@ -86,6 +82,11 @@ export async function POST(req: NextRequest) {
 
     if (newPassword && newPassword.trim() !== "") {
       updateData.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    // 💥 ম্যাজিক: উইথড্র পিন রিসেট করার ফাংশন 💥
+    if (newPin && newPin.trim() !== "") {
+      updateData.withdrawPin = newPin.trim();
     }
 
     if (realRequesterRole === "admin" && isApiActive !== undefined) {
