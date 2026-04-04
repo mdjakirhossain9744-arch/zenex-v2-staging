@@ -1,7 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
-import connectToDatabase from "../../../lib/mongodb";
-import Order from "../../../../models/Order";
-import DailyStat from "../../../../models/DailyStat";
+// 💥 MAGIC FIX: Import paths fixed perfectly!
+import connectToDatabase from "../../lib/mongodb";
+import Order from "../../../models/Order";
+import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
@@ -10,14 +11,12 @@ const getBDDateString = (dateObj: any = new Date()) => {
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-// 💥 req কে NextRequest বানানো হয়েছে যাতে URL থেকে পাসওয়ার্ড পড়া যায়
 export async function GET(req: NextRequest) {
   try {
     // 🛡️ HACKER PROTECTION: সিক্রেট পাসওয়ার্ড চেক! 🛡️
     const searchParams = req.nextUrl.searchParams;
     const secretKey = searchParams.get("key");
 
-    // 💥 এই "ZENEX_CLEANUP_2026" হলো আপনার পাসওয়ার্ড, এটা ছাড়া কেউ API রান করতে পারবে না!
     if (secretKey !== "ZENEX_CLEANUP_2026") {
       return NextResponse.json({ message: "🔴 UNAUTHORIZED: Access Denied!" }, { status: 403 });
     }
