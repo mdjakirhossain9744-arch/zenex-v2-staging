@@ -31,7 +31,7 @@ export default function DashboardPage() {
   const [liveRate, setLiveRate] = useState<number>(0.00);
   const [isPageLoading, setIsPageLoading] = useState(true);
 
-  const [stats, setStats] = useState({ balance: "0.00", todayTotal: 0, todaySuccess: 0, yesterdayTotal: 0, yesterdaySuccess: 0 });
+  const [stats, setStats] = useState({ balance: "0.00", todayTotal: 0, todaySuccess: 0, yesterdaySuccess: 0 });
   const [adminStats, setAdminStats] = useState({ totalUsers: 0, totalAgents: 0, systemLiability: "0.00", globalTodaySuccess: 0 });
   const [agentReport, setAgentReport] = useState<any[]>([]);
   const [currentMonthName, setCurrentMonthName] = useState("");
@@ -61,12 +61,11 @@ export default function DashboardPage() {
     setUser(parsedUser);
     const userRole = parsedUser.role || "user";
     setRole(userRole);
-    // Initial rate setting (will be overridden by API)
     setLiveRate(Number(userRole === "agent" ? (parsedUser.agentMaxRate || 0) : (parsedUser.otpRate || 0)));
 
     const todayStr = getBDDateString();
-    const yesterdayDate = new Date(); yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayStr = getBDDateString(yesterdayDate);
+    const yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yesterdayStr = getBDDateString(yestDate);
 
     const fetchDashboardData = async () => {
       try {
@@ -99,7 +98,7 @@ export default function DashboardPage() {
 
           if (userDetailsRes && userDetailsRes.user) {
              setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-             setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); // Agent Live Rate
+             setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); 
           }
 
           if (agentSummaryRes && agentSummaryRes.success) {
@@ -111,7 +110,7 @@ export default function DashboardPage() {
           }
 
         } else {
-          // 🔥 NORMAL USER LOGIC 🔥
+          // NORMAL USER
           const [userDetailsRes, ordersRes] = await Promise.all([
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
@@ -119,12 +118,11 @@ export default function DashboardPage() {
 
           if (userDetailsRes && userDetailsRes.user) {
             setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-            // 💥 MAGIC FIX: Setting User's Real Rate from DB 💥
             setLiveRate(Number(userDetailsRes.user.otpRate || 0)); 
           }
 
           if (ordersRes && ordersRes.success && ordersRes.orders) {
-             let tTotal = 0, tSuccess = 0, yTotal = 0, ySuccess = 0;
+             let tTotal = 0, tSuccess = 0, ySuccess = 0;
              const appCounts: Record<string, number> = {};
              let buckets = [0, 0, 0, 0, 0, 0];
 
@@ -132,7 +130,7 @@ export default function DashboardPage() {
                const logDate = log.dateString || getBDDateString(log.createdAt);
                if (logDate === todayStr) {
                  tTotal++;
-                 if (log.status === "DONE" || log.status === "Success") {
+                 if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") {
                    tSuccess++;
                    const hour = getBDHour(log.createdAt);
                    const bIdx = Math.floor(hour / 4);
@@ -152,12 +150,11 @@ export default function DashboardPage() {
                    appCounts[sName]++;
                  }
                } else if (logDate === yesterdayStr) {
-                 yTotal++;
-                 if (log.status === "DONE" || log.status === "Success") ySuccess++;
+                 if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") ySuccess++;
                }
              });
 
-             setStats(p => ({ ...p, todayTotal: tTotal, todaySuccess: tSuccess, yesterdayTotal: yTotal, yesterdaySuccess: ySuccess }));
+             setStats(p => ({ ...p, todayTotal: tTotal, todaySuccess: tSuccess, yesterdaySuccess: ySuccess }));
              setTrafficData(buckets);
              setTopPerformers(formatTopApps(appCounts));
           }
@@ -292,7 +289,7 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-6">
               <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
                 <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Total Balance" : "Wallet Balance"}</h3>
                 <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">৳ {stats.balance}</p>
@@ -319,22 +316,19 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {role !== "agent" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5 mb-6 md:mb-10">
-                <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row md:flex-col justify-between items-center md:items-start">
-                  <h3 className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest">Yesterday's Total Numbers</h3>
-                  <p className="text-2xl md:text-3xl font-black text-[#F8FAFC]">{stats.yesterdayTotal}</p>
-                </div>
-                <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row md:flex-col justify-between items-center md:items-start">
-                  <h3 className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest">Yesterday's Success</h3>
-                  <p className="text-2xl md:text-3xl font-black text-[#F8FAFC]">{stats.yesterdaySuccess}</p>
-                </div>
+            {/* 💥 Yesterday's Success Card (Restored) 💥 */}
+            {role === "user" && (
+              <div className="mb-10 w-full md:w-1/4">
+                 <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row justify-between items-center shadow-inner">
+                    <h3 className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest">Yesterday's Success</h3>
+                    <p className="text-xl md:text-2xl font-black text-[#E2E8F0]">{stats.yesterdaySuccess}</p>
+                 </div>
               </div>
             )}
           </>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           <div className="lg:col-span-1 rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6">
             <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide mb-6 text-center md:text-left">

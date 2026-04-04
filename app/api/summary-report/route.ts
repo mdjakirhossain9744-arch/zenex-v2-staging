@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
+import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
@@ -27,42 +28,32 @@ export async function POST(req: Request) {
     if (!currentUser) return NextResponse.json({ success: false });
 
     let userRate = 0.50, balance = 0, targetEmail = "";
-    
-    // 💥 Admin Map for Dynamic Payout Cost 💥
     let userToAdminCostMap: Record<string, number> = {};
 
     if (role === "admin") { 
-        userRate = 0; // অ্যাডমিনের ফিক্সড রেট বাদ, এখন সব ডায়নামিক হবে!
-        
-        // ডাটাবেস থেকে সব ইউজার এবং এজেন্টের লিস্ট একবারেই টেনে আনা হলো (ব্লেজিং ফাস্ট)
+        userRate = 0; 
         const allUsers = await User.find({}).select("email agentEmail role agentMaxRate customAgentMail").lean();
-        
         const agentRates: Record<string, number> = {};
         
-        // ধাপ ১: সব এজেন্টের রেট ম্যাপ করা হলো
         allUsers.forEach((u: any) => {
             if (u.role === "agent") {
-                const rate = u.agentMaxRate || 0; // অ্যাডমিন এজেন্টকে যে রেট দিয়েছে
+                const rate = u.agentMaxRate || 0;
                 if (u.email) agentRates[u.email.toLowerCase().trim()] = rate;
                 if (u.customAgentMail) agentRates[u.customAgentMail.toLowerCase().trim()] = rate;
             }
         });
 
-        // ধাপ ২: কোন ইউজার কোন এজেন্টের, সেই অনুযায়ী ইউজারের ইমেইলের সাথে এজেন্টের রেট সেট করা হলো
         allUsers.forEach((u: any) => {
             if (u.email) {
                 const emailKey = u.email.toLowerCase().trim();
-                if (u.role === "agent") {
-                    userToAdminCostMap[emailKey] = agentRates[emailKey] || 0;
-                } else if (u.role === "user" && u.agentEmail) {
+                if (u.role === "agent") userToAdminCostMap[emailKey] = agentRates[emailKey] || 0;
+                else if (u.role === "user" && u.agentEmail) {
                     const aEmail = u.agentEmail.toLowerCase().trim();
                     userToAdminCostMap[emailKey] = agentRates[aEmail] || 0;
                 }
             }
         });
-
     } else { 
-        // 💥 এজেন্ট এবং ইউজারের লজিক একদম আগের মতোই অক্ষত রাখা হয়েছে! 💥
         userRate = currentUser.otpRate || 0.50; 
         balance = currentUser.balance || 0; 
         targetEmail = safeEmail; 
@@ -71,21 +62,56 @@ export async function POST(req: Request) {
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
+    const todayStrBD = getBDDateString(new Date());
+    const groupedRawData: Record<string, any> = {};
+    const todayAppCounts: Record<string, number> = {};
+    const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
+
+    // 💥 ম্যাজিক ১: আগে DailyStat (আজীবন ডায়েরি) থেকে ডাটা নিয়ে আসা 💥
+    const dailyStatQuery: any = { dateString: { $gte: getBDDateString(sixtyDaysAgo) } };
+    if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+    
+    const dailyStats = await DailyStat.find(dailyStatQuery).lean();
+    const archivedKeys = new Set<string>();
+
+    dailyStats.forEach((ds: any) => {
+        const dDate = ds.dateString;
+        const dEmail = (ds.userEmail || "").toLowerCase().trim();
+        
+        // মার্ক করে রাখছি যে এই ডাটা ডায়েরিতে আছে, মেইন ডাটাবেস থেকে আর গোনা যাবে না!
+        archivedKeys.add(`${dDate}_${dEmail}`);
+
+        if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+
+        groupedRawData[dDate].total += (ds.totalNumbers || 0);
+        groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
+        groupedRawData[dDate].success += (ds.successOTP || 0);
+        groupedRawData[dDate].failed += (ds.failedNumbers || 0);
+
+        let orderCostRate = userRate;
+        if (role === "admin") orderCostRate = userToAdminCostMap[dEmail] || 0;
+        
+        groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
+    });
+
+    // 💥 ম্যাজিক ২: এখন মেইন Order ডাটাবেস থেকে শুধু ওইগুলো গোন, যেগুলো ডায়েরিতে নেই 💥
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
     if (role !== "admin") orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
 
     const orders = await Order.find(orderQuery).select("status dateString createdAt fullMessage userEmail").lean();
-
-    const groupedRawData: Record<string, any> = {};
-    const todayAppCounts: Record<string, number> = {};
-    const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
-    const todayStrBD = getBDDateString(new Date());
 
     orders.forEach((o: any) => {
        let finalDateStr = "";
        if (o.createdAt) finalDateStr = getBDDateString(o.createdAt);
        else if (o.dateString) finalDateStr = getBDDateString(new Date(o.dateString));
        else finalDateStr = getBDDateString(new Date());
+
+       const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
+
+       // 🛡️ ANTI-DOUBLE COUNT GUARD: যদি এই ডাটা ডায়েরিতে থাকে, তবে স্কিপ করো!
+       if (finalDateStr !== todayStrBD && archivedKeys.has(`${finalDateStr}_${uEmail}`)) {
+           return; 
+       }
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
@@ -97,12 +123,8 @@ export async function POST(req: Request) {
           groupedRawData[finalDateStr].allocation += msgCount; 
           groupedRawData[finalDateStr].success += msgCount;
 
-          // 💥 MAGIC: Dynamic Cost Calculation (অ্যাডমিনের জন্য নিখুঁত হিসাব) 💥
           let orderCostRate = userRate;
-          if (role === "admin") {
-              const oEmail = (o.userEmail || "").toLowerCase().trim();
-              orderCostRate = userToAdminCostMap[oEmail] || 0; // ইউজারের এজেন্টের রেটটি খুঁজে বের করে বসিয়ে দিল!
-          }
+          if (role === "admin") orderCostRate = userToAdminCostMap[uEmail] || 0;
 
           if (!isFreeService) groupedRawData[finalDateStr].amount += (orderCostRate * msgCount);
 
