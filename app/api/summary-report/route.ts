@@ -27,8 +27,46 @@ export async function POST(req: Request) {
     if (!currentUser) return NextResponse.json({ success: false });
 
     let userRate = 0.50, balance = 0, targetEmail = "";
-    if (role === "admin") { userRate = 0.50; } 
-    else { userRate = currentUser.otpRate || 0.50; balance = currentUser.balance || 0; targetEmail = safeEmail; }
+    
+    // 💥 Admin Map for Dynamic Payout Cost 💥
+    let userToAdminCostMap: Record<string, number> = {};
+
+    if (role === "admin") { 
+        userRate = 0; // অ্যাডমিনের ফিক্সড রেট বাদ, এখন সব ডায়নামিক হবে!
+        
+        // ডাটাবেস থেকে সব ইউজার এবং এজেন্টের লিস্ট একবারেই টেনে আনা হলো (ব্লেজিং ফাস্ট)
+        const allUsers = await User.find({}).select("email agentEmail role agentMaxRate customAgentMail").lean();
+        
+        const agentRates: Record<string, number> = {};
+        
+        // ধাপ ১: সব এজেন্টের রেট ম্যাপ করা হলো
+        allUsers.forEach((u: any) => {
+            if (u.role === "agent") {
+                const rate = u.agentMaxRate || 0; // অ্যাডমিন এজেন্টকে যে রেট দিয়েছে
+                if (u.email) agentRates[u.email.toLowerCase().trim()] = rate;
+                if (u.customAgentMail) agentRates[u.customAgentMail.toLowerCase().trim()] = rate;
+            }
+        });
+
+        // ধাপ ২: কোন ইউজার কোন এজেন্টের, সেই অনুযায়ী ইউজারের ইমেইলের সাথে এজেন্টের রেট সেট করা হলো
+        allUsers.forEach((u: any) => {
+            if (u.email) {
+                const emailKey = u.email.toLowerCase().trim();
+                if (u.role === "agent") {
+                    userToAdminCostMap[emailKey] = agentRates[emailKey] || 0;
+                } else if (u.role === "user" && u.agentEmail) {
+                    const aEmail = u.agentEmail.toLowerCase().trim();
+                    userToAdminCostMap[emailKey] = agentRates[aEmail] || 0;
+                }
+            }
+        });
+
+    } else { 
+        // 💥 এজেন্ট এবং ইউজারের লজিক একদম আগের মতোই অক্ষত রাখা হয়েছে! 💥
+        userRate = currentUser.otpRate || 0.50; 
+        balance = currentUser.balance || 0; 
+        targetEmail = safeEmail; 
+    }
 
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
@@ -57,10 +95,16 @@ export async function POST(req: Request) {
           const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
           groupedRawData[finalDateStr].total += msgCount; 
           groupedRawData[finalDateStr].allocation += msgCount; 
-          // 💥 এখানে সাকসেস যোগ হচ্ছে 💥
           groupedRawData[finalDateStr].success += msgCount;
 
-          if (!isFreeService) groupedRawData[finalDateStr].amount += (userRate * msgCount);
+          // 💥 MAGIC: Dynamic Cost Calculation (অ্যাডমিনের জন্য নিখুঁত হিসাব) 💥
+          let orderCostRate = userRate;
+          if (role === "admin") {
+              const oEmail = (o.userEmail || "").toLowerCase().trim();
+              orderCostRate = userToAdminCostMap[oEmail] || 0; // ইউজারের এজেন্টের রেটটি খুঁজে বের করে বসিয়ে দিল!
+          }
+
+          if (!isFreeService) groupedRawData[finalDateStr].amount += (orderCostRate * msgCount);
 
           if (finalDateStr === todayStrBD) {
               const hour = getBDHour(o.createdAt || new Date());
@@ -78,7 +122,6 @@ export async function POST(req: Request) {
               else if (mLower.includes("apple") || mLower.includes("ap")) sName = "Apple";
 
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
-              // 💥 ঠিক একই জায়গায় অ্যাপস কাউন্ট হচ্ছে (তাই যোগফল ১০০% মিলবে) 💥
               todayAppCounts[sName] += msgCount;
           }
        } else {
