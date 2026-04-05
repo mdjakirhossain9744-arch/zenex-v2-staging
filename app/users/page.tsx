@@ -28,6 +28,9 @@ export default function UsersManagementPage() {
   const [contactLink, setContactLink] = useState("");
   const [maxLimit, setMaxLimit] = useState("100"); 
   const [newApiStatus, setNewApiStatus] = useState(false);
+  
+  const [newAgentEmail, setNewAgentEmail] = useState(""); 
+  const [handoverEmail, setHandoverEmail] = useState(""); // 💥 New State for Agent Handover
 
   // Search Debounce
   useEffect(() => {
@@ -68,6 +71,8 @@ export default function UsersManagementPage() {
     setNewPassword(""); 
     setNewPin(""); 
     setNewApiStatus(user.isApiActive || false); 
+    setNewAgentEmail(user.agentEmail || ""); 
+    setHandoverEmail(""); // 💥 Reset handover email
     
     if (user.role === "agent") {
       setCustomMail(user.customAgentMail || ""); 
@@ -91,24 +96,29 @@ export default function UsersManagementPage() {
     const adminEmail = storedUser ? JSON.parse(storedUser).email : "";
     const adminRole = storedUser ? JSON.parse(storedUser).role : "";
 
+    const payload = {
+      userId: selectedUser.id,
+      newPassword: newPassword,
+      newPin: newPin, 
+      newRate: newRate,
+      newStatus: newStatus,
+      newRole: makeRole, 
+      customMail: makeRole === "agent" ? customMail : "",   
+      contactLink: makeRole === "agent" ? contactLink : "",
+      maxLimit: makeRole === "agent" ? maxLimit : 100,
+      isApiActive: newApiStatus, 
+      newAgentEmail: newAgentEmail !== selectedUser.agentEmail ? newAgentEmail : undefined,
+      handoverToEmail: handoverEmail, // 💥 Pass Ownership Transfer Target
+      requesterEmail: adminEmail,
+      requesterRole: adminRole
+    };
+
     const res = await fetch("/api/update-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: selectedUser.id,
-        newPassword: newPassword,
-        newPin: newPin, 
-        newRate: newRate,
-        newStatus: newStatus,
-        newRole: makeRole, 
-        customMail: makeRole === "agent" ? customMail : "",   
-        contactLink: makeRole === "agent" ? contactLink : "",
-        maxLimit: makeRole === "agent" ? maxLimit : 100,
-        isApiActive: newApiStatus, 
-        requesterEmail: adminEmail,
-        requesterRole: adminRole
-      })
+      body: JSON.stringify(payload)
     });
+    
     const data = await res.json();
     if (res.ok) {
       alert("✅ Successfully Updated!");
@@ -169,7 +179,7 @@ export default function UsersManagementPage() {
               value={searchQuery}
               onChange={(e) => {
                  setSearchQuery(e.target.value);
-                 setCurrentPage(1); // 💥 FATAL BUG FIX: Force page 1 instantly on typing
+                 setCurrentPage(1);
               }}
               placeholder="Search by Name or Email..." 
               className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#3B82F6]" 
@@ -276,7 +286,7 @@ export default function UsersManagementPage() {
           )}
         </div>
 
-        {/* Modal Logic remains untouched */}
+        {/* MODAL SECTION */}
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -315,10 +325,23 @@ export default function UsersManagementPage() {
                 </div>
               )}
 
+              {/* 💥 AGENT OWNERSHIP TRANSFER SECTION (DANGER ZONE) 💥 */}
               {selectedUser.role === 'agent' && isMakingAgent && (
-                <div className="mb-4">
-                   <button onClick={(e) => handleSaveUser(e, "user")} className="w-full py-2 bg-[#F43F5E]/10 border border-[#F43F5E]/30 text-[#F43F5E] text-xs font-black rounded-lg hover:bg-[#F43F5E] hover:text-white transition-colors">
-                    Remove Agent Access (Make Normal User)
+                <div className="mb-5 p-4 border border-[#F43F5E]/50 bg-[#F43F5E]/5 rounded-xl">
+                  <h4 className="text-[11px] font-black text-[#F43F5E] mb-2 uppercase tracking-wider">Handover Network / Demote Agent</h4>
+                  <div className="mb-3">
+                    <label className="block text-[10px] text-[#E2E8F0] font-bold mb-1">Transfer Ownership To (User Email)</label>
+                    <input 
+                      type="email" 
+                      placeholder="new_owner@email.com" 
+                      value={handoverEmail} 
+                      onChange={(e) => setHandoverEmail(e.target.value)}
+                      className="w-full bg-[#0F172A] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-xs font-bold focus:outline-none focus:border-[#F43F5E]" 
+                    />
+                    <p className="text-[9px] text-[#94A3B8] mt-1 font-bold">Provide an existing User's Email. They will become the Agent, and this profile will become a normal user.</p>
+                  </div>
+                  <button onClick={(e) => handleSaveUser(e, "user")} className="w-full py-2 bg-[#F43F5E]/10 border border-[#F43F5E]/30 text-[#F43F5E] text-xs font-black rounded-lg hover:bg-[#F43F5E] hover:text-white transition-colors shadow-sm">
+                    Execute Handover & Demote to Normal User
                   </button>
                 </div>
               )}
@@ -332,9 +355,20 @@ export default function UsersManagementPage() {
                   <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} className={`w-full bg-[#1E293B] border text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none ${newStatus === 'banned' ? 'border-red-500 text-red-400' : 'border-[#334155]'}`}>
                     <option value="active">Active (Can Work)</option>
                     <option value="pending">Pending (Waiting Approval)</option>
-                    <option value="banned">Banned (Blocked for Spam)</option>
+                    <option value="banned">Banned (Global Session Wipe)</option> 
                   </select>
                 </div>
+
+                {/* USER TO ANOTHER AGENT TRANSFER (For Normal Users) */}
+                {role === 'admin' && !isMakingAgent && selectedUser.role === 'user' && (
+                  <div>
+                    <label className="block text-[10px] text-teal-400 uppercase font-black mb-1">Transfer to Agent (Email)</label>
+                    <input type="email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)}
+                      placeholder="admin@zenex.com"
+                      className="w-full bg-[#1E293B] border border-teal-500/30 text-teal-300 font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-teal-400" />
+                    <p className="text-[9px] text-[#64748B] mt-1 font-bold">Leave as is to keep under current agent.</p>
+                  </div>
+                )}
 
                 {isMakingAgent && (
                   <>

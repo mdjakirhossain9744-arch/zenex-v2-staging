@@ -33,8 +33,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { 
-      userId, newPassword, newPin, newRate, newStatus, newRole, // 💥 newPin রিসিভ করা হলো
-      customMail, contactLink, maxLimit, isApiActive 
+      userId, newPassword, newPin, newRate, newStatus, newRole, 
+      customMail, contactLink, maxLimit, isApiActive,
+      newAgentEmail, // For moving a normal user to a new agent
+      handoverToEmail // 💥 For transferring agent ownership to a normal user
     } = body;
 
     const targetUser = await User.findById(userId);
@@ -43,7 +45,77 @@ export async function POST(req: NextRequest) {
     }
 
     const isTargetAgent = newRole === "agent" || targetUser.role === "agent";
+    let updateData: any = {};
 
+    // 💥 AGENT OWNERSHIP HANDOVER LOGIC (Agent -> New Owner) 💥
+    if (handoverToEmail && targetUser.role === "agent" && newRole === "user") {
+      if (realRequesterRole !== "admin") {
+         return NextResponse.json({ message: "🔴 SECURITY: Only Admins can handover agent networks!" }, { status: 403 });
+      }
+
+      const newOwner = await User.findOne({ email: handoverToEmail });
+      if (!newOwner) {
+         return NextResponse.json({ message: "🔴 Handover Failed: Target new owner email not found!" }, { status: 404 });
+      }
+      if (newOwner.role === "admin") {
+         return NextResponse.json({ message: "🔴 Handover Failed: Cannot handover network to an Admin!" }, { status: 400 });
+      }
+
+      // Step 1: Move all sub-users under the Old Agent to the New Owner's Email
+      await User.updateMany(
+         { agentEmail: targetUser.email, role: "user" },
+         { $set: { agentEmail: newOwner.email } }
+      );
+
+      // Step 2: Promote the New Owner to an Agent (copy configs from old agent)
+      await User.findByIdAndUpdate(newOwner._id, {
+         $set: {
+            role: "agent",
+            agentMaxRate: targetUser.agentMaxRate || 0,
+            agentMaxUsers: targetUser.agentMaxUsers || 100,
+            customAgentMail: targetUser.customAgentMail || "",
+            telegramLink: targetUser.telegramLink || ""
+         }
+      });
+
+      // Step 3: Clear the old agent's configuration (they will become a user below)
+      updateData.agentMaxRate = 0;
+      updateData.agentMaxUsers = 100;
+      updateData.customAgentMail = "";
+      updateData.telegramLink = "";
+    }
+
+    // 💥 USER NETWORK TRANSFER LOGIC (Normal User -> Different Agent) 💥
+    if (newAgentEmail && newAgentEmail !== targetUser.agentEmail && targetUser.role === "user") {
+      if (realRequesterRole !== "admin") {
+        return NextResponse.json({ message: "🔴 SECURITY: Only Admins can transfer user networks!" }, { status: 403 });
+      }
+      
+      const newAgent = await User.findOne({ email: newAgentEmail });
+      if (!newAgent || (newAgent.role !== "agent" && newAgent.role !== "admin")) {
+        return NextResponse.json({ message: "🔴 TRANSFER FAILED: Target Agent not found or invalid!" }, { status: 404 });
+      }
+
+      if (newAgent.role === "agent") {
+        const currentUsersCount = await User.countDocuments({ agentEmail: newAgentEmail, role: "user" });
+        const agentSeatLimit = newAgent.agentMaxUsers || 100;
+        if (currentUsersCount >= agentSeatLimit) {
+          return NextResponse.json({ message: `🔴 TRANSFER FAILED: Target Agent's network is full (Limit: ${agentSeatLimit})!` }, { status: 400 });
+        }
+
+        const checkRate = newRate !== undefined && newRate !== "" ? parseFloat(newRate) : targetUser.otpRate;
+        let agentLimit = Math.max(newAgent.agentMaxRate || 0, newAgent.otpRate || 0);
+        if (agentLimit === 0) agentLimit = 0.70; 
+
+        if (checkRate > agentLimit) {
+          return NextResponse.json({ message: `🔴 TRANSFER FAILED: User rate (৳${checkRate}) exceeds new Agent's max limit (৳${agentLimit.toFixed(2)})!` }, { status: 400 });
+        }
+      }
+
+      updateData.agentEmail = newAgentEmail;
+    }
+
+    // Role Security Checks
     if (realRequesterRole === "agent") {
        if (newRole === "admin") {
           return NextResponse.json({ message: "🔴 SECURITY ALERT: Agents cannot promote to Admin!" }, { status: 403 });
@@ -65,13 +137,17 @@ export async function POST(req: NextRequest) {
        }
     }
 
-    let updateData: any = {};
-    
-    if (newStatus) updateData.status = newStatus.toLowerCase();
+    // Account Status Force Logout
+    if (newStatus) {
+      updateData.status = newStatus.toLowerCase();
+      if (updateData.status === "banned") {
+        updateData.activeSessions = [];
+      }
+    }
     
     if (newRate !== undefined && newRate !== null && newRate !== "") {
        updateData.otpRate = parseFloat(newRate);
-       if (realRequesterRole === "admin" && isTargetAgent) {
+       if (realRequesterRole === "admin" && isTargetAgent && !handoverToEmail) {
           updateData.agentMaxRate = parseFloat(newRate);
        }
     }
@@ -82,9 +158,9 @@ export async function POST(req: NextRequest) {
 
     if (newPassword && newPassword.trim() !== "") {
       updateData.password = await bcrypt.hash(newPassword, 10);
+      updateData.activeSessions = []; 
     }
 
-    // 💥 ম্যাজিক: উইথড্র পিন রিসেট করার ফাংশন 💥
     if (newPin && newPin.trim() !== "") {
       updateData.withdrawPin = newPin.trim();
     }
@@ -93,21 +169,17 @@ export async function POST(req: NextRequest) {
       updateData.isApiActive = isApiActive;
     }
 
-    if (isTargetAgent) {
+    if (isTargetAgent && newRole !== "user") {
       if (customMail !== undefined) updateData.customAgentMail = customMail;
       if (contactLink !== undefined) updateData.telegramLink = contactLink;
       if (maxLimit !== undefined && realRequesterRole === "admin") {
          updateData.agentMaxUsers = parseInt(maxLimit); 
       }
-    } else if (newRole === "user") {
-      updateData.customAgentMail = "";
-      updateData.telegramLink = "";
-      updateData.agentMaxUsers = 100; 
     }
 
     await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true, strict: false });
 
-    return NextResponse.json({ message: "Account successfully and securely updated!" }, { status: 200 });
+    return NextResponse.json({ message: "Account successfully updated!" }, { status: 200 });
 
   } catch (error: any) {
     return NextResponse.json({ message: `System Error: ${error.message}` }, { status: 500 });

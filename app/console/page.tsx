@@ -22,13 +22,10 @@ export default function Console() {
       const data = await res.json();
       
       if (data.success) {
-        // 💥 MAGIC: Split Multi-OTPs into completely separate rows/cards 💥
         const expandedLogs: any[] = [];
         
         (data.logs || []).forEach((log: any) => {
            const otpString = log.otp || "";
-           
-           // If message contains the multi-otp separator "_||_"
            if (otpString.includes('_||_')) {
               const parts = otpString.split('_||_');
               parts.forEach((part: string, idx: number) => {
@@ -36,12 +33,11 @@ export default function Console() {
                    expandedLogs.push({
                       ...log,
                       id: `${log.id}_multi_${idx}`,
-                      otp: part.trim() // Extracting single OTP
+                      otp: part.trim() 
                    });
                  }
               });
            } else {
-              // Standard single OTP
               expandedLogs.push(log);
            }
         });
@@ -130,20 +126,25 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
+  // 💥 NEW: Strict 30-Minute Live Window Logic 💥
   const topRanges = () => {
     const counts: Record<string, { count: number, platform: string, fbTag: string | null }> = {};
+    const thirtyMinsAgo = Date.now() - 30 * 60 * 1000; // 30 minutes in milliseconds
     
     liveLogs.forEach(log => {
-      const range = extractTargetRange(log.number);
-      const fbData = analyzeOTP(log.service, log.otp);
-      
-      const key = `${range}|${log.service}|${fbData ? fbData.tag : 'General'}`;
-      
-      if (range !== "Unknown") {
-        if (!counts[key]) {
-           counts[key] = { count: 0, platform: log.service, fbTag: fbData ? fbData.tag : null };
+      // ONLY process logs that arrived in the last 30 minutes
+      if (log.createdAt >= thirtyMinsAgo) {
+        const range = extractTargetRange(log.number);
+        const fbData = analyzeOTP(log.service, log.otp);
+        
+        const key = `${range}|${log.service}|${fbData ? fbData.tag : 'General'}`;
+        
+        if (range !== "Unknown") {
+          if (!counts[key]) {
+             counts[key] = { count: 0, platform: log.service, fbTag: fbData ? fbData.tag : null };
+          }
+          counts[key].count += 1;
         }
-        counts[key].count += 1;
       }
     });
 
@@ -224,7 +225,7 @@ export default function Console() {
                 </div>
              </div>
 
-             {/* Top Hit Ranges Card */}
+             {/* 💥 Top Hit Ranges Card (Filtered for Last 30 Minutes) 💥 */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-[#10B981] to-[#F43F5E]"></div>
                 
@@ -233,7 +234,13 @@ export default function Console() {
                       <svg className="w-4 h-4 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                       Top Hit Ranges
                    </h3>
-                   <span className="text-[9px] text-[#94A3B8]">Click to copy</span>
+                   <div className="flex items-center gap-1.5">
+                     <span className="relative flex h-2 w-2">
+                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F43F5E] opacity-75"></span>
+                       <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F43F5E]"></span>
+                     </span>
+                     <span className="text-[9px] font-bold text-[#F43F5E] uppercase tracking-wider">Last 30m</span>
+                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2">
@@ -265,7 +272,10 @@ export default function Console() {
                         </button>
                       )
                    }) : (
-                      <div className="text-center text-[#64748B] text-xs h-full flex items-center justify-center">Analyzing live network...</div>
+                      <div className="text-center text-[#64748B] text-xs h-full flex flex-col items-center justify-center gap-2">
+                         <svg className="w-6 h-6 text-[#334155]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                         No hits in last 30 mins
+                      </div>
                    )}
                 </div>
              </div>
