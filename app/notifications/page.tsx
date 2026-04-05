@@ -21,10 +21,11 @@ export default function Notifications() {
 
   const fetchNotifications = async () => {
     try {
+      // 💥 UPDATED: Added fetchType: "GLOBAL" so backend only returns Admin Notices 💥
       const res = await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "FETCH" })
+        body: JSON.stringify({ action: "FETCH", fetchType: "GLOBAL" }) 
       });
       const data = await res.json();
       
@@ -57,7 +58,6 @@ export default function Notifications() {
     const savedReactions = JSON.parse(localStorage.getItem("zenex_reactions") || "{}");
     const currentReaction = savedReactions[id];
 
-    // 💥 TypeScript Error Fixed Here (Added : string) 💥
     let actionType: string = reaction;
     
     setNotifications(prev => prev.map(notif => {
@@ -104,7 +104,8 @@ export default function Notifications() {
     const res = await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "CREATE", title: newTitle, description: newDesc, type: newType, color })
+      // 💥 UPDATED: Added type: "GLOBAL" so this notice shows to everyone 💥
+      body: JSON.stringify({ action: "CREATE", title: newTitle, description: newDesc, type: newType, color, noticeType: "GLOBAL" })
     });
     
     if (res.ok) {

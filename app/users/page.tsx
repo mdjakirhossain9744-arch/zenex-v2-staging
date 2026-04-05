@@ -13,7 +13,6 @@ export default function UsersManagementPage() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 💥 Pagination & Stats State 💥
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [stats, setStats] = useState({ totalUsers: 0, totalAgents: 0, activeAccounts: 0, bannedAccounts: 0 });
@@ -22,30 +21,20 @@ export default function UsersManagementPage() {
   const [isMakingAgent, setIsMakingAgent] = useState(false);
   const [newRate, setNewRate] = useState("");
   
-  // Security Credentials State
   const [newPassword, setNewPassword] = useState(""); 
   const [newPin, setNewPin] = useState(""); 
-  
   const [newStatus, setNewStatus] = useState("active"); 
-  
   const [customMail, setCustomMail] = useState("");
   const [contactLink, setContactLink] = useState("");
   const [maxLimit, setMaxLimit] = useState("100"); 
-
   const [newApiStatus, setNewApiStatus] = useState(false);
 
-  // Search Debounce (Prevents API spam on typing)
+  // Search Debounce
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset to page 1 on new search
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch]);
-
-  // 💥 THE MAGIC: Unified Paginated Auto-Sync Fetcher 💥
   const fetchUsers = useCallback((isSilent = false) => {
     if (!isSilent) setLoading(true);
     fetch(`/api/get-all-users?page=${currentPage}&limit=${itemsPerPage}&search=${encodeURIComponent(debouncedSearch)}&t=${Date.now()}`)
@@ -65,13 +54,8 @@ export default function UsersManagementPage() {
       const parsedUser = JSON.parse(storedUser);
       setRole(parsedUser.role);
       if (parsedUser.role === "admin") {
-        fetchUsers(false); // Initial Load
-        
-        // 10-Second Auto Sync (Zero Reload Magic)
-        const interval = setInterval(() => {
-           fetchUsers(true); 
-        }, 10000);
-        
+        fetchUsers(false);
+        const interval = setInterval(() => { fetchUsers(true); }, 10000);
         return () => clearInterval(interval);
       }
     }
@@ -183,7 +167,10 @@ export default function UsersManagementPage() {
             <input 
               type="text" 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                 setSearchQuery(e.target.value);
+                 setCurrentPage(1); // 💥 FATAL BUG FIX: Force page 1 instantly on typing
+              }}
               placeholder="Search by Name or Email..." 
               className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#3B82F6]" 
             />
@@ -218,15 +205,16 @@ export default function UsersManagementPage() {
                 <th className="p-4 font-black">Role / Agent</th>
                 <th className="p-4 font-black text-center">Rate</th>
                 <th className="p-4 font-black">Balance</th>
+                <th className="p-4 font-black text-center">Today OTP</th>
                 <th className="p-4 font-black">Status</th>
                 <th className="p-4 pr-6 font-black text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#3B82F6] font-bold">Loading Page {currentPage}...</td></tr>
+                <tr><td colSpan={7} className="text-center p-8 text-[#3B82F6] font-bold">Loading Page {currentPage}...</td></tr>
               ) : allUsers.length === 0 ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
+                <tr><td colSpan={7} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
               ) : (
                 allUsers.map((u) => (
                   <tr key={u.id} className={`hover:bg-[#334155]/20 transition-colors ${u.role === 'agent' ? 'bg-[#8B5CF6]/5' : ''} ${u.status.toLowerCase() === 'banned' ? 'bg-red-500/5' : ''}`}>
@@ -251,6 +239,7 @@ export default function UsersManagementPage() {
                     </td>
                     <td className="p-4 text-center text-[12px] font-bold text-[#EAB308]">৳ {u.rate}</td>
                     <td className="p-4 font-black text-[#10B981]">৳ {u.balance}</td>
+                    <td className="p-4 text-center font-black text-[#00C6FF]">{u.todayOTP}</td>
                     <td className="p-4">
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.status.toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : u.status.toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border border-red-500/50' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
                         {u.status}
@@ -272,7 +261,6 @@ export default function UsersManagementPage() {
             </tbody>
           </table>
 
-          {/* 💥 NEW: Server-Side Pagination Controls 💥 */}
           {totalPages > 1 && (
             <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 flex items-center justify-between">
                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
@@ -288,7 +276,7 @@ export default function UsersManagementPage() {
           )}
         </div>
 
-        {/* 💥 MANAGE MODAL (100% UNTOUCHED & COMPLETE) 💥 */}
+        {/* Modal Logic remains untouched */}
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -304,7 +292,6 @@ export default function UsersManagementPage() {
                  </div>
               </div>
               
-              {/* Developer API Access Toggle */}
               <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex items-center justify-between">
                  <div>
                    <p className="text-sm font-black text-purple-400">Developer API Access</p>
@@ -375,14 +362,12 @@ export default function UsersManagementPage() {
                     className="w-full bg-[#1E293B] border border-[#334155] text-[#10B981] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" />
                 </div>
                 
-                {/* Security & Credentials */}
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   <div>
                     <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
                     <input type="text" placeholder="New Pass..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                       className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#F43F5E] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569]" />
                   </div>
-                  
                   <div>
                     <label className="block text-[10px] text-[#10B981] uppercase font-bold mb-1">Reset PIN</label>
                     <input type="text" placeholder="New PIN..." maxLength={4} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}

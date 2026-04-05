@@ -18,6 +18,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState("0.00");
   const [isMaintenance, setIsMaintenance] = useState(false);
+  
+  const [headerNotifs, setHeaderNotifs] = useState<any[]>([]);
 
   const [globalToast, setGlobalToast] = useState("");
   const pendingOrdersRef = useRef<any[]>([]);
@@ -38,6 +40,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       window.location.href = "/login";
     }
   }, []);
+
+  const timeAgo = (dateStr: string) => {
+    if (!dateStr) return "Just now";
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (diff < 60) return "Just Now";
+    if (diff < 3600) return `${Math.floor(diff / 60)} mins ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    return `${Math.floor(diff / 86400)} days ago`;
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -82,19 +93,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       } catch (err) {}
     };
+
+    const fetchHeaderNotifications = async () => {
+      try {
+        const res = await fetch("/api/notifications", {
+           method: "POST", headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ action: "FETCH_HEADER", email: parsedUser.email })
+        });
+        if(res.ok){
+          const data = await res.json();
+          if (data && data.success) setHeaderNotifs(data.data);
+        }
+      } catch (err) {}
+    };
     
     checkActiveSession();
     checkMaintenance();
     fetchRealBalance();
+    fetchHeaderNotifications();
 
     const sessionInterval = setInterval(checkActiveSession, 30000); 
     const maintInterval = setInterval(checkMaintenance, 5000); 
     const balanceInterval = setInterval(fetchRealBalance, 5000); 
+    const notifInterval = setInterval(fetchHeaderNotifications, 30000); 
     
     return () => {
       clearInterval(sessionInterval);
       clearInterval(maintInterval);
       clearInterval(balanceInterval);
+      clearInterval(notifInterval);
     }
   }, [router, handleLogout]);
 
@@ -356,7 +383,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <p className="px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mt-4 mb-3 uppercase">Account & Tools</p>
           
-          {/* 💥 MAGIC: Dynamic Payment Links based on Role 💥 */}
           {role === "admin" ? (
              <Link href="/admin/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/payments' ? activeBlue : inactive}`}>
                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
@@ -415,20 +441,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                  </svg>
-                 <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>
+                 {headerNotifs.length > 0 && (
+                   <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>
+                 )}
               </button>
 
               {isNotifOpen && (
                 <div className="absolute top-12 right-0 w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
                   <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center">
-                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-white font-bold text-sm hover:text-[#3B82F6] transition-colors">Notifications</Link>
-                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All</Link>
+                    <span className="text-white font-bold text-sm">Notifications</span>
+                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All Global</Link>
                   </div>
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                    <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
-                       <p className="text-xs text-[#E2E8F0]"><span className="text-[#3B82F6] font-bold">System:</span> Welcome to ZENEX PREMIUM V3.0.1! Your network is highly secured.</p>
-                       <span className="text-[9px] text-[#64748B] mt-1 block">Just now</span>
-                    </Link>
+                    {headerNotifs.length > 0 ? (
+                      headerNotifs.map((notif: any) => (
+                        <div key={notif._id} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
+                          <p className="text-xs text-[#E2E8F0] leading-relaxed">
+                            <span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>
+                              {notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}
+                            </span> 
+                            {notif.title || notif.description}
+                          </p>
+                          <span className="text-[9px] text-[#64748B] mt-1 block">{timeAgo(notif.createdAt)}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-[#64748B]">No recent notifications</div>
+                    )}
                   </div>
                 </div>
               )}

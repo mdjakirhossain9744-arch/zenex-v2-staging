@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
 
     try {
       const payloadBase64 = token.split('.')[1];
-      // 💥 CRASH FIX: Safe Node.js Base64 Decode (Prevents 500 Error) 💥
       const decodedString = Buffer.from(payloadBase64, 'base64').toString('utf-8');
       const decodedPayload = JSON.parse(decodedString);
       
@@ -32,25 +31,24 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    // 💥 GET URL PARAMS FOR PAGINATION & SEARCH 💥
     const searchParams = req.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
-    const searchQuery = searchParams.get("search") || "";
+    const rawSearchQuery = searchParams.get("search")?.trim() || "";
 
     let query: any = {};
-    if (searchQuery) {
+    if (rawSearchQuery) {
+        // 💥 Safe Regex Search: Prevents 500 crashes if user types +, *, (, etc.
+        const safeSearch = rawSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         query.$or = [
-            { fullName: { $regex: searchQuery, $options: "i" } },
-            { email: { $regex: searchQuery, $options: "i" } }
+            { fullName: { $regex: safeSearch, $options: "i" } },
+            { email: { $regex: safeSearch, $options: "i" } }
         ];
     }
 
     const skip = (page - 1) * limit;
     const totalUsers = await User.countDocuments(query);
     
-    // 💥 MAGIC FIX: Sort by Role first (Admin -> Agent -> User), then Date 💥
-    // .lean() allows blazing fast DB read
     const users = await User.find(query)
       .select("-password")
       .sort({ role: 1, createdAt: -1 }) 
@@ -58,9 +56,9 @@ export async function GET(req: NextRequest) {
       .limit(limit)
       .lean();
 
-    // 💥 ROCKET SPEED: Only fetch orders for the 50 users on the current page 💥
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
     const todayStr = getBDDateString();
+    
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
@@ -71,15 +69,28 @@ export async function GET(req: NextRequest) {
             { userEmail: { $in: userEmails } },
             { email: { $in: userEmails } }
         ]
-    }).select("userEmail email createdAt dateString fullMessage").lean();
+    }).select("userEmail email createdAt updatedAt dateString fullMessage").lean();
 
     const otpCounts: Record<string, number> = {};
     
     orders.forEach((o: any) => {
-        const finalDateStr = o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date()));
+        // 💥 UPDATE: Use updatedAt for accurate Today's OTP count matching the dashboard 💥
+        const finalDateStr = o.updatedAt 
+            ? getBDDateString(o.updatedAt) 
+            : (o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date())));
+        
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
-            const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
+            
+            // 💥 STRICT OTP COUNTER: Only count unique/real OTPs 💥
+            const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+            const uniqueCodes = new Set();
+            msgArray.forEach((msg: string) => {
+                const match = msg.match(/\b\d{4,8}\b/);
+                uniqueCodes.add(match ? match[0] : msg.trim());
+            });
+
+            const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
             otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         }
     });
@@ -106,7 +117,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // We also need overall stats, but counting all users is fast.
+    // Global Stats for the top cards
     const totalAgents = await User.countDocuments({ role: "agent" });
     const activeAccounts = await User.countDocuments({ status: "active" });
     const bannedAccounts = await User.countDocuments({ status: "banned" });

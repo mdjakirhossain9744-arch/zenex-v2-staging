@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     
     const body = await req.json();
-    const { agentEmail, page = 1, limit = 40, search = "" } = body; // 💥 Pagination & Search Params 💥
+    const { agentEmail, page = 1, limit = 40, search = "" } = body; 
 
     const agent = await User.findOne({
       $or: [{ email: agentEmail }, { customAgentMail: agentEmail }],
@@ -28,18 +28,19 @@ export async function POST(req: NextRequest) {
 
     if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
 
-    // 💥 Smart Search Query 💥
+    // 💥 Safe Regex Search (Hacker/Crash proof) 💥
     let query: any = {
       $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }],
       role: "user"
     };
 
     if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query = {
         $and: [
           { $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }] },
           { role: "user" },
-          { $or: [{ fullName: { $regex: search, $options: "i" } }, { email: { $regex: search, $options: "i" } }] }
+          { $or: [{ fullName: { $regex: safeSearch, $options: "i" } }, { email: { $regex: safeSearch, $options: "i" } }] }
         ]
       };
     }
@@ -47,7 +48,6 @@ export async function POST(req: NextRequest) {
     const skip = (page - 1) * limit;
     const totalUsers = await User.countDocuments(query);
     
-    // .lean() for blazing fast execution
     const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
@@ -59,15 +59,28 @@ export async function POST(req: NextRequest) {
         createdAt: { $gte: twoDaysAgo },
         status: { $in: ["DONE", "Success", "SUCCESS"] },
         $or: [ { userEmail: { $in: userEmails } }, { email: { $in: userEmails } } ]
-    }).select("userEmail email createdAt dateString fullMessage").lean();
+    }).select("userEmail email createdAt updatedAt dateString fullMessage").lean();
 
     const otpCounts: Record<string, number> = {};
     
     orders.forEach((o: any) => {
-        const finalDateStr = o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date()));
+        // 💥 USE updatedAt FOR ACCURATE COUNT MATCHING DASHBOARD 💥
+        const finalDateStr = o.updatedAt 
+            ? getBDDateString(o.updatedAt) 
+            : (o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date())));
+        
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
-            const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
+            
+            // 💥 STRICT UNIQUE OTP COUNTER 💥
+            const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+            const uniqueCodes = new Set();
+            msgArray.forEach((msg: string) => {
+                const match = msg.match(/\b\d{4,8}\b/);
+                uniqueCodes.add(match ? match[0] : msg.trim());
+            });
+
+            const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
             otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         }
     });

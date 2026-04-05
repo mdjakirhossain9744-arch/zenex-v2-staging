@@ -4,7 +4,7 @@ import { NextResponse, NextRequest } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
 import Order from "../../../models/Order";
-import DailyStat from "../../../models/DailyStat"; // 💥 ডায়েরি যুক্ত করা হলো
+import DailyStat from "../../../models/DailyStat"; 
 
 const getBDDateString = (dateObj: any = new Date()) => {
   try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj)); } 
@@ -13,7 +13,6 @@ const getBDDateString = (dateObj: any = new Date()) => {
 
 export async function GET(req: NextRequest) {
   try {
-    // 🛡️ ১. অরিজিনাল হ্যাকার প্রটেকশন (টোকেন চেক) 🛡️
     const token = req.cookies.get("zenex_token")?.value;
     if (!token) return NextResponse.json({ message: "🔴 UNAUTHORIZED" }, { status: 401 });
 
@@ -29,7 +28,6 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    // 👨‍💼 ২. এজেন্ট এবং ইউজারদের ডাটাবেস সেটআপ 👨‍💼
     const agents = await User.find({ role: "agent" }).lean();
     const agentStats: Record<string, any> = {};
     
@@ -41,7 +39,7 @@ export async function GET(req: NextRequest) {
             customMail: (a.customAgentMail || "").toLowerCase().trim(),
             agentRate: Number(a.agentMaxRate || 0.70),
             thisMonthOTPs: 0,
-            todayOTPs: 0, // 💥 নতুন: আজকের OTP 💥
+            todayOTPs: 0,
             thisMonthCommission: 0 
         };
     });
@@ -62,7 +60,6 @@ export async function GET(req: NextRequest) {
     const todayStrBD = getBDDateString(now);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1); 
 
-    // 💾 ৩. ম্যাজিক: ডাটা মুছে গেলেও হিসাব ঠিক রাখার জন্য DailyStat থেকে ডাটা আনা 💾
     const dailyStats = await DailyStat.find({ dateString: { $gte: getBDDateString(startOfMonth) } }).lean();
     const archivedKeys = new Set<string>();
 
@@ -87,21 +84,32 @@ export async function GET(req: NextRequest) {
         }
     });
 
-    // ⚡ ৪. অরিজিনাল লজিক: মেইন Order থেকে লাইভ ডাটা আনা (ফ্রি সার্ভিস চেকসহ) ⚡
+    // 💥 updatedAt সিলেক্ট করা হলো 💥
     const orders = await Order.find({ 
         createdAt: { $gte: startOfMonth },
         status: { $in: ["DONE", "Success", "SUCCESS"] }
-    }).select("userEmail fullMessage createdAt dateString").lean();
+    }).select("userEmail fullMessage createdAt updatedAt dateString").lean();
 
     orders.forEach((o: any) => {
-        const oDate = getBDDateString(o.createdAt || new Date(o.dateString));
+        // 💥 সঠিক ডেট বের করা হলো 💥
+        const oDate = getBDDateString(o.updatedAt || o.createdAt || new Date(o.dateString));
         const uEmail = (o.userEmail || "").toLowerCase().trim();
         
-        // 🛡️ ANTI-DOUBLE COUNT: যদি ডায়েরিতে হিসাব গোনা হয়ে থাকে তবে আর গুনবে না!
         if (oDate !== todayStrBD && archivedKeys.has(`${oDate}_${uEmail}`)) return;
 
-        const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1; 
-        const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
+        const msgLower = (o.fullMessage || "").toLowerCase();
+        const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
+
+        // 💥 ডুপ্লিকেট ফেক ওটিপি ব্লক করে ইউনিক গোনা 💥
+        const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+        const uniqueCodes = new Set();
+        
+        msgArray.forEach((msg: string) => {
+            const match = msg.match(/\b\d{4,8}\b/);
+            uniqueCodes.add(match ? match[0] : msg.trim());
+        });
+        
+        const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
         if (userToAgentMap[uEmail]) {
             let aEmail = userToAgentMap[uEmail].agentEmail;
@@ -113,26 +121,24 @@ export async function GET(req: NextRequest) {
             }
 
             if (targetAgent) {
-                targetAgent.thisMonthOTPs += msgCount;
-                if (oDate === todayStrBD) targetAgent.todayOTPs += msgCount; // 💥 আজকের লাইভ OTP 💥
+                targetAgent.thisMonthOTPs += validMsgCount;
+                if (oDate === todayStrBD) targetAgent.todayOTPs += validMsgCount; 
                 
-                // 💥 আপনার অরিজিনাল লজিক: ফ্রি সার্ভিসে কোনো কমিশন নেই 💥
                 if (!isFreeService) {
                     const commissionPerOtp = Math.max(0, targetAgent.agentRate - userToAgentMap[uEmail].userRate);
-                    targetAgent.thisMonthCommission += (commissionPerOtp * msgCount);
+                    targetAgent.thisMonthCommission += (commissionPerOtp * validMsgCount);
                 }
             }
         }
     });
 
-    // 🏆 ৫. ফাইনাল রিপোর্ট তৈরি (র‍্যাঙ্কিং অনুযায়ী) 🏆
     const finalReport = Object.values(agentStats)
         .sort((a, b) => b.thisMonthOTPs - a.thisMonthOTPs)
         .map(a => ({
             agentName: a.name,
             agentEmail: a.email,
             monthOTPs: a.thisMonthOTPs,
-            todayOTPs: a.todayOTPs, // 💥 ফ্রন্টএন্ডে আজকের ডাটা পাঠানো হলো
+            todayOTPs: a.todayOTPs, 
             agentEarnings: Number(a.thisMonthCommission).toFixed(2) 
         }));
 

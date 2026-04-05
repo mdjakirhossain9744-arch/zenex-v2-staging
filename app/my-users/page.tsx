@@ -17,7 +17,7 @@ export default function UsersDirectoryPage() {
   const [agentMaxLimit, setAgentMaxLimit] = useState(100);
   const [loading, setLoading] = useState(true);
 
-  // 💥 NEW: Pagination State (40 Items / Page) 💥
+  // 💥 Pagination State (40 Items / Page) 💥
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsersCount, setTotalUsersCount] = useState(0);
@@ -30,7 +30,7 @@ export default function UsersDirectoryPage() {
   const [newStatus, setNewStatus] = useState("active");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Search Debounce (Prevents API spam)
+  // Search Debounce
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
     return () => clearTimeout(timer);
@@ -41,7 +41,6 @@ export default function UsersDirectoryPage() {
     setCurrentPage(1);
   }, [debouncedSearch]);
 
-  // 💥 THE MAGIC: Unified Paginated Fetcher 💥
   const fetchNetworkUsers = useCallback((email: string, userRole: string, isSilent = false) => {
     if (!isSilent) setLoading(true); 
 
@@ -55,7 +54,6 @@ export default function UsersDirectoryPage() {
             setTotalUsersCount(data.pagination.total);
           }
           if (data?.stats) {
-            // Admin stats format is slightly different, mapping it for UI
             setStats({ activeUsers: data.stats.activeAccounts, pendingUsers: 0, bannedUsers: data.stats.bannedAccounts });
           }
           setAgentMaxLimit(999999); 
@@ -98,7 +96,7 @@ export default function UsersDirectoryPage() {
           
           const interval = setInterval(() => {
              fetchNetworkUsers(parsedUser.email, currentRole, true); 
-          }, 10000); // 10s auto sync
+          }, 10000); 
           
           return () => clearInterval(interval);
         }
@@ -113,10 +111,8 @@ export default function UsersDirectoryPage() {
   const openManageModal = (user: any) => {
     if(!user) return;
     setSelectedUser(user);
-    
     const exactRate = (user?.rate !== undefined && user?.rate !== null) ? String(user.rate) : "0.00";
     setNewRate(exactRate);
-    
     setNewStatus(String(user?.status || "active").toLowerCase()); 
     setNewPassword(""); 
     setNewPin(""); 
@@ -221,7 +217,10 @@ export default function UsersDirectoryPage() {
             <input 
               type="text" 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                 setSearchQuery(e.target.value);
+                 setCurrentPage(1); // 💥 BUG FIX: Force page 1 instantly on typing
+              }}
               placeholder="Search by ID, Name or Email..." 
               className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#A855F7] transition-colors" 
             />
@@ -310,7 +309,6 @@ export default function UsersDirectoryPage() {
             </tbody>
           </table>
           
-          {/* 💥 NEW: Server-Side Pagination Controls 💥 */}
           {totalPages > 1 && (
             <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 flex items-center justify-between">
                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
@@ -326,7 +324,6 @@ export default function UsersDirectoryPage() {
           )}
         </div>
 
-        {/* User Manage Modal */}
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative">

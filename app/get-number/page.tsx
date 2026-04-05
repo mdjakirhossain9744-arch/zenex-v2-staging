@@ -27,7 +27,6 @@ export default function GetNumber() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [selectedDate, setSelectedDate] = useState(getBDDateString());
 
-  // 💥 NEW: Stats State for True Backend Counters 💥
   const [stats, setStats] = useState({ total: 0, success: 0, wait: 0, fail: 0 });
 
   const [page, setPage] = useState(1);
@@ -58,7 +57,7 @@ export default function GetNumber() {
     const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
     if (newDateStr <= getBDDateString()) {
        setSelectedDate(newDateStr);
-       setPage(1); // Reset pagination on date change
+       setPage(1); 
     }
   };
 
@@ -88,7 +87,6 @@ export default function GetNumber() {
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
   };
 
-  // 💥 Smart Fetcher with Duplicate Prevention & Stats 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
@@ -100,7 +98,7 @@ export default function GetNumber() {
       const data = await res.json();
       
       if(data.success && data.orders) {
-        if (data.stats) setStats(data.stats); // 💥 Updates with REAL database counts
+        if (data.stats) setStats(data.stats); 
 
         if (isBackground) {
            setNumbersList((prev) => {
@@ -114,8 +112,6 @@ export default function GetNumber() {
               });
               
               let combined = [...newItems, ...Array.from(prevMap.values())];
-              
-              // 💥 MAGIC: Prevents Duplicate Issue. Removes fake ID only when Real ID arrives from DB 💥
               combined = combined.filter(item => {
                  if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) {
                     return false; 
@@ -163,7 +159,6 @@ export default function GetNumber() {
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
            if (!isMulti && item.status === "WAIT") {
-             // Instant Stats Update for smooth UX
              setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
              return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
            } else if (isMulti) {
@@ -228,7 +223,6 @@ export default function GetNumber() {
         const fullNumberDisplay = result.data.full_number.startsWith("+") ? result.data.full_number : `+${result.data.full_number}`;
         const todayStr = getBDDateString();
 
-        // 💥 MAGIC: Added 'temp_' prefix to ID so it doesn't conflict with DB ID
         const newEntry = {
           id: `temp_${Date.now()}`, dateString: todayStr, displayNumber: fullNumberDisplay, 
           searchNumber: result.data.full_number, country: result.data.country || "Unknown",
@@ -238,7 +232,7 @@ export default function GetNumber() {
         };
         
         setNumbersList((prev) => [newEntry, ...prev]);
-        setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); // Instant Counter Update
+        setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
 
         fetch("/api/sync-orders", {
@@ -266,6 +260,9 @@ export default function GetNumber() {
 
   const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => b.createdAt - a.createdAt);
 
+  // 💥 Calculate Success Rate 💥
+  const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
+
   return (
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 font-sans">
@@ -277,7 +274,7 @@ export default function GetNumber() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
            <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">
               <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Total</span>
               <span className="text-lg font-black text-white">{stats.total}</span>
@@ -294,6 +291,24 @@ export default function GetNumber() {
               <span className="text-[10px] font-black text-[#F43F5E] uppercase tracking-widest">Failed</span>
               <span className="text-lg font-black text-[#F43F5E]">{stats.fail}</span>
            </div>
+        </div>
+
+        {/* 💥 SUCCESS RATE PROGRESS BAR 💥 */}
+        <div className="mb-4 md:mb-6 bg-[#1E293B]/50 border border-[#334155] rounded-xl p-4 flex flex-col gap-2 shadow-sm relative overflow-hidden">
+          <div className="flex justify-between items-center relative z-10">
+            <span className="text-[10px] md:text-xs font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+              <svg className="w-4 h-4 text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+              Success Rate
+            </span>
+            <span className="text-sm md:text-base font-black text-[#10B981]">{successRate}%</span>
+          </div>
+          <div className="w-full bg-[#0F172A] rounded-full h-2 md:h-2.5 border border-[#334155] overflow-hidden relative z-10 shadow-inner">
+            <div 
+              className="bg-gradient-to-r from-[#3B82F6] via-[#10B981] to-[#34D399] h-full rounded-full transition-all duration-1000 ease-out relative" 
+              style={{ width: `${successRate}%` }}>
+                <div className="absolute top-0 right-0 bottom-0 left-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-20"></div>
+            </div>
+          </div>
         </div>
 
         <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
@@ -427,7 +442,7 @@ export default function GetNumber() {
                          </div>
                       </div>
                    ))}
-
+                   
                    {isFetchingMore && (
                      <div className="py-4 flex justify-center">
                         <svg className="w-5 h-5 animate-spin text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>

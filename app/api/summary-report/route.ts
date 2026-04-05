@@ -67,7 +67,6 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // 💥 ম্যাজিক ১: DailyStat থেকে আর্কাইভ ডাটা ফেচ করা 💥
     const dailyStatQuery: any = { dateString: { $gte: getBDDateString(sixtyDaysAgo) } };
     if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     
@@ -90,25 +89,31 @@ export async function POST(req: Request) {
         let orderCostRate = userRate;
         if (role === "admin") orderCostRate = userToAdminCostMap[dEmail] || 0;
         
-        // আর্কাইভ ডাটায় ফ্রী সার্ভিস চেক করা যায় না, তাই ডায়েরি যা বলছে তাই ভরসা
         groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
     });
 
-    // 💥 ম্যাজিক ২: মেইন Order ডাটাবেস থেকে ডাটা ফেচ করা 💥
+    // 💥 updatedAt যোগ করা হলো যাতে ওটিপি আসার সঠিক টাইম পাওয়া যায় 💥
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
     if (role !== "admin") orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
 
-    const orders = await Order.find(orderQuery).select("status dateString createdAt fullMessage userEmail").lean();
+    const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();
 
     orders.forEach((o: any) => {
        let finalDateStr = "";
-       if (o.createdAt) finalDateStr = getBDDateString(o.createdAt);
-       else if (o.dateString) finalDateStr = getBDDateString(new Date(o.dateString));
-       else finalDateStr = getBDDateString(new Date());
+       
+       // 💥 THE FIX: যদি ওটিপি আসে (DONE), তাহলে ওটিপি আসার দিনকে (updatedAt) মেইন ডেট হিসেবে ধরবে 💥
+       if ((o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") && o.updatedAt) {
+           finalDateStr = getBDDateString(o.updatedAt);
+       } else if (o.createdAt) {
+           finalDateStr = getBDDateString(o.createdAt);
+       } else if (o.dateString) {
+           finalDateStr = getBDDateString(new Date(o.dateString));
+       } else {
+           finalDateStr = getBDDateString(new Date());
+       }
 
        const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
-       // 🛡️ ANTI-DOUBLE COUNT: ডায়েরিতে থাকলে স্কিপ করো
        if (finalDateStr !== todayStrBD && archivedKeys.has(`${finalDateStr}_${uEmail}`)) {
            return; 
        }
@@ -118,13 +123,11 @@ export async function POST(req: Request) {
        const msgLower = (o.fullMessage || "").toLowerCase();
        const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
 
-       // 💥 FIX 1: Total Number Got সবসময় ১ হবে। যতোই ওটিপি আসুক, নাম্বার তো একটাই! 💥
        groupedRawData[finalDateStr].total += 1; 
        groupedRawData[finalDateStr].allocation += 1;
 
        if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
           
-          // 💥 FIX 2: Strict Deduplication (ফেক বা স্প্যাম ওটিপিগুলো বাদ দিয়ে শুধু রিয়েল ওটিপি গোনা) 💥
           const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
           const uniqueCodes = new Set();
           
@@ -136,20 +139,18 @@ export async function POST(req: Request) {
           
           const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
-          // সাকসেস கவுন্ট হবে রিয়েল ইউনিক ওটিপির সমান
           groupedRawData[finalDateStr].success += validMsgCount;
 
           let orderCostRate = userRate;
           if (role === "admin") orderCostRate = userToAdminCostMap[uEmail] || 0;
 
-          // 💥 FIX 3: ফ্রী সার্ভিস হলে ১ টাকাও Payout অ্যাড হবে না 💥
           if (!isFreeService) {
               groupedRawData[finalDateStr].amount += (orderCostRate * validMsgCount);
           }
 
-          // ট্রাফিক এবং অ্যাপ চার্ট
           if (finalDateStr === todayStrBD) {
-              const hour = getBDHour(o.createdAt || new Date());
+              // 💥 ট্রাফিক চার্টের টাইমও ওটিপি আসার টাইম অনুযায়ী হবে 💥
+              const hour = getBDHour(o.updatedAt || o.createdAt || new Date());
               const bIdx = Math.floor(hour / 4);
               if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
 
