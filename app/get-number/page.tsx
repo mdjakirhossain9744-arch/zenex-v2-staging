@@ -100,38 +100,36 @@ export default function GetNumber() {
       if(data.success && data.orders) {
         if (data.stats) setStats(data.stats); 
 
-        if (isBackground) {
-           setNumbersList((prev) => {
-              const prevMap = new Map(prev.map(item => [item.id, item]));
+        setNumbersList((prev) => {
+           const prevMap = new Map(prev.map(item => [item.id, item]));
+           
+           data.orders.forEach((fetchedItem: any) => {
+              const existingItem = prevMap.get(fetchedItem.id);
+              
+              // 💥 MAGIC: OPTIMISTIC UI LOCK (Anti-Flicker) 💥
+              // If frontend already knows this is "DONE", do NOT let the backend turn it back to "WAIT"
+              if (existingItem && existingItem.status === "DONE" && fetchedItem.status === "WAIT") {
+                 // Ignore backend, keep our local DONE state
+                 return;
+              }
+
+              prevMap.set(fetchedItem.id, fetchedItem);
+           });
+
+           if (isBackground) {
               const dbSearchNumbers = new Set(data.orders.map((o: any) => o.searchNumber));
-              
-              const newItems: any[] = [];
-              data.orders.forEach((fetchedItem: any) => {
-                 if (prevMap.has(fetchedItem.id)) prevMap.set(fetchedItem.id, fetchedItem);
-                 else newItems.push(fetchedItem);
-              });
-              
-              let combined = [...newItems, ...Array.from(prevMap.values())];
-              combined = combined.filter(item => {
+              let combined = Array.from(prevMap.values()).filter(item => {
                  if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) {
                     return false; 
                  }
                  return true;
               });
-
               return combined.sort((a, b) => b.createdAt - a.createdAt);
-           });
-        } else {
-           if (pageNum === 1) {
-              setNumbersList(data.orders);
            } else {
-              setNumbersList((prev) => {
-                 const prevMap = new Map(prev.map(item => [item.id, item]));
-                 data.orders.forEach((fetchedItem: any) => prevMap.set(fetchedItem.id, fetchedItem));
-                 return Array.from(prevMap.values()).sort((a, b) => b.createdAt - a.createdAt);
-              });
+              return Array.from(prevMap.values()).sort((a, b) => b.createdAt - a.createdAt);
            }
-        }
+        });
+
         if(data.pagination) setHasMore(data.pagination.hasMore);
       }
     } catch (err) {} 
@@ -260,7 +258,6 @@ export default function GetNumber() {
 
   const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => b.createdAt - a.createdAt);
 
-  // 💥 Calculate Success Rate 💥
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   return (
@@ -293,7 +290,6 @@ export default function GetNumber() {
            </div>
         </div>
 
-        {/* 💥 SUCCESS RATE PROGRESS BAR 💥 */}
         <div className="mb-4 md:mb-6 bg-[#1E293B]/50 border border-[#334155] rounded-xl p-4 flex flex-col gap-2 shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-center relative z-10">
             <span className="text-[10px] md:text-xs font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
