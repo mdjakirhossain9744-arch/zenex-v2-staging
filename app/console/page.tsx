@@ -126,14 +126,25 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
-  // 💥 NEW: Strict 30-Minute Live Window Logic 💥
-  const topRanges = () => {
-    const counts: Record<string, { count: number, platform: string, fbTag: string | null }> = {};
-    const thirtyMinsAgo = Date.now() - 30 * 60 * 1000; // 30 minutes in milliseconds
-    
+  // 💥 SMART FALLBACK LOGIC: 30-min window OR Older data fallback 💥
+  const getTopRangesData = () => {
+    let counts: Record<string, { count: number, platform: string, fbTag: string | null }> = {};
+    const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
+    let hasFreshHits = false;
+
+    // Step 1: Check if there are any hits in the last 30 mins
     liveLogs.forEach(log => {
-      // ONLY process logs that arrived in the last 30 minutes
       if (log.createdAt >= thirtyMinsAgo) {
+        const range = extractTargetRange(log.number);
+        if (range !== "Unknown") hasFreshHits = true;
+      }
+    });
+
+    // Step 2: Loop logs again based on freshness
+    liveLogs.forEach(log => {
+      // If we have fresh hits, ONLY process logs from last 30 mins. 
+      // If we don't have fresh hits, process ALL logs (Fallback to older data).
+      if (!hasFreshHits || log.createdAt >= thirtyMinsAgo) {
         const range = extractTargetRange(log.number);
         const fbData = analyzeOTP(log.service, log.otp);
         
@@ -148,10 +159,14 @@ export default function Console() {
       }
     });
 
-    return Object.entries(counts)
+    const sortedRanges = Object.entries(counts)
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 6); 
+
+    return { ranges: sortedRanges, isFresh: hasFreshHits };
   };
+
+  const topData = getTopRangesData();
 
   return (
     <>
@@ -225,26 +240,30 @@ export default function Console() {
                 </div>
              </div>
 
-             {/* 💥 Top Hit Ranges Card (Filtered for Last 30 Minutes) 💥 */}
+             {/* 💥 Top Hit Ranges Card with Fallback Badge Logic 💥 */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-[#10B981] to-[#F43F5E]"></div>
+                <div className={`absolute top-0 right-0 w-full h-1 bg-gradient-to-r ${topData.isFresh ? 'from-[#10B981] to-[#F43F5E]' : 'from-[#EAB308] to-[#F59E0B]'}`}></div>
                 
                 <div className="flex justify-between items-center mb-4 border-b border-[#334155] pb-3">
                    <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
                       <svg className="w-4 h-4 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                       Top Hit Ranges
                    </h3>
+                   
+                   {/* 💥 Smart Badge: Red Pulse if fresh (30m), Yellow if older fallback data 💥 */}
                    <div className="flex items-center gap-1.5">
                      <span className="relative flex h-2 w-2">
-                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F43F5E] opacity-75"></span>
-                       <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F43F5E]"></span>
+                       {topData.isFresh && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F43F5E] opacity-75"></span>}
+                       <span className={`relative inline-flex rounded-full h-2 w-2 ${topData.isFresh ? 'bg-[#F43F5E]' : 'bg-[#EAB308]'}`}></span>
                      </span>
-                     <span className="text-[9px] font-bold text-[#F43F5E] uppercase tracking-wider">Last 30m</span>
+                     <span className={`text-[9px] font-bold uppercase tracking-wider ${topData.isFresh ? 'text-[#F43F5E]' : 'text-[#EAB308]'}`}>
+                        {topData.isFresh ? 'Last 30m' : 'Recent Hits'}
+                     </span>
                    </div>
                 </div>
 
                 <div className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2">
-                   {topRanges().length > 0 ? topRanges().map(([key, data], idx) => {
+                   {topData.ranges.length > 0 ? topData.ranges.map(([key, data], idx) => {
                       const range = key.split('|')[0];
                       return (
                         <button 
@@ -274,7 +293,7 @@ export default function Console() {
                    }) : (
                       <div className="text-center text-[#64748B] text-xs h-full flex flex-col items-center justify-center gap-2">
                          <svg className="w-6 h-6 text-[#334155]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                         No hits in last 30 mins
+                         Waiting for Live Data...
                       </div>
                    )}
                 </div>
