@@ -4,9 +4,11 @@ import Order from "../../../models/Order";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-export const revalidate = 0;
 
-const MNIT_API_KEY = "M_7VX25KAJI";
+// 💥 SERVER-SIDE IN-MEMORY CACHE (Database Protector) 💥
+let cachedData: any = null;
+let lastFetchTime = 0;
+const CACHE_TTL = 4000; // 4 seconds cache
 
 const getServiceName = (message: string) => {
   const msgLower = (message || "").toLowerCase();
@@ -23,20 +25,21 @@ const getServiceName = (message: string) => {
 
 export async function GET(req: NextRequest) {
   try {
+    // 💥 1. CACHE INTERCEPTOR: Serve instantly from RAM to save DB 💥
+    if (cachedData && (Date.now() - lastFetchTime < CACHE_TTL)) {
+      return NextResponse.json(cachedData);
+    }
+
     await connectToDatabase();
 
-    const clientTime = req.nextUrl.searchParams.get('t') || Date.now();
     const twentyMinsAgo = Date.now() - 20 * 60 * 1000; 
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // 💥 ১. নিজেদের ডাটা 💥
-    const localOrders = await Order.find({
-      status: { $in: ["DONE", "Success"] },
-      createdAt: { $gte: twentyFourHoursAgo }
-    })
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean();
+    // 💥 2. OPTIMIZED DB QUERY: Only local data, super fast 💥
+    const localOrders = await Order.find({ status: { $in: ["DONE", "Success"] } })
+      .sort({ updatedAt: -1 }) // Master Rule 7: Sort by OTP arrival time
+      .select("searchNumber number fullMessage otp country operator createdAt updatedAt") 
+      .limit(100)
+      .lean();
 
     const localLogs = localOrders.map((log: any) => ({
       id: log._id.toString(),
@@ -45,62 +48,11 @@ export async function GET(req: NextRequest) {
       country: log.country || "BD",
       operator: log.operator || "Other",
       service: getServiceName(log.fullMessage || log.otp),
-      createdAt: new Date(log.createdAt).getTime()
+      createdAt: new Date(log.updatedAt || log.createdAt).getTime()
     }));
 
-    // 💥 ২. MNIT Public API (EXACT ORIGINAL HEADERS TO BYPASS CLOUDFLARE) 💥
-    let mnitLogs: any[] = [];
-    try {
-      const mnitUrl = `https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?_cb=${clientTime}&rnd=${Math.random()}`;
-      const response = await fetch(mnitUrl, {
-        method: "GET",
-        headers: {
-          "mapikey": MNIT_API_KEY, 
-          "Content-Type": "application/json",
-          "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0"
-        },
-        cache: "no-store",
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        
-        let rawOtps: any[] = [];
-        if (Array.isArray(result)) rawOtps = result;
-        else if (Array.isArray(result?.data?.otps)) rawOtps = result.data.otps;
-        else if (Array.isArray(result?.data)) rawOtps = result.data;
-        else if (Array.isArray(result?.logs)) rawOtps = result.logs;
-        else if (Array.isArray(result?.otps)) rawOtps = result.otps;
-        
-        mnitLogs = rawOtps.map((item: any, index: number) => {
-          const num = item.number || item.phone || "Hidden";
-          const otpText = item.otp || item.sms || item.message || "Code";
-          return {
-            id: `mnit_${Date.now()}_${index}`,
-            number: num,
-            otp: otpText,
-            country: item.country || item.iso || "GLOBAL",
-            operator: item.operator || item.carrier || "Network",
-            service: getServiceName(otpText),
-            // 🔥 Magic Fix: Force "Just Now" time
-            createdAt: Date.now() - (index * 100) 
-          };
-        });
-      } else {
-        console.error("MNIT API Blocked:", response.status);
-      }
-    } catch (e) {
-      console.error("MNIT Fetch Error:", e);
-    }
-
-    // 💥 ৩. মিক্স ও সর্টিং 💥
-    const mergedLogs = [...mnitLogs, ...localLogs].sort((a, b) => b.createdAt - a.createdAt);
-    const top100Logs = mergedLogs.slice(0, 100);
-
-    const recent20Mins = mergedLogs.filter(log => log.createdAt >= twentyMinsAgo);
+    // 💥 3. PROCESS GRAPH & CARRIER DATA 💥
+    const recent20Mins = localLogs.filter((log: any) => log.createdAt >= twentyMinsAgo);
 
     const appCounts: Record<string, number> = {};
     const carrierCounts: Record<string, number> = {};
@@ -126,15 +78,20 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
-    return NextResponse.json({ 
+    // 💥 4. SAVE TO RAM CACHE AND RETURN 💥
+    cachedData = { 
       success: true, 
-      logs: top100Logs, 
+      logs: localLogs, 
       graph: graphData,
       carrier: carrierData
-    });
+    };
+    lastFetchTime = Date.now();
+
+    return NextResponse.json(cachedData);
 
   } catch (error: any) {
-    console.error("Live Console Merge Error:", error);
-    return NextResponse.json({ success: false, error: "Server Merge Error" }, { status: 500 });
+    console.error("Live Console Critical Error:", error.message);
+    if (cachedData) return NextResponse.json(cachedData);
+    return NextResponse.json({ success: false, error: "Server Error" }, { status: 500 });
   }
 }
