@@ -19,7 +19,6 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
-    // 💥 targetDate অ্যাড করা হলো যাতে ফ্রন্টএন্ড থেকে পাঠানো ডেটের স্ট্যাটস বের করা যায়
     const { action, email, orderData, page = 1, limit = 50, targetDate } = body; 
 
     if (!email) {
@@ -27,16 +26,14 @@ export async function POST(req: Request) {
     }
 
     if (action === "FETCH") {
-      // 💥 সার্ভার সাইড পেজিনেশন লজিক 💥
       const skip = (page - 1) * limit;
       const totalItems = await Order.countDocuments({ userEmail: email });
       const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).skip(skip).limit(limit);
       
       const finalOrders: any[] = [];
       const todayStr = getBDDateString(); 
-      const fetchDate = targetDate || todayStr; // ফ্রন্টএন্ডের ডেট অথবা আজকের ডেট
+      const fetchDate = targetDate || todayStr;
 
-      // 💥 MAGIC: ডাটাবেস থেকে রিয়েল-টাইম স্ট্যাটস ক্যালকুলেট করা হচ্ছে (50 বাগ ফিক্স) 💥
       const statQuery = { userEmail: email, dateString: fetchDate };
       const stats = {
           total: await Order.countDocuments(statQuery),
@@ -78,13 +75,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ 
         success: true, 
         orders: finalOrders,
-        pagination: {
-          total: totalItems,
-          page,
-          limit,
-          hasMore: (skip + orders.length) < totalItems // Check if more data exists
-        },
-        stats // 💥 স্ট্যাটস ডাটা ফ্রন্টএন্ডে পাঠানো হচ্ছে
+        pagination: { total: totalItems, page, limit, hasMore: (skip + orders.length) < totalItems },
+        stats 
       });
     }
 
@@ -115,16 +107,37 @@ export async function POST(req: Request) {
 
       if (orderData.status === "DONE" || orderData.otp) {
         
+        // MNIT ২৫-৩০ মিনিটের বেশি কোনো লাইভ নাম্বার রাখে না। তাই ২৫ মিনিট পর কোনো ওটিপি আসলে রিজেক্ট।
+        const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
+        if (orderAgeMs > 25 * 60 * 1000) { 
+            await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
+            return NextResponse.json({ success: false, message: "Order expired. MNIT validity over." });
+        }
+
+        if (existingOrder.status === "FAIL" || existingOrder.status === "CANCEL") {
+            return NextResponse.json({ success: false, message: "Order was already cancelled or failed." });
+        }
+
         const freshOrder = await Order.findById(existingOrder._id);
         const incomingMsg = (orderData.fullMessage || "").trim();
         const currentMsg = freshOrder.fullMessage || "";
 
-        if (incomingMsg && currentMsg.includes(incomingMsg)) {
-          return NextResponse.json({ success: true, message: "Already processed this exact OTP text." });
+        // 💥 STRICT OTP CODE EXTRACTOR (আসল লস বন্ধ করার লজিক) 💥
+        const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
+        const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg.trim();
+
+        const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
+        const existingCodes = currentMsgsArray.map((msg: string) => {
+            const match = msg.match(/\b\d{4,8}\b/);
+            return match ? match[0] : msg.trim();
+        });
+
+        // 💥 যদি একই 6-digit বা 4-digit কোড আবার আসে, তাহলে পেমেন্টও হবে না, সেভও হবে না! 💥
+        if (existingCodes.includes(incomingCode)) {
+          return NextResponse.json({ success: true, message: "Duplicate Exact OTP code detected. Ignored." });
         }
 
-        const msgCount = currentMsg ? currentMsg.split(" _||_ ").length : 0;
-        if (msgCount >= 50) { 
+        if (currentMsgsArray.length >= 50) { 
           return NextResponse.json({ success: true, message: "Max safety limit reached." });
         }
 
@@ -145,10 +158,12 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: false, message: "Race condition locked. Retrying..." });
         }
 
+        // 💥 WHATSAPP / TELEGRAM BLOCKER (ফ্রি সার্ভিস) 💥
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
+        // 💥 PAYMENT LOGIC (শুধুমাত্র ভিন্ন ভিন্ন ওটিপি এবং পেইড সার্ভিসের জন্য পেমেন্ট অ্যাড হবে) 💥
         if (!isFreeService) {
           const user = await User.findOne({ email });
           if (user) {
@@ -177,7 +192,7 @@ export async function POST(req: Request) {
           }
         }
 
-        return NextResponse.json({ success: true, message: "Processed successfully!" });
+        return NextResponse.json({ success: true, message: "Different OTP Processed successfully!" });
       }
     }
     return NextResponse.json({ success: false, message: "Invalid action" });

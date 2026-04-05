@@ -1,5 +1,4 @@
 import { NextResponse, NextRequest } from "next/server";
-// 💥 MAGIC FIX: Import paths fixed perfectly!
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import DailyStat from "../../../models/DailyStat";
@@ -13,7 +12,6 @@ const getBDDateString = (dateObj: any = new Date()) => {
 
 export async function GET(req: NextRequest) {
   try {
-    // 🛡️ HACKER PROTECTION: সিক্রেট পাসওয়ার্ড চেক! 🛡️
     const searchParams = req.nextUrl.searchParams;
     const secretKey = searchParams.get("key");
 
@@ -24,20 +22,26 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const todayStrBD = getBDDateString(new Date());
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
     
+    // 💥 SMART FIX: স্কিমা চেঞ্জ না করে শুধু "গতকালের (Yesterday)" ডাটা বের করার লজিক 💥
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStrBD = getBDDateString(yesterdayDate);
+
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // ১. গতকাল বা তার আগের সব ডাটা খোঁজো
-    const oldOrders = await Order.find({
-        createdAt: { $lt: new Date(todayStrBD + "T00:00:00.000Z") }
+    // শুধু গতকালের ডাটাগুলো ডায়েরিতে সেভ হবে (ফলে ৭ দিন ধরে ডাবল-কাউন্ট হবে না)
+    const yesterdayOrders = await Order.find({
+        createdAt: { 
+            $gte: new Date(yesterdayStrBD + "T00:00:00.000Z"), 
+            $lt: new Date(todayStrBD + "T00:00:00.000Z") 
+        }
     }).lean();
 
     const statsMap: Record<string, any> = {};
 
-    oldOrders.forEach((o: any) => {
+    yesterdayOrders.forEach((o: any) => {
         const oDate = getBDDateString(o.createdAt || new Date(o.dateString));
         const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
         const key = `${oDate}_${uEmail}`;
@@ -46,17 +50,30 @@ export async function GET(req: NextRequest) {
             statsMap[key] = { dateString: oDate, userEmail: uEmail, total: 0, success: 0, failed: 0 };
         }
 
-        const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
-        statsMap[key].total += msgCount;
+        statsMap[key].total += 1; // ১টা অর্ডার = ১টা টোটাল নাম্বার
 
         if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
-            statsMap[key].success += msgCount;
+            const msgLower = (o.fullMessage || "").toLowerCase();
+            const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
+
+            const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+            const uniqueCodes = new Set();
+            
+            msgArray.forEach((msg: string) => {
+                const match = msg.match(/\b\d{4,8}\b/);
+                uniqueCodes.add(match ? match[0] : msg.trim());
+            });
+
+            const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+
+            if (!isFreeService) {
+                statsMap[key].success += validMsgCount;
+            }
         } else {
-            statsMap[key].failed += msgCount;
+            statsMap[key].failed += 1;
         }
     });
 
-    // ২. ডায়েরিতে সেভ করো
     for (const key in statsMap) {
         const stat = statsMap[key];
         await DailyStat.findOneAndUpdate(
@@ -66,7 +83,7 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // ৩. ডাটাবেস ক্লিন করো! 
+    // ডাটাবেস ক্লিন! ফেইলগুলো সাথে সাথে ডিলিট, সাকসেসগুলো ৭ দিন পর ডিলিট
     const deletedFailed = await Order.deleteMany({
         createdAt: { $lt: new Date(todayStrBD + "T00:00:00.000Z") },
         status: { $nin: ["DONE", "Success", "SUCCESS"] }
@@ -79,7 +96,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
         success: true,
-        message: "✅ Database Backup & Cleanup Successful!",
+        message: "✅ Database Backup & Cleanup Successful! (Double-Count Fixed)",
         backupSaved: Object.keys(statsMap).length,
         deletedFailedOrders: deletedFailed.deletedCount,
         deletedSuccessOrders: deletedSuccess.deletedCount

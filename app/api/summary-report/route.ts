@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // 💥 ম্যাজিক ১: আগে DailyStat (আজীবন ডায়েরি) থেকে ডাটা নিয়ে আসা 💥
+    // 💥 ম্যাজিক ১: DailyStat থেকে আর্কাইভ ডাটা ফেচ করা 💥
     const dailyStatQuery: any = { dateString: { $gte: getBDDateString(sixtyDaysAgo) } };
     if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     
@@ -78,7 +78,6 @@ export async function POST(req: Request) {
         const dDate = ds.dateString;
         const dEmail = (ds.userEmail || "").toLowerCase().trim();
         
-        // মার্ক করে রাখছি যে এই ডাটা ডায়েরিতে আছে, মেইন ডাটাবেস থেকে আর গোনা যাবে না!
         archivedKeys.add(`${dDate}_${dEmail}`);
 
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
@@ -91,10 +90,11 @@ export async function POST(req: Request) {
         let orderCostRate = userRate;
         if (role === "admin") orderCostRate = userToAdminCostMap[dEmail] || 0;
         
+        // আর্কাইভ ডাটায় ফ্রী সার্ভিস চেক করা যায় না, তাই ডায়েরি যা বলছে তাই ভরসা
         groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
     });
 
-    // 💥 ম্যাজিক ২: এখন মেইন Order ডাটাবেস থেকে শুধু ওইগুলো গোন, যেগুলো ডায়েরিতে নেই 💥
+    // 💥 ম্যাজিক ২: মেইন Order ডাটাবেস থেকে ডাটা ফেচ করা 💥
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
     if (role !== "admin") orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
 
@@ -108,47 +108,64 @@ export async function POST(req: Request) {
 
        const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
-       // 🛡️ ANTI-DOUBLE COUNT GUARD: যদি এই ডাটা ডায়েরিতে থাকে, তবে স্কিপ করো!
+       // 🛡️ ANTI-DOUBLE COUNT: ডায়েরিতে থাকলে স্কিপ করো
        if (finalDateStr !== todayStrBD && archivedKeys.has(`${finalDateStr}_${uEmail}`)) {
            return; 
        }
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
-       const isFreeService = o.fullMessage && (o.fullMessage.toLowerCase().includes("whatsapp") || o.fullMessage.toLowerCase().includes("telegram") || o.fullMessage.toLowerCase().includes("t.me"));
+       const msgLower = (o.fullMessage || "").toLowerCase();
+       const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
+
+       // 💥 FIX 1: Total Number Got সবসময় ১ হবে। যতোই ওটিপি আসুক, নাম্বার তো একটাই! 💥
+       groupedRawData[finalDateStr].total += 1; 
+       groupedRawData[finalDateStr].allocation += 1;
 
        if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
-          const msgCount = o.fullMessage ? o.fullMessage.split(" _||_ ").length : 1;
-          groupedRawData[finalDateStr].total += msgCount; 
-          groupedRawData[finalDateStr].allocation += msgCount; 
-          groupedRawData[finalDateStr].success += msgCount;
+          
+          // 💥 FIX 2: Strict Deduplication (ফেক বা স্প্যাম ওটিপিগুলো বাদ দিয়ে শুধু রিয়েল ওটিপি গোনা) 💥
+          const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+          const uniqueCodes = new Set();
+          
+          msgArray.forEach((msg: string) => {
+              const match = msg.match(/\b\d{4,8}\b/);
+              const extractedCode = match ? match[0] : msg.trim();
+              uniqueCodes.add(extractedCode);
+          });
+          
+          const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+
+          // সাকসেস கவுন্ট হবে রিয়েল ইউনিক ওটিপির সমান
+          groupedRawData[finalDateStr].success += validMsgCount;
 
           let orderCostRate = userRate;
           if (role === "admin") orderCostRate = userToAdminCostMap[uEmail] || 0;
 
-          if (!isFreeService) groupedRawData[finalDateStr].amount += (orderCostRate * msgCount);
+          // 💥 FIX 3: ফ্রী সার্ভিস হলে ১ টাকাও Payout অ্যাড হবে না 💥
+          if (!isFreeService) {
+              groupedRawData[finalDateStr].amount += (orderCostRate * validMsgCount);
+          }
 
+          // ট্রাফিক এবং অ্যাপ চার্ট
           if (finalDateStr === todayStrBD) {
               const hour = getBDHour(o.createdAt || new Date());
               const bIdx = Math.floor(hour / 4);
-              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += msgCount;
+              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
 
               let sName = "Other Network";
-              const mLower = (o.fullMessage || "").toLowerCase();
-              if (mLower.includes("facebook") || mLower.includes("fb")) sName = "Facebook";
-              else if (mLower.includes("whatsapp") || mLower.includes("wa")) sName = "WhatsApp";
-              else if (mLower.includes("instagram") || mLower.includes("ig")) sName = "Instagram";
-              else if (mLower.includes("telegram") || mLower.includes("tg")) sName = "Telegram";
-              else if (mLower.includes("google") || mLower.includes("gmail")) sName = "Google";
-              else if (mLower.includes("tiktok") || mLower.includes("tt")) sName = "TikTok";
-              else if (mLower.includes("apple") || mLower.includes("ap")) sName = "Apple";
+              if (msgLower.includes("facebook") || msgLower.includes("fb")) sName = "Facebook";
+              else if (msgLower.includes("whatsapp") || msgLower.includes("wa")) sName = "WhatsApp";
+              else if (msgLower.includes("instagram") || msgLower.includes("ig")) sName = "Instagram";
+              else if (msgLower.includes("telegram") || msgLower.includes("tg")) sName = "Telegram";
+              else if (msgLower.includes("google") || msgLower.includes("gmail")) sName = "Google";
+              else if (msgLower.includes("tiktok") || msgLower.includes("tt")) sName = "TikTok";
+              else if (msgLower.includes("apple") || msgLower.includes("ap")) sName = "Apple";
 
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
-              todayAppCounts[sName] += msgCount;
+              todayAppCounts[sName] += validMsgCount;
           }
        } else {
-          groupedRawData[finalDateStr].total += 1;
-          groupedRawData[finalDateStr].allocation += 1;
           groupedRawData[finalDateStr].failed += 1;
        }
     });
