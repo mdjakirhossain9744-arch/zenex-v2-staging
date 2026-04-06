@@ -5,7 +5,8 @@ import User from "../../../models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET || "ZENEX_SUPER_SECRET_KEY_2024";
 
-// 💥 req: NextRequest ব্যবহার করা হয়েছে যাতে Promise Error না আসে 💥
+export const dynamic = "force-dynamic"; // Vercel Caching Issue ফিক্স করার জন্য
+
 export async function GET(req: NextRequest) {
   try {
     // সরাসরি রিকোয়েস্ট থেকে কুকি রিড করা হচ্ছে
@@ -15,31 +16,42 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "No token found" }, { status: 401 });
     }
 
-    // ১. টোকেন ডিকোড করে ইউজারের আইডি এবং বর্তমান সেশন আইডি বের করা
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; sessionId: string };
-
-    await connectToDatabase();
-    
-    // ২. ইউজারের ডাটাবেস চেক করা
-    const user = await User.findById(decoded.id).select("activeSessions status");
-
-    if (!user) {
-      return NextResponse.json({ message: "User not found" }, { status: 401 });
+    // 💥 ১. টোকেন ভেরিফিকেশন (এখানে ফেইল করলে তবেই 401 দিয়ে লগআউট করাবে) 💥
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET) as { id: string; sessionId: string };
+    } catch (jwtError) {
+      return NextResponse.json({ message: "Invalid or Expired Token" }, { status: 401 });
     }
 
-    // ইউজার ব্যান হলে কিক আউট
-    if (user.status === "banned") {
-       return NextResponse.json({ message: "Account banned" }, { status: 401 });
-    }
+    // 💥 ২. ডাটাবেস কানেকশন (এখানে স্লো হলে 500 দেবে, লগআউট করাবে না) 💥
+    try {
+      await connectToDatabase();
+      
+      const user = await User.findById(decoded.id).select("activeSessions status").lean();
 
-    // ৩. 💥 আসল ম্যাজিক: বর্তমান সেশন আইডি যদি ডাটাবেসের সেশন লিস্টে না থাকে, তবে লাথি মারো!
-    if (!user.activeSessions || !user.activeSessions.includes(decoded.sessionId)) {
-      return NextResponse.json({ message: "Session expired or logged in from another device" }, { status: 401 });
-    }
+      if (!user) {
+        return NextResponse.json({ message: "User not found" }, { status: 401 });
+      }
 
-    return NextResponse.json({ message: "Session is valid" }, { status: 200 });
+      if (user.status === "banned" || user.status === "pending") {
+         return NextResponse.json({ message: "Account restricted" }, { status: 401 });
+      }
+
+      // সেশন আইডি চেক (ম্যাক্স ৫ ডিভাইসের লজিক)
+      if (!user.activeSessions || !user.activeSessions.includes(decoded.sessionId)) {
+        return NextResponse.json({ message: "Logged in from another device. Session expired." }, { status: 401 });
+      }
+
+      return NextResponse.json({ message: "Session is valid" }, { status: 200 });
+
+    } catch (dbError) {
+      // 💥 আসল ফিক্স: ডাটাবেস স্লো হলে বা লোড নিতে না পারলে ইউজারকে লগআউট করবে না! 💥
+      console.warn("DB Timeout in check-session. Skipping logout.");
+      return NextResponse.json({ message: "Database busy, skipping check" }, { status: 500 });
+    }
 
   } catch (error) {
-    return NextResponse.json({ message: "Invalid session" }, { status: 401 });
+    return NextResponse.json({ message: "Server Error" }, { status: 500 });
   }
 }
