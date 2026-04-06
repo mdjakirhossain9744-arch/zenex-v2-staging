@@ -105,16 +105,18 @@ export default function Console() {
     return message.replace(/\b\d{4,8}\b/g, (match) => "*".repeat(match.length));
   };
 
+  // 💥 FIXED: 12-Hour format with AM/PM strictly for BD Time 💥
   const formatTime = (timestamp: any) => {
     if (!timestamp) return "Unknown Time";
     const date = new Date(timestamp);
     return !isNaN(date.getTime()) 
-      ? date.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) 
+      ? date.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
       : "Time Error";
   };
 
+  // 💥 FIXED: Copies exactly what is clicked (including XXX) 💥
   const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text.replace("XXX", ""));
+    navigator.clipboard.writeText(text);
     setCopiedText(text);
     setTimeout(() => setCopiedText(""), 2000);
   };
@@ -126,7 +128,6 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
-  // 💥 NEW HYBRID ALGORITHM: Always full, but priorities Live Data 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
     
@@ -149,14 +150,11 @@ export default function Console() {
       }
     });
 
-    // 1. Sort recent hits by count (These go to the top)
     const recentSorted = Object.entries(recentCounts).sort((a, b) => b[1].count - a[1].count);
-    // 2. Sort older hits by count (These fill the empty spaces)
     const olderSorted = Object.entries(olderCounts).sort((a, b) => b[1].count - a[1].count);
 
     let finalRanges = [...recentSorted];
 
-    // 3. Fill up to 6 slots using older data if needed
     if (finalRanges.length < 6) {
       for (const oldItem of olderSorted) {
         if (!finalRanges.find(r => r[0] === oldItem[0])) {
@@ -174,7 +172,6 @@ export default function Console() {
   };
 
   const topData = getTopRangesData();
-  // Dynamic Badge Text
   const badgeText = topData.recentCount >= 4 ? 'Last 30m' : (topData.recentCount > 0 ? 'Live & Recent' : 'Recent Hits');
 
   return (
@@ -249,7 +246,7 @@ export default function Console() {
                 </div>
              </div>
 
-             {/* 💥 Top Hit Ranges Card (Hybrid Logic) 💥 */}
+             {/* Top Hit Ranges Card */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-full h-1 bg-gradient-to-r ${topData.isFresh ? 'from-[#10B981] to-[#F43F5E]' : 'from-[#EAB308] to-[#F59E0B]'}`}></div>
                 
@@ -280,7 +277,6 @@ export default function Console() {
                            className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn"
                         >
                            <div className="flex flex-col items-start gap-1 relative pl-3">
-                              {/* 💥 Green Dot for Recent, Gray Dot for Older 💥 */}
                               <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#10B981] shadow-[0_0_5px_#10B981]' : 'bg-[#475569]'}`}></div>
                               
                               <span className="text-sm font-black text-white font-mono group-hover/btn:text-[#3B82F6] transition-colors">{range}</span>
