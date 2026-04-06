@@ -32,34 +32,26 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    const twentyMinsAgo = Date.now() - 20 * 60 * 1000; 
+    const oneHourAgoDate = new Date(Date.now() - 60 * 60 * 1000); 
 
-    // 💥 2. OPTIMIZED DB QUERY: Only local data, super fast 💥
-    const localOrders = await Order.find({ status: { $in: ["DONE", "Success"] } })
-      .sort({ updatedAt: -1 }) // Master Rule 7: Sort by OTP arrival time
-      .select("searchNumber number fullMessage otp country operator createdAt updatedAt") 
-      .limit(100)
-      .lean();
-
-    const localLogs = localOrders.map((log: any) => ({
-      id: log._id.toString(),
-      number: log.searchNumber || log.number || "",
-      otp: log.fullMessage || log.otp || "",
-      country: log.country || "BD",
-      operator: log.operator || "Other",
-      service: getServiceName(log.fullMessage || log.otp),
-      createdAt: new Date(log.updatedAt || log.createdAt).getTime()
-    }));
-
-    // 💥 3. PROCESS GRAPH & CARRIER DATA 💥
-    const recent20Mins = localLogs.filter((log: any) => log.createdAt >= twentyMinsAgo);
+    // 💥 2. QUERY ONE (For Charts): Fetch Unlimited Logs for exact 1-Hour calculation 💥
+    // Only selects tiny fields to save RAM even if there are 5,000 logs
+    const statsOrders = await Order.find({ 
+      status: { $in: ["DONE", "Success"] },
+      updatedAt: { $gte: oneHourAgoDate } 
+    })
+    .select("fullMessage otp operator") 
+    .lean();
 
     const appCounts: Record<string, number> = {};
     const carrierCounts: Record<string, number> = {};
 
-    recent20Mins.forEach((log: any) => {
-      appCounts[log.service] = (appCounts[log.service] || 0) + 1;
-      carrierCounts[log.operator] = (carrierCounts[log.operator] || 0) + 1;
+    // Counts all 1000-2000 logs instantly
+    statsOrders.forEach((log: any) => {
+      const service = getServiceName(log.fullMessage || log.otp);
+      const op = log.operator || "Other";
+      appCounts[service] = (appCounts[service] || 0) + 1;
+      carrierCounts[op] = (carrierCounts[op] || 0) + 1;
     });
 
     let graphData = Object.keys(appCounts)
@@ -78,11 +70,28 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
+    // 💥 3. QUERY TWO (For UI Feed): Fetch ONLY the latest 50 logs 💥
+    const feedOrders = await Order.find({ status: { $in: ["DONE", "Success"] } })
+      .sort({ updatedAt: -1 }) 
+      .select("searchNumber number fullMessage otp country operator createdAt updatedAt") 
+      .limit(50) // Master Rule 9: Strict 50 Limit for DOM Freezing
+      .lean();
+
+    const localLogs = feedOrders.map((log: any) => ({
+      id: log._id.toString(),
+      number: log.searchNumber || log.number || "",
+      otp: log.fullMessage || log.otp || "",
+      country: log.country || "BD",
+      operator: log.operator || "Other",
+      service: getServiceName(log.fullMessage || log.otp),
+      createdAt: new Date(log.updatedAt || log.createdAt).getTime()
+    }));
+
     // 💥 4. SAVE TO RAM CACHE AND RETURN 💥
     cachedData = { 
       success: true, 
-      logs: localLogs, 
-      graph: graphData,
+      logs: localLogs, // Exactly 50 logs for Feed UI
+      graph: graphData, // Calculated from Unlimited 1-Hour logs
       carrier: carrierData
     };
     lastFetchTime = Date.now();
