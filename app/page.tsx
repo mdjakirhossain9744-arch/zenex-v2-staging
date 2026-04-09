@@ -71,7 +71,7 @@ export default function DashboardPage() {
       try {
         if (parsedUser.role === "admin") {
           const [userData, reportData, summaryRes] = await Promise.all([
-            fetch("/api/get-all-users").then(r => r.json()),
+            fetch("/api/get-all-users").then(r => r.json()), // ✅ আর কোনো limit=9999 লাগছে না
             fetch("/api/admin-agent-report").then(r => r.json()),
             fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "admin" }) }).then(r => r.json())
           ]);
@@ -84,10 +84,15 @@ export default function DashboardPage() {
              if (summaryRes.todayHourlyTraffic) setTrafficData(summaryRes.todayHourlyTraffic);
           }
           if (reportData && reportData.success) { setAgentReport(reportData.report); setCurrentMonthName(reportData.currentMonth); }
-          if (userData.users) {
-            const allUsers = userData.users;
-            const liability = allUsers.reduce((sum: number, u: any) => sum + (Number(u.balance) || 0), 0);
-            setAdminStats(p => ({ ...p, totalUsers: allUsers.filter((u: any) => u.role === 'user').length, totalAgents: allUsers.filter((u: any) => u.role === 'agent').length, systemLiability: liability.toFixed(2) }));
+          
+          // ✅ MAGIC FIX: সরাসরি API থেকে সঠিক স্ট্যাটস নিয়ে নিচ্ছি
+          if (userData.stats) {
+            setAdminStats(p => ({ 
+              ...p, 
+              totalUsers: userData.stats.totalUsers || 0, 
+              totalAgents: userData.stats.totalAgents || 0, 
+              systemLiability: userData.stats.systemLiability || "0.00" 
+            }));
           }
 
         } else if (parsedUser.role === "agent") {
@@ -110,7 +115,6 @@ export default function DashboardPage() {
           }
 
         } else {
-          // NORMAL USER
           const [userDetailsRes, ordersRes] = await Promise.all([
             fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
             fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
@@ -154,7 +158,6 @@ export default function DashboardPage() {
                }
              });
 
-             // 💥 MAGIC FIX: Use REAL backend stats from DB instead of frontend counted loop 💥
              setStats(p => ({ 
                ...p, 
                todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 

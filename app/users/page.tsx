@@ -30,9 +30,15 @@ export default function UsersManagementPage() {
   const [newApiStatus, setNewApiStatus] = useState(false);
   
   const [newAgentEmail, setNewAgentEmail] = useState(""); 
-  const [handoverEmail, setHandoverEmail] = useState(""); // 💥 New State for Agent Handover
+  const [handoverEmail, setHandoverEmail] = useState(""); 
 
-  // Search Debounce
+  // ফিল্টার স্টেট
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [agentFilter, setAgentFilter] = useState("all");
+  
+  // 🔥 ফিক্স: এজেন্ট লিস্ট আলাদা স্টেটে সেভ রাখা হচ্ছে, যাতে ফিল্টার করলেও না মুছে যায়
+  const [cachedAgentOptions, setCachedAgentOptions] = useState<any[]>([]);
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
     return () => clearTimeout(timer);
@@ -40,16 +46,34 @@ export default function UsersManagementPage() {
 
   const fetchUsers = useCallback((isSilent = false) => {
     if (!isSilent) setLoading(true);
-    fetch(`/api/get-all-users?page=${currentPage}&limit=${itemsPerPage}&search=${encodeURIComponent(debouncedSearch)}&t=${Date.now()}`)
+    
+    const params = new URLSearchParams();
+    params.set("page", currentPage.toString());
+    params.set("limit", itemsPerPage.toString());
+    params.set("search", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (agentFilter !== "all") params.set("agent", agentFilter);
+    params.set("t", Date.now().toString());
+
+    fetch(`/api/get-all-users?${params.toString()}`)
       .then(res => res.json())
       .then(data => {
         if (data.users) setAllUsers(data.users);
         if (data.pagination) setTotalPages(data.pagination.totalPages);
         if (data.stats) setStats(data.stats);
+        
+        // 🔥 ফিক্স: প্রথমবার লোড হওয়ার সময় বা এজেন্ট লিস্ট খালি থাকলে এজেন্টদের ক্যাশ করে রাখছি
+        if (cachedAgentOptions.length === 0 && data.users) {
+           const agents = data.users.filter((u: any) => u.role === 'agent');
+           if (agents.length > 0) {
+             setCachedAgentOptions(agents);
+           }
+        }
+        
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [currentPage, debouncedSearch]);
+  }, [currentPage, debouncedSearch, statusFilter, agentFilter, cachedAgentOptions.length]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -72,7 +96,7 @@ export default function UsersManagementPage() {
     setNewPin(""); 
     setNewApiStatus(user.isApiActive || false); 
     setNewAgentEmail(user.agentEmail || ""); 
-    setHandoverEmail(""); // 💥 Reset handover email
+    setHandoverEmail(""); 
     
     if (user.role === "agent") {
       setCustomMail(user.customAgentMail || ""); 
@@ -108,7 +132,7 @@ export default function UsersManagementPage() {
       maxLimit: makeRole === "agent" ? maxLimit : 100,
       isApiActive: newApiStatus, 
       newAgentEmail: newAgentEmail !== selectedUser.agentEmail ? newAgentEmail : undefined,
-      handoverToEmail: handoverEmail, // 💥 Pass Ownership Transfer Target
+      handoverToEmail: handoverEmail, 
       requesterEmail: adminEmail,
       requesterRole: adminRole
     };
@@ -153,6 +177,38 @@ export default function UsersManagementPage() {
     }
   };
 
+  const handleDeleteUser = async () => {
+    const confirmDelete = window.confirm(`⚠️ DANGER ZONE!\nAre you absolutely sure you want to permanently delete "${selectedUser?.name || 'this user'}"?\nAll their data and balance will be lost. This CANNOT be undone!`);
+    
+    if (confirmDelete) {
+      try {
+        const storedUser = localStorage.getItem("user");
+        const adminEmail = storedUser ? JSON.parse(storedUser).email : "";
+
+        const res = await fetch(`/api/admin/delete-user?email=${selectedUser?.email}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-Email": adminEmail,
+            "X-User-Role": "admin"
+          }
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+          alert(`✅ User has been permanently removed!`);
+          setIsModalOpen(false);
+          fetchUsers(true); 
+        } else {
+          alert(`❌ Failed: ${data.message}`);
+        }
+      } catch (err) {
+        alert("Server Error! Could not delete.");
+      }
+    }
+  };
+
   if (role !== "admin") return <div className="min-h-screen bg-[#0B0F1A] text-white flex items-center justify-center">Access Denied. Admins Only.</div>;
 
   return (
@@ -173,7 +229,6 @@ export default function UsersManagementPage() {
             <p className="text-sm text-[#94A3B8] mt-1">Enterprise Pagination Active (Max 50 per page).</p>
           </div>
           <div className="relative w-full lg:w-auto">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input 
               type="text" 
               value={searchQuery}
@@ -182,32 +237,63 @@ export default function UsersManagementPage() {
                  setCurrentPage(1);
               }}
               placeholder="Search by Name or Email..." 
-              className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#3B82F6]" 
+              className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white px-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#3B82F6]" 
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#8B5CF6]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#8B5CF6]">
             <p className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest mb-1">Total Agents</p>
             <h3 className="text-3xl font-black text-[#8B5CF6]">{stats.totalAgents}</h3>
           </div>
-          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#3B82F6]">
+          <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#3B82F6]">
             <p className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest mb-1">Total Users</p>
             <h3 className="text-3xl font-black text-[#3B82F6]">{stats.totalUsers}</h3>
           </div>
-          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#10B981]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981]">
+          <div className="bg-[#1E293B]/80 border border-[#10B981]/30 p-5 rounded-2xl border-t-2 border-t-[#10B981]">
             <p className="text-[#10B981] text-[10px] font-black uppercase tracking-widest mb-1">Active Accounts</p>
             <h3 className="text-3xl font-black text-[#10B981]">{stats.activeAccounts}</h3>
           </div>
-          <div className="bg-red-500/5 backdrop-blur-xl border border-red-500/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-red-500 relative overflow-hidden">
+          <div className="bg-red-500/5 border border-red-500/30 p-5 rounded-2xl border-t-2 border-t-red-500 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-bl-full"></div>
             <p className="text-red-400 text-[10px] font-black uppercase tracking-widest mb-1">Banned Accounts</p>
             <h3 className="text-3xl font-black text-red-500">{stats.bannedAccounts}</h3>
           </div>
         </div>
 
-        <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[400px]">
+        {/* ফিল্টার বার */}
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#1E293B]/50 border border-[#334155] p-4 rounded-xl">
+          <div>
+            <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Status</label>
+            <select 
+              value={statusFilter} 
+              onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+              className="w-full bg-[#0F172A] border border-[#334155] text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#3B82F6]"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="banned">Banned</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Agent</label>
+            <select 
+              value={agentFilter} 
+              onChange={(e) => { setAgentFilter(e.target.value); setCurrentPage(1); }}
+              className="w-full bg-[#0F172A] border border-[#334155] text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]"
+            >
+              <option value="all">All Agents</option>
+              {/* 🔥 ফিক্স: এখানে cachedAgentOptions ব্যবহার করা হচ্ছে */}
+              {cachedAgentOptions.map(ag => (
+                <option key={ag.id} value={ag.customAgentMail || ag.email}>{ag.name} ({ag.customAgentMail || ag.email})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[400px]">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
               <tr>
@@ -227,13 +313,13 @@ export default function UsersManagementPage() {
                 <tr><td colSpan={7} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
               ) : (
                 allUsers.map((u) => (
-                  <tr key={u.id} className={`hover:bg-[#334155]/20 transition-colors ${u.role === 'agent' ? 'bg-[#8B5CF6]/5' : ''} ${u.status.toLowerCase() === 'banned' ? 'bg-red-500/5' : ''}`}>
+                  <tr key={u.id} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className={`font-bold ${u.status.toLowerCase() === 'banned' ? 'text-red-400 line-through' : 'text-[#E2E8F0]'}`}>{u.name}</p>
+                        <p className="font-bold text-[#E2E8F0]">{u.name}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#3B82F6]/20 text-[#3B82F6] border border-[#3B82F6]/30">{u.uid}</span>
                         {u.isApiActive && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest shadow-[0_0_10px_rgba(168,85,247,0.3)]">API</span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest">API</span>
                         )}
                       </div>
                       <p className="text-[10px] text-[#64748B]">{u.email}</p>
@@ -242,7 +328,7 @@ export default function UsersManagementPage() {
                       {u.role === 'admin' ? (
                         <span className="text-[10px] font-black px-2 py-0.5 bg-[#F43F5E]/10 text-[#F43F5E] rounded border border-[#F43F5E]/30 uppercase">Super Admin</span>
                       ) : u.role === 'agent' ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 bg-[#8B5CF6]/10 text-[#8B5CF6] rounded border border-[#8B5CF6]/30 uppercase tracking-widest shadow-[0_0_10px_rgba(139,92,246,0.2)]">Agent 👑</span>
+                        <span className="text-[10px] font-black px-2 py-0.5 bg-[#8B5CF6]/10 text-[#8B5CF6] rounded border border-[#8B5CF6]/30 uppercase tracking-widest">Agent 👑</span>
                       ) : (
                         <span className="text-xs font-medium text-[#3B82F6]">{u.agentEmail}</span>
                       )}
@@ -251,7 +337,7 @@ export default function UsersManagementPage() {
                     <td className="p-4 font-black text-[#10B981]">৳ {u.balance}</td>
                     <td className="p-4 text-center font-black text-[#00C6FF]">{u.todayOTP}</td>
                     <td className="p-4">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.status.toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : u.status.toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border border-red-500/50' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.status.toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : u.status.toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
                         {u.status}
                       </span>
                     </td>
@@ -325,7 +411,6 @@ export default function UsersManagementPage() {
                 </div>
               )}
 
-              {/* 💥 AGENT OWNERSHIP TRANSFER SECTION (DANGER ZONE) 💥 */}
               {selectedUser.role === 'agent' && isMakingAgent && (
                 <div className="mb-5 p-4 border border-[#F43F5E]/50 bg-[#F43F5E]/5 rounded-xl">
                   <h4 className="text-[11px] font-black text-[#F43F5E] mb-2 uppercase tracking-wider">Handover Network / Demote Agent</h4>
@@ -359,7 +444,6 @@ export default function UsersManagementPage() {
                   </select>
                 </div>
 
-                {/* USER TO ANOTHER AGENT TRANSFER (For Normal Users) */}
                 {role === 'admin' && !isMakingAgent && selectedUser.role === 'user' && (
                   <div>
                     <label className="block text-[10px] text-teal-400 uppercase font-black mb-1">Transfer to Agent (Email)</label>
@@ -418,6 +502,15 @@ export default function UsersManagementPage() {
                   </button>
                 </div>
               </form>
+
+              {selectedUser?.role !== 'admin' && selectedUser?.role !== 'agent' && (
+                <div className="pt-4 border-t border-[#334155]/50 mt-4 text-center">
+                  <button type="button" onClick={handleDeleteUser} className="text-xs font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1.5 py-2">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    Permanently delete this user
+                  </button>
+                </div>
+              )}
 
             </div>
           </div>

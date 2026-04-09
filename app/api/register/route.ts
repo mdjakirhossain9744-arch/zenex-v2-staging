@@ -40,12 +40,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid Agent Email! Please contact an authorized agent." }, { status: 400 });
     }
 
+    // 🔥 এই অংশটি আপডেট করা হয়েছে 🔥
+    // এখন থেকে শুধুমাত্র "active" স্ট্যাটাসের ইউজাররা সিট কাউন্ট করবে, "pending" কাউন্ট করবে না।
     const totalAgentUsers = await User.countDocuments({
       $or: [
         { agentEmail: validAgent.email }, 
         { agentEmail: validAgent.customAgentMail }
       ],
-      role: "user"
+      role: "user",
+      status: "active" // 💥 এই লাইনটি যোগ করা হয়েছে
     });
 
     const maxLimit = validAgent.agentMaxUsers || 100;

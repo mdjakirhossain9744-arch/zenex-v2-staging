@@ -17,7 +17,6 @@ export default function UsersDirectoryPage() {
   const [agentMaxLimit, setAgentMaxLimit] = useState(100);
   const [loading, setLoading] = useState(true);
 
-  // 💥 Pagination State (40 Items / Page) 💥
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsersCount, setTotalUsersCount] = useState(0);
@@ -30,22 +29,24 @@ export default function UsersDirectoryPage() {
   const [newStatus, setNewStatus] = useState("active");
   const [isSaving, setIsSaving] = useState(false);
 
+  const [statusFilter, setStatusFilter] = useState("all");
+
   // Search Debounce
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset page to 1 when search changes
+  // Reset page to 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, statusFilter]);
 
   const fetchNetworkUsers = useCallback((email: string, userRole: string, isSilent = false) => {
     if (!isSilent) setLoading(true); 
 
     if (userRole === "admin") {
-      fetch(`/api/get-all-users?page=${currentPage}&limit=${itemsPerPage}&search=${encodeURIComponent(debouncedSearch)}&t=${Date.now()}`)
+      fetch(`/api/get-all-users?page=${currentPage}&limit=${itemsPerPage}&search=${encodeURIComponent(debouncedSearch)}&status=${statusFilter}&t=${Date.now()}`)
         .then(res => res.json())
         .then(data => {
           if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
@@ -64,7 +65,7 @@ export default function UsersDirectoryPage() {
       fetch(`/api/get-agent-users?t=${Date.now()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentEmail: email, page: currentPage, limit: itemsPerPage, search: debouncedSearch })
+        body: JSON.stringify({ agentEmail: email, page: currentPage, limit: itemsPerPage, search: debouncedSearch, status: statusFilter })
       })
         .then(res => res.json())
         .then(data => {
@@ -80,7 +81,7 @@ export default function UsersDirectoryPage() {
         })
         .catch(err => { console.error(err); setLoading(false); });
     }
-  }, [currentPage, debouncedSearch]);
+  }, [currentPage, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -106,7 +107,7 @@ export default function UsersDirectoryPage() {
     }
   }, [fetchNetworkUsers]);
 
-  const isSeatFull = role === "agent" && totalUsersCount >= agentMaxLimit;
+  const isSeatFull = role === "agent" && stats.activeUsers >= agentMaxLimit;
 
   const openManageModal = (user: any) => {
     if(!user) return;
@@ -164,14 +165,18 @@ export default function UsersDirectoryPage() {
     
     if (confirmDelete) {
       try {
-        const res = await fetch("/api/delete-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: selectedUser?.email, requesterRole: role })
+        const res = await fetch(`/api/admin/delete-user?email=${selectedUser?.email}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-Email": userEmail,
+            "X-User-Role": role
+          }
         });
+        
         const data = await res.json();
         
-        if (data.success) {
+        if (res.ok && data.success) {
           alert(`✅ User has been permanently removed!`);
           setIsModalOpen(false);
           fetchNetworkUsers(userEmail, role, true); 
@@ -212,37 +217,55 @@ export default function UsersDirectoryPage() {
               {role === "admin" ? "Master control panel for all registered users across the system." : "Manage your team, set custom OTP rates, and update passwords. (Max 40/Page)"}
             </p>
           </div>
-          <div className="relative w-full lg:w-auto">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input 
-              type="text" 
-              value={searchQuery}
-              onChange={(e) => {
-                 setSearchQuery(e.target.value);
-                 setCurrentPage(1); // 💥 BUG FIX: Force page 1 instantly on typing
-              }}
-              placeholder="Search by ID, Name or Email..." 
-              className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#A855F7] transition-colors" 
-            />
+          
+          <div className="flex items-center gap-3 w-full lg:w-auto">
+            <div className="relative flex-1 lg:min-w-[300px]">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input 
+                type="text" 
+                value={searchQuery}
+                onChange={(e) => {
+                   setSearchQuery(e.target.value);
+                }}
+                placeholder="Search by ID, Name or Email..." 
+                className="w-full bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#A855F7] transition-colors" 
+              />
+            </div>
+            
+            <select 
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-[#0F172A] border border-[#334155] text-white font-bold px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#A855F7] transition-colors"
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="banned">Banned</option>
+            </select>
           </div>
         </div>
 
+        {/* স্ট্যাটস কার্ড সেকশন (আগের মতোই) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className={`bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg relative overflow-hidden border-t-2 ${role === 'admin' ? 'border-t-[#F43F5E]' : 'border-t-[#A855F7]'}`}>
+          
+          <div className={`bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 ${role === 'admin' ? 'border-t-[#F43F5E]' : 'border-t-[#A855F7]'}`}>
             <p className="text-[#94A3B8] text-xs font-bold uppercase tracking-wider mb-1">Total Users</p>
             <h3 className="text-2xl md:text-3xl font-black text-white">
-              {totalUsersCount} <span className="text-sm text-[#64748B] font-medium">{role === 'admin' ? '' : `/ ${agentMaxLimit}`}</span>
+              {totalUsersCount}
+            </h3>
+          </div>
+          
+          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#10B981]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981] relative overflow-hidden">
+            <p className="text-[#10B981] text-xs font-bold uppercase tracking-wider mb-1">Active Users</p>
+            <h3 className="text-2xl md:text-3xl font-black text-[#10B981]">
+              {stats.activeUsers} 
+              <span className="text-sm text-[#64748B] font-medium ml-1">{role === 'agent' ? `/ ${agentMaxLimit}` : ''}</span>
             </h3>
             {isSeatFull && (
               <span className="inline-block mt-2 px-2 py-0.5 bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 text-[10px] font-black uppercase tracking-widest rounded animate-pulse">
                 Seat Full
               </span>
             )}
-          </div>
-          
-          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#10B981]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981]">
-            <p className="text-[#10B981] text-xs font-bold uppercase tracking-wider mb-1">Active Users</p>
-            <h3 className="text-2xl md:text-3xl font-black text-[#10B981]">{stats.activeUsers}</h3>
           </div>
           
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#EAB308]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#EAB308]">
@@ -258,6 +281,7 @@ export default function UsersDirectoryPage() {
           </div>
         </div>
 
+        {/* টেবিল (আগের মতোই বড় এবং স্পেসড) */}
         <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[400px]">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
@@ -326,7 +350,7 @@ export default function UsersDirectoryPage() {
 
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative">
+            <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative max-h-[90vh] overflow-y-auto">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
@@ -375,12 +399,14 @@ export default function UsersDirectoryPage() {
                   {isSaving ? "Saving..." : "Update User Details"}
                 </button>
 
-                <div className="pt-2 text-center">
-                  <button type="button" onClick={handleDeleteUser} className="text-[10px] font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    Permanently delete this user
-                  </button>
-                </div>
+                {selectedUser?.role !== 'admin' && selectedUser?.role !== 'agent' && (
+                  <div className="pt-2 text-center">
+                    <button type="button" onClick={handleDeleteUser} className="text-[10px] font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      Permanently delete this user
+                    </button>
+                  </div>
+                )}
               </form>
 
             </div>

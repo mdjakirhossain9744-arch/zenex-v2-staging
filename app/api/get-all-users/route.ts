@@ -35,10 +35,14 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const rawSearchQuery = searchParams.get("search")?.trim() || "";
+    
+    // ফিল্টার প্যারামিটার
+    const statusFilter = searchParams.get("status")?.trim().toLowerCase() || "all";
+    const agentFilter = searchParams.get("agent")?.trim() || "all";
 
     let query: any = {};
+    
     if (rawSearchQuery) {
-        // 💥 Safe Regex Search: Prevents 500 crashes if user types +, *, (, etc.
         const safeSearch = rawSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         query.$or = [
             { fullName: { $regex: safeSearch, $options: "i" } },
@@ -46,8 +50,16 @@ export async function GET(req: NextRequest) {
         ];
     }
 
+    if (statusFilter && statusFilter !== "all") {
+        query.status = statusFilter;
+    }
+
+    if (agentFilter && agentFilter !== "all") {
+        query.agentEmail = agentFilter;
+    }
+
     const skip = (page - 1) * limit;
-    const totalUsers = await User.countDocuments(query);
+    const totalUsersInQuery = await User.countDocuments(query); // Pagination এর জন্য
     
     const users = await User.find(query)
       .select("-password")
@@ -74,22 +86,18 @@ export async function GET(req: NextRequest) {
     const otpCounts: Record<string, number> = {};
     
     orders.forEach((o: any) => {
-        // 💥 UPDATE: Use updatedAt for accurate Today's OTP count matching the dashboard 💥
         const finalDateStr = o.updatedAt 
             ? getBDDateString(o.updatedAt) 
             : (o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date())));
         
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
-            
-            // 💥 STRICT OTP COUNTER: Only count unique/real OTPs 💥
             const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
             const uniqueCodes = new Set();
             msgArray.forEach((msg: string) => {
                 const match = msg.match(/\b\d{4,8}\b/);
                 uniqueCodes.add(match ? match[0] : msg.trim());
             });
-
             const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
             otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         }
@@ -117,15 +125,26 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Global Stats for the top cards
+    // ✅ GLOBAL STATS (ড্যাশবোর্ডের জন্য সব সময় সঠিক ডাটা)
+    const globalTotalUsers = await User.countDocuments({ role: "user" });
     const totalAgents = await User.countDocuments({ role: "agent" });
     const activeAccounts = await User.countDocuments({ status: "active" });
     const bannedAccounts = await User.countDocuments({ status: "banned" });
+    
+    // System Liability (সব ইউজার এবং এজেন্টের ব্যালেন্সের যোগফল)
+    const allBalanceUsers = await User.find({ role: { $in: ["user", "agent"] } }).select("balance").lean();
+    const systemLiability = allBalanceUsers.reduce((sum: number, u: any) => sum + (Number(u.balance) || 0), 0);
 
     return NextResponse.json({ 
         users: formattedUsers,
-        pagination: { total: totalUsers, page, limit, totalPages: Math.ceil(totalUsers / limit) || 1 },
-        stats: { totalUsers, totalAgents, activeAccounts, bannedAccounts }
+        pagination: { total: totalUsersInQuery, page, limit, totalPages: Math.ceil(totalUsersInQuery / limit) || 1 },
+        stats: { 
+          totalUsers: globalTotalUsers, 
+          totalAgents, 
+          activeAccounts, 
+          bannedAccounts, 
+          systemLiability: systemLiability.toFixed(2) 
+        }
     }, { status: 200 });
   } catch (error: any) { 
     return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 }); 

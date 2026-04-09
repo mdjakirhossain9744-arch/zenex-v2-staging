@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     
     const body = await req.json();
-    const { agentEmail, page = 1, limit = 40, search = "" } = body; 
+    // ✅ status প্যারামিটার যোগ করা হয়েছে
+    const { agentEmail, page = 1, limit = 40, search = "", status = "all" } = body; 
 
     const agent = await User.findOne({
       $or: [{ email: agentEmail }, { customAgentMail: agentEmail }],
@@ -28,25 +29,35 @@ export async function POST(req: NextRequest) {
 
     if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
 
+    // বেস কোয়েরি (এজেন্টের সব ইউজার)
+    const agentMatch = { $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }] };
+    const roleMatch = { role: "user" };
+
     // 💥 Safe Regex Search (Hacker/Crash proof) 💥
-    let query: any = {
-      $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }],
-      role: "user"
-    };
+    let query: any = { ...agentMatch, ...roleMatch };
 
     if (search) {
       const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query = {
         $and: [
-          { $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }] },
-          { role: "user" },
+          agentMatch,
+          roleMatch,
           { $or: [{ fullName: { $regex: safeSearch, $options: "i" } }, { email: { $regex: safeSearch, $options: "i" } }] }
         ]
       };
     }
 
+    // ✅ স্ট্যাটাস ফিল্টার লজিক (শুধুমাত্র টেবিলের ডাটার জন্য)
+    if (status && status !== "all") {
+      if (query.$and) {
+        query.$and.push({ status: status });
+      } else {
+        query.status = status;
+      }
+    }
+
     const skip = (page - 1) * limit;
-    const totalUsers = await User.countDocuments(query);
+    const filteredTotal = await User.countDocuments(query); // পেজিনেশনের জন্য ফিল্টার করা ডাটা
     
     const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
@@ -64,7 +75,6 @@ export async function POST(req: NextRequest) {
     const otpCounts: Record<string, number> = {};
     
     orders.forEach((o: any) => {
-        // 💥 USE updatedAt FOR ACCURATE COUNT MATCHING DASHBOARD 💥
         const finalDateStr = o.updatedAt 
             ? getBDDateString(o.updatedAt) 
             : (o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date())));
@@ -72,7 +82,6 @@ export async function POST(req: NextRequest) {
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
             
-            // 💥 STRICT UNIQUE OTP COUNTER 💥
             const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
             const uniqueCodes = new Set();
             msgArray.forEach((msg: string) => {
@@ -101,14 +110,17 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const activeUsers = await User.countDocuments({ ...query, status: "active" });
-    const pendingUsers = await User.countDocuments({ ...query, status: "pending" });
-    const bannedUsers = await User.countDocuments({ ...query, status: "banned" });
+    // ✅ গ্লোবাল স্ট্যাটস (ফিল্টার ধরলেও কার্ডে সবসময় মূল কাউন্ট থাকবে)
+    const globalQuery = { ...agentMatch, ...roleMatch };
+    const globalTotal = await User.countDocuments(globalQuery);
+    const activeUsers = await User.countDocuments({ ...globalQuery, status: "active" });
+    const pendingUsers = await User.countDocuments({ ...globalQuery, status: "pending" });
+    const bannedUsers = await User.countDocuments({ ...globalQuery, status: "banned" });
 
     return NextResponse.json({ 
         users: formattedUsers,
-        pagination: { total: totalUsers, page, limit, totalPages: Math.ceil(totalUsers / limit) || 1 },
-        stats: { activeUsers, pendingUsers, bannedUsers },
+        pagination: { total: filteredTotal, page, limit, totalPages: Math.ceil(filteredTotal / limit) || 1 },
+        stats: { activeUsers, pendingUsers, bannedUsers, globalTotal },
         maxLimit: agent.agentMaxUsers || 100,
         agentRate: agent.otpRate || 0
     }, { status: 200 });
