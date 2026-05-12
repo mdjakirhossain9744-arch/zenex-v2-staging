@@ -22,6 +22,7 @@ export default function RegisterPage() {
   });
   const [progress, setProgress] = useState(0);
 
+  // 💥 Loop Protection 💥
   useEffect(() => {
     const verifySession = async () => {
       const userStr = localStorage.getItem("user");
@@ -59,7 +60,6 @@ export default function RegisterPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    // মোবাইলের কিবোর্ডের সমস্যা সমাধানের জন্য রিয়েল-টাইম ক্লিনার
     if (name === "withdrawPin") {
       setFormData({ ...formData, [name]: value.replace(/\D/g, '').slice(0, 4) });
     } else if (name === "email" || name === "agentEmail" || name === "telegram" || name === "mobile") {
@@ -71,7 +71,7 @@ export default function RegisterPage() {
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 4000);
+    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 5000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -81,8 +81,7 @@ export default function RegisterPage() {
       return;
     }
     
-    // 💥 Magic: Payload Sanitizer for Mobile Keyboards 💥
-    // মোবাইল থেকে যাই আসুক না কেন, সব স্পেস এবং ভুল ক্যারেক্টার মুছে একদম ক্লিন করে সার্ভারে পাঠাবে
+    // 💥 Payload Sanitizer: মোবাইলের অটোমেটিক স্পেসগুলো কেটে সার্ভারে ফ্রেশ ডেটা পাঠাবে 💥
     const cleanData = {
       ...formData,
       fullName: formData.fullName.trim(),
@@ -100,18 +99,25 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
+      // 💥 15 Seconds Timeout Protection 💥
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cleanData),
+        signal: controller.signal
       });
 
-      // 💥 সার্ভার এরর হলে যেন অ্যাপ হ্যাং না করে তার প্রোটেকশন 💥
+      clearTimeout(timeoutId); // সার্ভার উত্তর দিলে টাইমআউট বাতিল হবে
+
       let data;
-      try {
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
         data = await res.json();
-      } catch (err) {
-        throw new Error("Server returned an invalid response (HTML instead of JSON). Check inputs.");
+      } else {
+        throw new Error("Invalid Server Response");
       }
 
       if (res.ok) {
@@ -121,9 +127,13 @@ export default function RegisterPage() {
         showToast(data.message || "Registration Failed!", "error");
       }
     } catch (error: any) {
-      showToast(error.message || "Network/Server Error! Please try again.", "error");
+      if (error.name === 'AbortError') {
+        showToast(lang === "EN" ? "Server Timeout! Network is slow or database is busy." : "সার্ভার টাইমআউট! আপনার নেটওয়ার্ক স্লো অথবা সার্ভার বিজি।", "error");
+      } else {
+        showToast(error.message || "Network/Server Error! Please try again.", "error");
+      }
     } finally {
-      setLoading(false);
+      setLoading(false); // বাটনকে পুনরায় ক্লিক করার জন্য ফ্রি করে দেওয়া হলো
     }
   };
 
