@@ -22,7 +22,6 @@ export default function RegisterPage() {
   });
   const [progress, setProgress] = useState(0);
 
-  // 💥 Loop Protection 💥
   useEffect(() => {
     const verifySession = async () => {
       const userStr = localStorage.getItem("user");
@@ -81,7 +80,6 @@ export default function RegisterPage() {
       return;
     }
     
-    // 💥 Payload Sanitizer: মোবাইলের অটোমেটিক স্পেসগুলো কেটে সার্ভারে ফ্রেশ ডেটা পাঠাবে 💥
     const cleanData = {
       ...formData,
       fullName: formData.fullName.trim(),
@@ -99,7 +97,6 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      // 💥 15 Seconds Timeout Protection 💥
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -110,7 +107,7 @@ export default function RegisterPage() {
         signal: controller.signal
       });
 
-      clearTimeout(timeoutId); // সার্ভার উত্তর দিলে টাইমআউট বাতিল হবে
+      clearTimeout(timeoutId);
 
       let data;
       const contentType = res.headers.get("content-type");
@@ -124,16 +121,16 @@ export default function RegisterPage() {
         showToast(lang === "EN" ? "Account Created Successfully!" : "সফলভাবে একাউন্ট তৈরি হয়েছে!", "success");
         setTimeout(() => window.location.href = "/login", 2000);
       } else {
-        showToast(data.message || "Registration Failed!", "error");
+        showToast(data.message || (lang === "EN" ? "Registration Failed!" : "একাউন্ট তৈরি ব্যর্থ হয়েছে!"), "error");
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
         showToast(lang === "EN" ? "Server Timeout! Network is slow or database is busy." : "সার্ভার টাইমআউট! আপনার নেটওয়ার্ক স্লো অথবা সার্ভার বিজি।", "error");
       } else {
-        showToast(error.message || "Network/Server Error! Please try again.", "error");
+        showToast(lang === "EN" ? "Network/Server Error! Please try again." : "নেটওয়ার্ক/সার্ভার এরর! আবার চেষ্টা করুন।", "error");
       }
     } finally {
-      setLoading(false); // বাটনকে পুনরায় ক্লিক করার জন্য ফ্রি করে দেওয়া হলো
+      setLoading(false);
     }
   };
 
@@ -159,7 +156,7 @@ export default function RegisterPage() {
   return (
     <div className="bg-[#0B0F1A] text-slate-200 font-sans relative overflow-x-hidden">
       
-      {/* 💥 Mobile Fixed Toast: মোবাইলে যেন ঠিক মাঝখানে এরর মেসেজ দেখায় 💥 */}
+      {/* 💥 Mobile Fixed Toast 💥 */}
       <div className={`fixed top-5 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-sm transform transition-all duration-500 ease-out ${toast.show ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0 pointer-events-none"}`}>
         <div className={`px-4 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
           <div className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>

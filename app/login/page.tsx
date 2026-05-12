@@ -14,18 +14,15 @@ export default function LoginPage() {
 
   const [formData, setFormData] = useState({ emailOrPhone: "", password: "" });
 
-  // 💥 Ultimate Loop Protection (API Verification) 💥
+  // 💥 Loop Protection 💥
   useEffect(() => {
     const verifySession = async () => {
       const userStr = localStorage.getItem("user");
       if (userStr) {
         try {
           const res = await fetch("/api/check-session", { method: "GET" });
-          if (res.ok) {
-            router.push("/"); // সেশন ঠিক থাকলে ড্যাশবোর্ডে যাবে
-          } else {
-            localStorage.removeItem("user"); // সেশন না থাকলে শুধু ডেটা মুছবে
-          }
+          if (res.ok) router.push("/");
+          else localStorage.removeItem("user");
         } catch (e) {
           localStorage.removeItem("user");
         }
@@ -35,12 +32,18 @@ export default function LoginPage() {
   }, [router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    // লগিন করার সময়ও ইমেইল/ফোনে কোনো স্পেস থাকলে তা কেটে দেবে
+    if (name === "emailOrPhone") {
+      setFormData({ ...formData, [name]: value.replace(/\s/g, "") });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3000);
+    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 4000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,7 +58,10 @@ export default function LoginPage() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          emailOrPhone: formData.emailOrPhone.toLowerCase()
+        }),
       });
 
       const data = await res.json();
@@ -67,10 +73,11 @@ export default function LoginPage() {
           window.location.href = "/"; 
         }, 1500);
       } else {
-        showToast(data.message, "error");
+        // ডাটাবেস থেকে আসা মেসেজ যদি থাকে, না হলে ডিফল্ট ট্রান্সলেশন মেসেজ
+        showToast(data.message || (lang === "EN" ? "Login Failed!" : "লগিন ব্যর্থ হয়েছে!"), "error");
       }
     } catch (error) {
-      showToast("Network Error! Please try again.", "error");
+      showToast(lang === "EN" ? "Network Error! Please try again." : "নেটওয়ার্ক এরর! আবার চেষ্টা করুন।", "error");
     } finally {
       setLoading(false);
     }
@@ -93,11 +100,11 @@ export default function LoginPage() {
   return (
     <div className="bg-[#0B0F1A] text-slate-200 font-sans relative overflow-x-hidden">
       
-      {/* Toast Notification */}
-      <div className={`fixed top-5 right-5 z-50 transform transition-all duration-500 ease-out ${toast.show ? "translate-x-0 opacity-100" : "translate-x-10 opacity-0 pointer-events-none"}`}>
-        <div className={`px-6 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
-          <div className={`w-2 h-2 rounded-full animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>
-          <p className="text-sm font-medium">{toast.message}</p>
+      {/* 💥 Mobile Friendly Toast for Login Page 💥 */}
+      <div className={`fixed top-5 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-sm transform transition-all duration-500 ease-out ${toast.show ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0 pointer-events-none"}`}>
+        <div className={`px-4 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
+          <div className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+          <p className="text-sm font-medium leading-snug">{toast.message}</p>
         </div>
       </div>
 
@@ -121,7 +128,6 @@ export default function LoginPage() {
         </div>
       )}
 
-      {/* Background Effects */}
       <div className="absolute top-[10%] right-[10%] w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none"></div>
       <div className="absolute bottom-[10%] left-[10%] w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
 
