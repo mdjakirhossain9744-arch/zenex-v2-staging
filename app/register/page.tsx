@@ -22,18 +22,14 @@ export default function RegisterPage() {
   });
   const [progress, setProgress] = useState(0);
 
-  // 💥 Ultimate Loop Protection (API Verification) 💥
   useEffect(() => {
     const verifySession = async () => {
       const userStr = localStorage.getItem("user");
       if (userStr) {
         try {
           const res = await fetch("/api/check-session", { method: "GET" });
-          if (res.ok) {
-            router.push("/");
-          } else {
-            localStorage.removeItem("user");
-          }
+          if (res.ok) router.push("/");
+          else localStorage.removeItem("user");
         } catch (e) {
           localStorage.removeItem("user");
         }
@@ -52,22 +48,22 @@ export default function RegisterPage() {
     const totalFields = 8; 
     if (formData.fullName.trim().length >= 3) filled++;
     if (formData.mobile.trim().length >= 10) filled++;
-    if (formData.telegram.trim().length >= 3 && !/\s/.test(formData.telegram)) filled++;
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) filled++;
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.agentEmail)) filled++;
+    if (formData.telegram.trim().length >= 3) filled++;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) filled++;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.agentEmail.trim())) filled++;
     if (formData.password.length >= 6) filled++;
-    if (formData.withdrawPin.trim().length === 4 && /^\d+$/.test(formData.withdrawPin)) filled++;
+    if (formData.withdrawPin.trim().length === 4) filled++;
     if (parseInt(formData.captcha) === (num1 + num2)) filled++;
     setProgress(Math.round((filled / totalFields) * 100));
   }, [formData, num1, num2]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    // মোবাইলের কিবোর্ডের সমস্যা সমাধানের জন্য রিয়েল-টাইম ক্লিনার
     if (name === "withdrawPin") {
-      const numericValue = value.replace(/\D/g, ''); 
-      if (numericValue.length <= 4) {
-        setFormData({ ...formData, [name]: numericValue });
-      }
+      setFormData({ ...formData, [name]: value.replace(/\D/g, '').slice(0, 4) });
+    } else if (name === "email" || name === "agentEmail" || name === "telegram" || name === "mobile") {
+      setFormData({ ...formData, [name]: value.replace(/\s/g, "") });
     } else {
       setFormData({ ...formData, [name]: value });
     }
@@ -85,7 +81,19 @@ export default function RegisterPage() {
       return;
     }
     
-    if (formData.withdrawPin.length !== 4) {
+    // 💥 Magic: Payload Sanitizer for Mobile Keyboards 💥
+    // মোবাইল থেকে যাই আসুক না কেন, সব স্পেস এবং ভুল ক্যারেক্টার মুছে একদম ক্লিন করে সার্ভারে পাঠাবে
+    const cleanData = {
+      ...formData,
+      fullName: formData.fullName.trim(),
+      mobile: formData.mobile.replace(/[^0-9+]/g, ''),
+      telegram: formData.telegram.replace(/\s/g, '').replace('@', ''),
+      email: formData.email.replace(/\s/g, '').toLowerCase(),
+      agentEmail: formData.agentEmail.replace(/\s/g, '').toLowerCase(),
+      withdrawPin: formData.withdrawPin.trim()
+    };
+
+    if (cleanData.withdrawPin.length !== 4) {
       showToast(lang === "EN" ? "PIN must be exactly 4 digits!" : "পিন অবশ্যই ৪ ডিজিটের হতে হবে!", "error");
       return;
     }
@@ -95,19 +103,25 @@ export default function RegisterPage() {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(cleanData),
       });
 
-      const data = await res.json();
+      // 💥 সার্ভার এরর হলে যেন অ্যাপ হ্যাং না করে তার প্রোটেকশন 💥
+      let data;
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error("Server returned an invalid response (HTML instead of JSON). Check inputs.");
+      }
 
       if (res.ok) {
         showToast(lang === "EN" ? "Account Created Successfully!" : "সফলভাবে একাউন্ট তৈরি হয়েছে!", "success");
         setTimeout(() => window.location.href = "/login", 2000);
       } else {
-        showToast(data.message, "error");
+        showToast(data.message || "Registration Failed!", "error");
       }
-    } catch (error) {
-      showToast(lang === "EN" ? "Network Error! Please try again." : "সার্ভার এরর! আবার চেষ্টা করুন।", "error");
+    } catch (error: any) {
+      showToast(error.message || "Network/Server Error! Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -135,11 +149,11 @@ export default function RegisterPage() {
   return (
     <div className="bg-[#0B0F1A] text-slate-200 font-sans relative overflow-x-hidden">
       
-      {/* Toast Notification */}
-      <div className={`fixed top-5 right-5 z-50 transform transition-all duration-500 ease-out ${toast.show ? "translate-x-0 opacity-100" : "translate-x-10 opacity-0 pointer-events-none"}`}>
-        <div className={`px-6 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
-          <div className={`w-2 h-2 rounded-full animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>
-          <p className="text-sm font-medium">{toast.message}</p>
+      {/* 💥 Mobile Fixed Toast: মোবাইলে যেন ঠিক মাঝখানে এরর মেসেজ দেখায় 💥 */}
+      <div className={`fixed top-5 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-sm transform transition-all duration-500 ease-out ${toast.show ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0 pointer-events-none"}`}>
+        <div className={`px-4 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
+          <div className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+          <p className="text-sm font-medium leading-snug">{toast.message}</p>
         </div>
       </div>
 
@@ -147,7 +161,7 @@ export default function RegisterPage() {
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-cyan-600/10 rounded-full blur-[100px] pointer-events-none"></div>
 
       <div className="min-h-screen w-full flex items-center justify-center p-4 relative z-10 my-4 md:my-0">
-        <div className="w-full max-w-lg bg-[#111827]/80 backdrop-blur-xl border border-slate-700/50 p-8 rounded-2xl shadow-2xl">
+        <div className="w-full max-w-lg bg-[#111827]/80 backdrop-blur-xl border border-slate-700/50 p-6 md:p-8 rounded-2xl shadow-2xl">
           
           <div className="text-center mb-6">
             <div className="flex justify-between items-center text-xs text-slate-400 mb-4">
@@ -210,7 +224,7 @@ export default function RegisterPage() {
               </div>
               <div>
                 <label className="block text-xs text-cyan-400 mb-1">{t.agentEmail}</label>
-                <input type="email" name="agentEmail" onChange={handleChange} placeholder="agent@zenexnetwork.com" className="w-full bg-[#0F172A] border border-cyan-500/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.1)] transition text-white" required />
+                <input type="email" name="agentEmail" onChange={handleChange} placeholder="agent@email.com" className="w-full bg-[#0F172A] border border-cyan-500/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.1)] transition text-white" required />
               </div>
             </div>
 
