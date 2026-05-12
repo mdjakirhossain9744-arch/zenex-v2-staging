@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import GlobalFooter from "../components/GlobalFooter";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [lang, setLang] = useState("EN");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -12,13 +14,25 @@ export default function LoginPage() {
 
   const [formData, setFormData] = useState({ emailOrPhone: "", password: "" });
 
-  // 💥 Magic 1: Auto Redirect if already logged in 💥
+  // 💥 Ultimate Loop Protection (API Verification) 💥
   useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (user) {
-      window.location.href = "/";
-    }
-  }, []);
+    const verifySession = async () => {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        try {
+          const res = await fetch("/api/check-session", { method: "GET" });
+          if (res.ok) {
+            router.push("/"); // সেশন ঠিক থাকলে ড্যাশবোর্ডে যাবে
+          } else {
+            localStorage.removeItem("user"); // সেশন না থাকলে শুধু ডেটা মুছবে
+          }
+        } catch (e) {
+          localStorage.removeItem("user");
+        }
+      }
+    };
+    verifySession();
+  }, [router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -111,7 +125,6 @@ export default function LoginPage() {
       <div className="absolute top-[10%] right-[10%] w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none"></div>
       <div className="absolute bottom-[10%] left-[10%] w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
 
-      {/* 💥 Magic 2: 100vh height so Footer stays perfectly hidden below the screen 💥 */}
       <div className="min-h-screen w-full flex items-center justify-center p-4 relative z-10">
         <div className="w-full max-w-md bg-[#111827]/80 backdrop-blur-xl border border-slate-700/50 p-8 rounded-2xl shadow-2xl">
           <div className="text-center mb-8">
@@ -150,7 +163,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Global Footer (Will only show if scrolled down) */}
       <div className="w-full relative z-10 bg-[#0B0F1A]">
         <GlobalFooter />
       </div>

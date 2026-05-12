@@ -22,13 +22,25 @@ export default function RegisterPage() {
   });
   const [progress, setProgress] = useState(0);
 
-  // 💥 Auto Redirect if already logged in 💥
+  // 💥 Ultimate Loop Protection (API Verification) 💥
   useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (user) {
-      window.location.href = "/";
-    }
-  }, []);
+    const verifySession = async () => {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        try {
+          const res = await fetch("/api/check-session", { method: "GET" });
+          if (res.ok) {
+            router.push("/");
+          } else {
+            localStorage.removeItem("user");
+          }
+        } catch (e) {
+          localStorage.removeItem("user");
+        }
+      }
+    };
+    verifySession();
+  }, [router]);
 
   useEffect(() => {
     setNum1(Math.floor(Math.random() * 10) + 1);
@@ -134,7 +146,6 @@ export default function RegisterPage() {
       <div className="absolute top-0 left-0 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] pointer-events-none"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-cyan-600/10 rounded-full blur-[100px] pointer-events-none"></div>
 
-      {/* Main Viewport Card Area */}
       <div className="min-h-screen w-full flex items-center justify-center p-4 relative z-10 my-4 md:my-0">
         <div className="w-full max-w-lg bg-[#111827]/80 backdrop-blur-xl border border-slate-700/50 p-8 rounded-2xl shadow-2xl">
           
@@ -274,7 +285,6 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* Global Footer (Visible only when scrolled down) */}
       <div className="w-full relative z-10 bg-[#0B0F1A]">
         <GlobalFooter />
       </div>
