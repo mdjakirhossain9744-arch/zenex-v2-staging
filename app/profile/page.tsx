@@ -28,7 +28,7 @@ export default function Profile() {
 
   const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
 
-  // 💥 API Key States 💥
+  // API Key States
   const [apiKey, setApiKey] = useState("");
   const [isApiActive, setIsApiActive] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -46,7 +46,7 @@ export default function Profile() {
         status: parsedUser.status === "pending" ? "Pending Approval" : "Account Active"
       }));
 
-      // 💥 ডাটাবেস থেকে আসল ডাটা আনা (ইউজার, তার এজেন্ট এবং গ্লোবাল লিংক একসাথে) 💥
+      // ডাটাবেস থেকে আসল ডাটা আনা
       fetch("/api/get-user-details", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -243,8 +243,8 @@ export default function Profile() {
 
            <div className="lg:col-span-2 flex flex-col gap-8">
               
-              {/* 💥 Developer API Access Card 💥 */}
-              <div className="bg-[#0F172A] border border-[#334155] p-6 md:p-8 rounded-3xl shadow-[inset_0_0_40px_rgba(0,0,0,0.3)] relative overflow-hidden">
+              {/* 💥 Developer API Access Card (Added id="api-access") 💥 */}
+              <div id="api-access" className="bg-[#0F172A] border border-[#334155] p-6 md:p-8 rounded-3xl shadow-[inset_0_0_40px_rgba(0,0,0,0.3)] relative overflow-hidden scroll-mt-24">
                  <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#8B5CF6] blur-[100px] opacity-20"></div>
                  
                  <div className="flex justify-between items-center mb-6">
@@ -292,7 +292,7 @@ export default function Profile() {
                  </div>
                  <div className="mt-4 flex justify-between items-center">
                     <span className="text-[10px] font-bold text-[#64748B]">Do not share this key with anyone.</span>
-                    <a href="/api-docs" className="text-[10px] font-black text-[#3B82F6] hover:underline uppercase tracking-widest flex items-center gap-1">
+                    <a href="/api-docs" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-[#3B82F6] hover:underline uppercase tracking-widest flex items-center gap-1">
                       Read API Docs <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                     </a>
                  </div>
@@ -325,7 +325,6 @@ export default function Profile() {
                       <label className="block text-[10px] font-black text-[#64748B] uppercase tracking-widest mb-2">Phone Number</label>
                       <input type="text" value={profileData.phone} disabled={!isEditingProfile} onChange={(e) => setProfileData({...profileData, phone: e.target.value})} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 transition-colors font-bold" />
                    </div>
-                   {/* 💥 ইমেইল চেঞ্জ করা বন্ধ করা হলো 💥 */}
                    <div className="md:col-span-2 relative group">
                       <label className="block text-[10px] font-black text-[#64748B] uppercase tracking-widest mb-2">Email Address (Read Only)</label>
                       <input type="email" value={profileData.email} disabled className="w-full bg-[#0F172A]/50 border border-[#334155]/50 rounded-xl px-4 py-3 text-[#EAB308]/70 cursor-not-allowed font-medium" />

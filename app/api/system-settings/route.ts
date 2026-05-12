@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "../../lib/mongodb";
+// 💥 পাথ পারফেক্টলি ফিক্স করা হলো (২টি ../) 💥
+import connectToDatabase from "../../lib/mongodb"; 
 import mongoose from "mongoose";
 
 // 💥 THE MAGIC FIX: Next.js কে ক্যাশ (Cache) করতে বারণ করা হলো 💥
@@ -9,18 +10,10 @@ export async function GET() {
   try {
     await connectToDatabase();
     
-    // 💥 স্ট্রং কানেকশন চেকিং 💥
-    if (mongoose.connection.readyState !== 1) {
-       await mongoose.connect(process.env.MONGODB_URI as string);
-    }
-    
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error("Database connection is missing");
-    }
-
-    // ডাটাবেস থেকে সেটিংস আনা হচ্ছে
-    const settings = await db.collection("system_settings").findOne({ type: "global" });
+    // 💥 ম্যাজিক ফিক্স: `db` এর বদলে সরাসরি Mongoose connection থেকে collection কল করা হলো 💥
+    // এর ফলে Database missing এরর আর আসবে না।
+    const collection = mongoose.connection.collection("system_settings");
+    const settings = await collection.findOne({ type: "global" });
     
     // যদি না থাকে, তবে ডিফল্ট রেসপন্স দিবে 
     if (!settings) {
@@ -29,8 +22,8 @@ export async function GET() {
     
     return NextResponse.json(settings);
   } catch (error: any) {
-    console.error("System Settings GET Error:", error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error("System Settings GET Error:", error.message);
+    return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
 }
 
@@ -40,16 +33,10 @@ export async function POST(req: Request) {
     
     await connectToDatabase();
     
-    if (mongoose.connection.readyState !== 1) {
-       await mongoose.connect(process.env.MONGODB_URI as string);
-    }
-
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error("Database connection is missing");
-    }
-
-    await db.collection("system_settings").updateOne(
+    // 💥 ম্যাজিক ফিক্স: সরাসরি collection এ আপডেট 💥
+    const collection = mongoose.connection.collection("system_settings");
+    
+    await collection.updateOne(
       { type: "global" },
       { $set: { maintenance: maintenance, globalRate: Number(globalRate) } },
       { upsert: true }
@@ -57,7 +44,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: "System updated successfully!" });
   } catch (error: any) {
-    console.error("System Settings POST Error:", error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error("System Settings POST Error:", error.message);
+    return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
 }

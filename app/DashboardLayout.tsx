@@ -328,7 +328,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       )}
 
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
-        <div className="h-20 flex items-center justify-between px-8 border-b border-[#334155]">
+        <div className="h-20 flex items-center justify-between px-8 border-b border-[#334155] shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#00C6FF] to-[#3B82F6] flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.4)]">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
@@ -340,76 +340,94 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </div>
         
-        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1.5 custom-scrollbar">
+        <nav className="flex-1 flex flex-col overflow-y-auto px-4 py-6 custom-scrollbar">
           
-          {role === "admin" && (
-            <>
-              <p className="px-4 text-[10px] font-bold tracking-widest text-[#F43F5E] mb-3 uppercase">Admin Controls</p>
-              <Link href="/admin" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin' ? activeBlue : inactive}`}>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                Admin Panel
-              </Link>
-              <Link href="/users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/users' ? activeBlue : inactive}`}>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                Users Directory
-              </Link>
-            </>
-          )}
+          <div className="space-y-1.5 flex-1">
+            {role === "admin" && (
+              <>
+                <p className="px-4 text-[10px] font-bold tracking-widest text-[#F43F5E] mb-3 uppercase">Admin Controls</p>
+                <Link href="/admin" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin' ? activeBlue : inactive}`}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                  Admin Panel
+                </Link>
+                <Link href="/users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/users' ? activeBlue : inactive}`}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  Users Directory
+                </Link>
+              </>
+            )}
 
-          {role === "agent" && (
-            <>
-              <p className="px-4 text-[10px] font-bold tracking-widest text-[#A855F7] mb-3 uppercase">Agent Controls</p>
-              <Link href="/my-users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/my-users' ? activeYellow : inactive}`}>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                My Network Users
-              </Link>
-            </>
-          )}
+            {role === "agent" && (
+              <>
+                <p className="px-4 text-[10px] font-bold tracking-widest text-[#A855F7] mb-3 uppercase">Agent Controls</p>
+                <Link href="/my-users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/my-users' ? activeYellow : inactive}`}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                  My Network Users
+                </Link>
+              </>
+            )}
 
-          <p className={`px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mb-3 uppercase ${(role === "admin" || role === "agent") ? "mt-4" : ""}`}>Main Menu</p>
-          
-          <Link href="/" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>Dashboard</Link>
-          
-          {role === "user" && (
-            <>
-              <Link href="/get-number" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/get-number' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>Get Number</Link>
-            </>
-          )}
+            <p className={`px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mb-3 uppercase ${(role === "admin" || role === "agent") ? "mt-4" : ""}`}>Main Menu</p>
+            
+            <Link href="/" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>Dashboard</Link>
+            
+            {role === "user" && (
+              <>
+                <Link href="/get-number" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/get-number' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>Get Number</Link>
+              </>
+            )}
 
-          <Link href="/console" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/console' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>Console</Link>
+            <Link href="/console" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/console' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>Console</Link>
 
-          <Link href="/top-user" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/top-user' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>Top User</Link>
-          <Link href="/summary" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/summary' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>Summary</Link>
+            <Link href="/top-user" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/top-user' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>Top User</Link>
+            <Link href="/summary" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/summary' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>Summary</Link>
 
-          <p className="px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mt-4 mb-3 uppercase">Account & Tools</p>
-          
-          {role === "admin" ? (
-             <Link href="/admin/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/payments' ? activeBlue : inactive}`}>
-               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-               Payments
-             </Link>
-          ) : (
-             <Link href="/withdraw" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/withdraw' ? activeBlue : inactive}`}>
-               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-               Withdraw
-             </Link>
-          )}
+            <p className="px-4 text-[10px] font-bold tracking-widest text-[#94A3B8] mt-4 mb-3 uppercase">Account & Tools</p>
+            
+            {role === "admin" ? (
+               <Link href="/admin/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/payments' ? activeBlue : inactive}`}>
+                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                 Payments
+               </Link>
+            ) : (
+               <Link href="/withdraw" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/withdraw' ? activeBlue : inactive}`}>
+                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                 Withdraw
+               </Link>
+            )}
 
-          <Link href="/access-list" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/access-list' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Access List</Link>
-          <Link href="/profile" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/profile' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Profile</Link>
+            <Link href="/access-list" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/access-list' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Access List</Link>
+            <Link href="/profile" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/profile' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Profile</Link>
 
-          <Link href="/notifications" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/notifications' ? activeBlue : inactive}`}>
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            Notifications
-          </Link>
-          
+            <Link href="/notifications" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/notifications' ? activeBlue : inactive}`}>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              Notifications
+            </Link>
+          </div>
+
+          <div className="mt-8 pt-4">
+             <div className="bg-gradient-to-br from-[#0F172A] to-[#1E293B] border border-[#3B82F6]/30 rounded-2xl p-4 shadow-lg relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-[#3B82F6]/10 rounded-bl-full pointer-events-none group-hover:bg-[#3B82F6]/20 transition-colors"></div>
+                <svg className="w-6 h-6 text-[#3B82F6] mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                <h4 className="text-[13px] font-black text-white mb-1">Are you a Developer?</h4>
+                <p className="text-[9px] text-[#94A3B8] font-bold mb-3 leading-relaxed">
+                  Integrate our premium SaaS API for your automated bots & software.
+                </p>
+                <Link href="/profile#api-access" className="block w-full py-2 bg-[#3B82F6]/10 hover:bg-[#3B82F6]/20 border border-[#3B82F6]/30 rounded-lg text-center text-[10px] font-black tracking-widest text-[#3B82F6] uppercase transition-colors">
+                  Get API Access
+                </Link>
+             </div>
+          </div>
+
         </nav>
       </aside>
 
       <main className={`flex-1 flex flex-col h-screen overflow-hidden w-full relative ${isMaintenance && role === 'admin' ? 'mt-6' : ''}`}>
-        <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full relative">
+        <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full shrink-0 relative">
           <div className="flex items-center gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30">
                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -452,10 +470,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <span className="text-white font-bold text-sm">Notifications</span>
                     <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All Global</Link>
                   </div>
+                  {/* 💥 ফিক্স: নোটিফিকেশনে ক্লিক করলে পেজে নিয়ে যাবে 💥 */}
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
                     {headerNotifs.length > 0 ? (
                       headerNotifs.map((notif: any) => (
-                        <div key={notif._id} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
+                        <Link 
+                          href="/notifications" 
+                          key={notif._id} 
+                          onClick={() => setIsNotifOpen(false)} 
+                          className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors"
+                        >
                           <p className="text-xs text-[#E2E8F0] leading-relaxed">
                             <span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>
                               {notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}
@@ -463,7 +487,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             {notif.title || notif.description}
                           </p>
                           <span className="text-[9px] text-[#64748B] mt-1 block">{timeAgo(notif.createdAt)}</span>
-                        </div>
+                        </Link>
                       ))
                     ) : (
                       <div className="p-4 text-center text-xs text-[#64748B]">No recent notifications</div>

@@ -38,6 +38,7 @@ export default function DashboardPage() {
   
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
+  const [globalTrafficData, setGlobalTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
   const formatTopApps = (countsObj: Record<string, number>) => {
     return Object.entries(countsObj).map(([name, count]) => {
@@ -71,7 +72,7 @@ export default function DashboardPage() {
       try {
         if (parsedUser.role === "admin") {
           const [userData, reportData, summaryRes] = await Promise.all([
-            fetch("/api/get-all-users").then(r => r.json()), // ✅ আর কোনো limit=9999 লাগছে না
+            fetch("/api/get-all-users").then(r => r.json()), 
             fetch("/api/admin-agent-report").then(r => r.json()),
             fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "admin" }) }).then(r => r.json())
           ]);
@@ -81,92 +82,95 @@ export default function DashboardPage() {
              setAdminStats(p => ({ ...p, globalTodaySuccess: todayData.success || 0 }));
              
              if (summaryRes.todayAppCounts) setTopPerformers(formatTopApps(summaryRes.todayAppCounts));
-             if (summaryRes.todayHourlyTraffic) setTrafficData(summaryRes.todayHourlyTraffic);
+             if (summaryRes.todayHourlyTraffic) {
+                 setTrafficData(summaryRes.todayHourlyTraffic);
+                 setGlobalTrafficData(summaryRes.todayHourlyTraffic); 
+             }
           }
           if (reportData && reportData.success) { setAgentReport(reportData.report); setCurrentMonthName(reportData.currentMonth); }
           
-          // ✅ MAGIC FIX: সরাসরি API থেকে সঠিক স্ট্যাটস নিয়ে নিচ্ছি
           if (userData.stats) {
             setAdminStats(p => ({ 
-              ...p, 
-              totalUsers: userData.stats.totalUsers || 0, 
-              totalAgents: userData.stats.totalAgents || 0, 
-              systemLiability: userData.stats.systemLiability || "0.00" 
+              ...p, totalUsers: userData.stats.totalUsers || 0, totalAgents: userData.stats.totalAgents || 0, systemLiability: userData.stats.systemLiability || "0.00" 
             }));
           }
 
-        } else if (parsedUser.role === "agent") {
-          const [agentSummaryRes, userDetailsRes] = await Promise.all([
-            fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json())
-          ]);
-
-          if (userDetailsRes && userDetailsRes.user) {
-             setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-             setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); 
-          }
-
-          if (agentSummaryRes && agentSummaryRes.success) {
-             const todayData = agentSummaryRes.groupedRawData[todayStr] || { total: 0, success: 0 };
-             setStats(p => ({ ...p, todayTotal: todayData.total, todaySuccess: todayData.success }));
-             
-             if (agentSummaryRes.todayAppCounts) setTopPerformers(formatTopApps(agentSummaryRes.todayAppCounts));
-             if (agentSummaryRes.todayHourlyTraffic) setTrafficData(agentSummaryRes.todayHourlyTraffic);
-          }
-
         } else {
-          const [userDetailsRes, ordersRes] = await Promise.all([
-            fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-            fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
-          ]);
+          fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "admin" }) })
+            .then(r => r.json())
+            .then(res => { if (res && res.todayHourlyTraffic) setGlobalTrafficData(res.todayHourlyTraffic); })
+            .catch(() => {});
 
-          if (userDetailsRes && userDetailsRes.user) {
-            setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-            setLiveRate(Number(userDetailsRes.user.otpRate || 0)); 
-          }
+          if (parsedUser.role === "agent") {
+            const [agentSummaryRes, userDetailsRes] = await Promise.all([
+              fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
+              fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json())
+            ]);
 
-          if (ordersRes && ordersRes.success && ordersRes.orders) {
-             let tTotal = 0, tSuccess = 0, ySuccess = 0;
-             const appCounts: Record<string, number> = {};
-             let buckets = [0, 0, 0, 0, 0, 0];
+            if (userDetailsRes && userDetailsRes.user) {
+               setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
+               setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); 
+            }
 
-             ordersRes.orders.forEach((log: any) => {
-               const logDate = log.dateString || getBDDateString(log.createdAt);
-               if (logDate === todayStr) {
-                 tTotal++;
-                 if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") {
-                   tSuccess++;
-                   const hour = getBDHour(log.createdAt);
-                   const bIdx = Math.floor(hour / 4);
-                   if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
-   
-                   let sName = "Other Network";
-                   const mLower = (log.fullMessage || "").toLowerCase();
-                   if (mLower.includes("facebook") || mLower.includes("fb")) sName = "Facebook";
-                   else if (mLower.includes("whatsapp") || mLower.includes("wa")) sName = "WhatsApp";
-                   else if (mLower.includes("instagram") || mLower.includes("ig")) sName = "Instagram";
-                   else if (mLower.includes("telegram") || mLower.includes("tg")) sName = "Telegram";
-                   else if (mLower.includes("google") || mLower.includes("gmail")) sName = "Google";
-                   else if (mLower.includes("tiktok") || mLower.includes("tt")) sName = "TikTok";
-                   else if (mLower.includes("apple") || mLower.includes("ap")) sName = "Apple";
+            if (agentSummaryRes && agentSummaryRes.success) {
+               const todayData = agentSummaryRes.groupedRawData[todayStr] || { total: 0, success: 0 };
+               setStats(p => ({ ...p, todayTotal: todayData.total, todaySuccess: todayData.success }));
+               
+               if (agentSummaryRes.todayAppCounts) setTopPerformers(formatTopApps(agentSummaryRes.todayAppCounts));
+               if (agentSummaryRes.todayHourlyTraffic) setTrafficData(agentSummaryRes.todayHourlyTraffic);
+            }
 
-                   if (!appCounts[sName]) appCounts[sName] = 0;
-                   appCounts[sName]++;
+          } else {
+            const [userDetailsRes, ordersRes] = await Promise.all([
+              fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
+              fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
+            ]);
+
+            if (userDetailsRes && userDetailsRes.user) {
+              setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
+              setLiveRate(Number(userDetailsRes.user.otpRate || 0)); 
+            }
+
+            if (ordersRes && ordersRes.success && ordersRes.orders) {
+               let tTotal = 0, tSuccess = 0, ySuccess = 0;
+               const appCounts: Record<string, number> = {};
+               let buckets = [0, 0, 0, 0, 0, 0];
+
+               ordersRes.orders.forEach((log: any) => {
+                 const logDate = log.dateString || getBDDateString(log.createdAt);
+                 if (logDate === todayStr) {
+                   tTotal++;
+                   if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") {
+                     tSuccess++;
+                     const hour = getBDHour(log.createdAt);
+                     const bIdx = Math.floor(hour / 4);
+                     if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
+     
+                     let sName = "Other Network";
+                     const mLower = (log.fullMessage || "").toLowerCase();
+                     if (mLower.includes("facebook") || mLower.includes("fb")) sName = "Facebook";
+                     else if (mLower.includes("whatsapp") || mLower.includes("wa")) sName = "WhatsApp";
+                     else if (mLower.includes("instagram") || mLower.includes("ig")) sName = "Instagram";
+                     else if (mLower.includes("telegram") || mLower.includes("tg")) sName = "Telegram";
+                     else if (mLower.includes("google") || mLower.includes("gmail")) sName = "Google";
+                     else if (mLower.includes("tiktok") || mLower.includes("tt")) sName = "TikTok";
+                     else if (mLower.includes("apple") || mLower.includes("ap")) sName = "Apple";
+
+                     if (!appCounts[sName]) appCounts[sName] = 0;
+                     appCounts[sName]++;
+                   }
+                 } else if (logDate === yesterdayStr) {
+                   if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") ySuccess++;
                  }
-               } else if (logDate === yesterdayStr) {
-                 if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") ySuccess++;
-               }
-             });
+               });
 
-             setStats(p => ({ 
-               ...p, 
-               todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 
-               todaySuccess: ordersRes.stats ? ordersRes.stats.success : tSuccess, 
-               yesterdaySuccess: ySuccess 
-             }));
-             
-             setTrafficData(buckets);
-             setTopPerformers(formatTopApps(appCounts));
+               setStats(p => ({ 
+                 ...p, todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, todaySuccess: ordersRes.stats ? ordersRes.stats.success : tSuccess, yesterdaySuccess: ySuccess 
+               }));
+               
+               setTrafficData(buckets);
+               setTopPerformers(formatTopApps(appCounts));
+            }
           }
         }
       } catch (e) {} finally { setIsPageLoading(false); }
@@ -195,12 +199,12 @@ export default function DashboardPage() {
             <div className="h-8 bg-[#1E293B] w-64 rounded-xl mb-3"></div>
             <div className="h-4 bg-[#1E293B] w-96 rounded-xl mb-10"></div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-10">
-               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
-               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
-               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
-               <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl"></div>
+               <div className="h-28 bg-[#1E293B]/80 rounded-2xl"></div>
             </div>
-            <div className="h-64 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+            <div className="h-64 bg-[#1E293B]/80 rounded-2xl"></div>
          </div>
       </div>
     </DashboardLayout>
@@ -212,6 +216,7 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full font-sans">
         
+        {/* Welcome Header */}
         <div className="mb-6 md:mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
@@ -228,135 +233,192 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* 💥 একদম প্রথমে Stats Cards (শুধুমাত্র ৪টি কার্ড) 💥 */}
         {role === "admin" ? (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Users</h3>
-                <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalUsers}</p>
-              </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#8B5CF6] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Agents</h3>
-                <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalAgents}</p>
-              </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">System Liability</h3>
-                <p className="text-xl md:text-3xl font-black text-[#10B981]">৳ {adminStats.systemLiability}</p>
-              </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start relative overflow-hidden">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's Success</h3>
-                <div className="flex items-center gap-2">
-                   <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodaySuccess}</p>
-                   {adminStats.globalTodaySuccess > 0 && (
-                      <span className="flex h-2.5 w-2.5 relative ml-1">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F59E0B] opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F59E0B]"></span>
-                      </span>
-                   )}
-                </div>
-              </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Users</h3>
+              <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalUsers}</p>
             </div>
-          </>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-6">
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Total Balance" : "Wallet Balance"}</h3>
-                <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">৳ {stats.balance}</p>
-              </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Admin Given Rate" : "Your OTP Rate"}</h3>
-                <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
-              </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">{role === 'agent' ? "Network Today's Numbers" : "Today's Total Numbers"}</h3>
-                <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{stats.todayTotal}</p>
-              </div>
-              <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
-                <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
-                <div className="flex items-center gap-2">
-                   <p className="text-xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
-                   {stats.todaySuccess > 0 && (
-                      <span className="flex h-2.5 w-2.5 relative ml-1">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#10B981]"></span>
-                      </span>
-                   )}
-                </div>
-              </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#8B5CF6] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Agents</h3>
+              <p className="text-xl md:text-3xl font-black text-white">{adminStats.totalAgents}</p>
             </div>
-
-            {role === "user" && (
-              <div className="mb-10 w-full md:w-1/4">
-                 <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-row justify-between items-center shadow-inner">
-                    <h3 className="text-[#94A3B8] text-[10px] font-black uppercase tracking-widest">Yesterday's Success</h3>
-                    <p className="text-xl md:text-2xl font-black text-[#E2E8F0]">{stats.yesterdaySuccess}</p>
-                 </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">System Liability</h3>
+              <p className="text-xl md:text-3xl font-black text-[#10B981]">৳ {adminStats.systemLiability}</p>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start relative overflow-hidden">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Global Today's Success</h3>
+              <div className="flex items-center gap-2">
+                 <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{adminStats.globalTodaySuccess}</p>
+                 {adminStats.globalTodaySuccess > 0 && (
+                    <span className="flex h-2.5 w-2.5 relative ml-1">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F59E0B] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F59E0B]"></span>
+                    </span>
+                 )}
               </div>
-            )}
-          </>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          <div className="lg:col-span-1 rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6">
-            <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide mb-6 text-center md:text-left">
-              {role === 'admin' ? "Global Top Services" : role === 'agent' ? "Network Top Apps" : "Your Top Performers"}
-            </h3>
-            <div className="space-y-4">
-              {topPerformers.length === 0 ? (
-                <div className="text-center text-[#64748B] text-sm py-4 border border-dashed border-[#334155] rounded-xl">No OTP data yet.</div>
-              ) : (
-                topPerformers.map((app, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-[#0F172A] border border-[#334155] hover:border-[#8B5CF6]/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg ${app.info.bg} ${app.info.text} flex items-center justify-center font-bold`}>
-                        {app.info.icon}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-[#E2E8F0]">{app.name}</p>
-                        <p className="text-[10px] text-[#94A3B8] font-medium uppercase tracking-wider">Service Name</p>
-                      </div>
-                    </div>
-                    <span className="text-lg font-black text-white font-mono">{app.count} <span className="text-[10px] text-slate-500">OTP</span></span>
-                  </div>
-                ))
-              )}
             </div>
           </div>
+        ) : role === "agent" ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Balance</h3>
+              <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">৳ {stats.balance}</p>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Admin Given Rate</h3>
+              <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Network Today's Numbers</h3>
+              <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{stats.todayTotal}</p>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
+              <div className="flex items-center gap-2">
+                 <p className="text-xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
+                 {stats.todaySuccess > 0 && (
+                    <span className="flex h-2.5 w-2.5 relative ml-1">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#10B981]"></span>
+                    </span>
+                 )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
+            {/* 💥 User এর জন্য পারফেক্ট ৪টি কার্ড 💥 */}
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Wallet Balance</h3>
+              <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">৳ {stats.balance}</p>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Your OTP Rate</h3>
+              <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
+              <div className="flex items-center gap-2">
+                 <p className="text-xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
+                 {stats.todaySuccess > 0 && (
+                    <span className="flex h-2.5 w-2.5 relative ml-1">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#10B981]"></span>
+                    </span>
+                 )}
+              </div>
+            </div>
+            <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
+              <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Yesterday's Success</h3>
+              <p className="text-xl md:text-3xl font-black text-[#E2E8F0]">{stats.yesterdaySuccess}</p>
+            </div>
+          </div>
+        )}
 
-          <div className="lg:col-span-2 rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
+        {/* 💥 চার্ট লেআউট (Cards এর ঠিক পরেই) 💥 */}
+        <div className="flex flex-col gap-6 mb-10">
+          
+          {/* Full Width: Hourly / Network Traffic Chart */}
+          <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
              <div className="flex justify-between items-center mb-6 relative z-10">
-               <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide">
-                 {role === 'admin' ? "Global Traffic" : role === 'agent' ? "Network Traffic" : "Hourly Traffic"}
+               <h3 className="text-lg md:text-xl font-black text-[#F8FAFC] tracking-wide">
+                 {role === 'admin' ? "Global Traffic Overview" : role === 'agent' ? "Network Traffic" : "Hourly Traffic"}
                </h3>
-               <span className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black rounded-full tracking-widest uppercase">
-                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span> LIVE
+               <span className="flex items-center gap-2 px-3 py-1 bg-[#3B82F6]/10 border border-[#3B82F6]/20 text-[#3B82F6] text-[10px] font-black rounded-full tracking-widest uppercase">
+                  <span className="w-1.5 h-1.5 bg-[#3B82F6] rounded-full animate-ping"></span> Live Data
                </span>
              </div>
              
-             <div className="flex-1 w-full h-40 relative z-10">
+             <div className="flex-1 w-full h-48 md:h-56 relative z-10">
                 {Math.max(...trafficData) === 0 ? (
                   <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">No Traffic Data Yet</div>
                 ) : (
                   <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
                     <defs>
-                      <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                      <linearGradient id="mainLineGrad" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor={role === 'admin' ? "#EF4444" : role === 'agent' ? "#A855F7" : "#3B82F6"} />
                         <stop offset="100%" stopColor={role === 'admin' ? "#F59E0B" : role === 'agent' ? "#EC4899" : "#00C6FF"} />
                       </linearGradient>
                     </defs>
-                    <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#lineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#mainLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
              </div>
-             <div className="flex justify-between items-center text-[10px] font-bold text-[#64748B] uppercase mt-2 relative z-10">
+             <div className="flex justify-between items-center text-[10px] font-bold text-[#64748B] uppercase mt-4 relative z-10">
                <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span>
              </div>
           </div>
 
+          {/* Grid: Top Performers (Left) & Global Traffic (Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Left: Your Top Performers */}
+            <div className={`rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 ${role === 'admin' ? 'lg:col-span-2' : ''}`}>
+              <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide mb-6 text-center md:text-left">
+                {role === 'admin' ? "Global Top Services" : role === 'agent' ? "Network Top Apps" : "Your Top Performers"}
+              </h3>
+              <div className={role === 'admin' ? "grid grid-cols-1 md:grid-cols-3 gap-4" : "space-y-4"}>
+                {topPerformers.length === 0 ? (
+                  <div className="text-center text-[#64748B] text-sm py-4 border border-dashed border-[#334155] rounded-xl col-span-3">No OTP data yet.</div>
+                ) : (
+                  topPerformers.map((app, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-[#0F172A] border border-[#334155] hover:border-[#8B5CF6]/50 transition-colors shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg ${app.info.bg} ${app.info.text} flex items-center justify-center font-bold`}>
+                          {app.info.icon}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-[#E2E8F0]">{app.name}</p>
+                          <p className="text-[10px] text-[#94A3B8] font-medium uppercase tracking-wider">Service Name</p>
+                        </div>
+                      </div>
+                      <span className="text-lg font-black text-white font-mono">{app.count} <span className="text-[10px] text-slate-500">OTP</span></span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Right: Global Traffic (Only for User and Agent) */}
+            {role !== 'admin' && (
+              <div className="rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
+                 <div className="flex justify-between items-center mb-6 relative z-10">
+                   <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide">
+                     Global Traffic
+                   </h3>
+                   <span className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black rounded-full tracking-widest uppercase">
+                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span> LIVE
+                   </span>
+                 </div>
+                 
+                 <div className="flex-1 w-full h-40 relative z-10">
+                    {Math.max(...globalTrafficData) === 0 ? (
+                      <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">Loading Live Data...</div>
+                    ) : (
+                      <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
+                        <defs>
+                          <linearGradient id="globalLineGrad" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="#EF4444" />
+                            <stop offset="100%" stopColor="#F59E0B" />
+                          </linearGradient>
+                        </defs>
+                        <path d={generateTrafficPath(globalTrafficData)} fill="none" stroke="url(#globalLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                 </div>
+                 <div className="flex justify-between items-center text-[10px] font-bold text-[#64748B] uppercase mt-2 relative z-10">
+                   <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span>
+                 </div>
+              </div>
+            )}
+
+          </div>
         </div>
 
+        {/* Admin Reports Table */}
         {role === "admin" && (
             <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mt-6 mb-10">
                <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
