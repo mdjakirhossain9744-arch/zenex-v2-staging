@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image"; 
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
 
@@ -329,12 +330,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="h-20 flex items-center justify-between px-8 border-b border-[#334155] shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#00C6FF] to-[#3B82F6] flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.4)]">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-            </div>
-            <h1 className="text-xl font-black tracking-widest text-white">ZENEX</h1>
-          </div>
+          
+          {/* 💥 Sidebar Logo: Text perfectly centered with Image 💥 */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <Image 
+              src="/zenex-logo.png" 
+              alt="ZENEX Logo" 
+              width={38} 
+              height={38} 
+              className="w-9 h-9 object-contain"
+              priority
+              unoptimized
+            />
+            <h1 className="text-[24px] font-black tracking-widest text-white leading-none">
+              ZENEX
+            </h1>
+          </Link>
+
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#94A3B8] hover:text-white">
              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
@@ -428,10 +440,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <main className={`flex-1 flex flex-col h-screen overflow-hidden w-full relative ${isMaintenance && role === 'admin' ? 'mt-6' : ''}`}>
         <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full shrink-0 relative">
+          
+          {/* 💥 Mobile Header Logo: Text perfectly centered with Image 💥 */}
           <div className="flex items-center gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30">
                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
              </button>
+             
+             <Link href="/" className="md:hidden flex items-center gap-2 group">
+               <Image 
+                 src="/zenex-logo.png" 
+                 alt="ZENEX Logo" 
+                 width={30} 
+                 height={30} 
+                 className="w-7 h-7 object-contain"
+                 priority
+                 unoptimized
+               />
+               <h1 className="text-[20px] font-black tracking-widest text-white leading-none">
+                 ZENEX
+               </h1>
+             </Link>
+
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 
                ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : 
                  role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 
@@ -470,7 +500,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <span className="text-white font-bold text-sm">Notifications</span>
                     <Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All Global</Link>
                   </div>
-                  {/* 💥 ফিক্স: নোটিফিকেশনে ক্লিক করলে পেজে নিয়ে যাবে 💥 */}
+                  
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
                     {headerNotifs.length > 0 ? (
                       headerNotifs.map((notif: any) => (
@@ -493,6 +523,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <div className="p-4 text-center text-xs text-[#64748B]">No recent notifications</div>
                     )}
                   </div>
+
                 </div>
               )}
             </div>
