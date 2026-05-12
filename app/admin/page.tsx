@@ -14,7 +14,10 @@ export default function AdminDashboard() {
   const [ping, setPing] = useState(0);
 
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  
+  // দুটো লিংকের স্টেট
   const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
+  const [globalContactLink, setGlobalContactLink] = useState("https://t.me/abdullah_124");
 
   const [blockedRequests, setBlockedRequests] = useState(124);
   const [activeConnections, setActiveConnections] = useState(0);
@@ -30,7 +33,7 @@ export default function AdminDashboard() {
         setIsAdmin(true); 
         checkSystemHealth();
         fetchSystemSettings();
-        fetchGlobalLink();
+        fetchGlobalLinks();
         
         const interval = setInterval(() => {
            setActiveConnections(Math.floor(Math.random() * 15) + 5);
@@ -47,19 +50,18 @@ export default function AdminDashboard() {
       const res = await fetch("/api/system-settings");
       const data = await res.json();
       if (data) setMaintenanceMode(data.maintenance || false);
-    } catch (error) {
-      console.error("Failed to load settings");
-    }
+    } catch (error) {}
   };
 
-  const fetchGlobalLink = async () => {
+  const fetchGlobalLinks = async () => {
     try {
       const res = await fetch("/api/admin/update-support-link");
       const data = await res.json();
-      if (data.success && data.link) setGlobalSupportLink(data.link);
-    } catch (error) {
-      console.error("Failed to fetch global link");
-    }
+      if (data.success) {
+        if (data.supportLink) setGlobalSupportLink(data.supportLink);
+        if (data.contactLink) setGlobalContactLink(data.contactLink);
+      }
+    } catch (error) {}
   };
 
   const checkSystemHealth = async () => {
@@ -97,21 +99,22 @@ export default function AdminDashboard() {
       
       if(res.ok) alert("✅ System Settings Updated Successfully!");
       else alert("❌ Failed to update system.");
-    } catch (error) {
-      alert("❌ Network error while saving.");
-    }
+    } catch (error) {}
   };
 
-  const handleSupportLinkSave = async () => {
+  const handleLinksSave = async () => {
     try {
       const res = await fetch("/api/admin/update-support-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ link: globalSupportLink })
+        body: JSON.stringify({ 
+          supportLink: globalSupportLink,
+          contactLink: globalContactLink
+        })
       });
-      if(res.ok) alert("✅ Global Support Link Updated Successfully! Users will see this instantly.");
+      if(res.ok) alert("✅ Global Links Updated Successfully! Users will see this instantly.");
     } catch (error) {
-      alert("❌ Failed to update global link.");
+      alert("❌ Failed to update links.");
     }
   };
 
@@ -188,17 +191,31 @@ export default function AdminDashboard() {
               </div>
 
               <div className="space-y-6">
-                <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50 mt-6">
-                   <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-3">Global Telegram Support Link</label>
-                   <div className="flex gap-3">
-                     <div className="relative flex-1">
+                <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50">
+                   
+                   {/* Support Link */}
+                   <div className="mb-4">
+                     <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-2">Global Telegram Support Link</label>
+                     <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#3B82F6] font-black">
                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                         </span>
                         <input type="text" value={globalSupportLink} onChange={(e)=>setGlobalSupportLink(e.target.value)} placeholder="https://t.me/Zenexacademy1" className="bg-[#1E293B] border border-[#334155] text-white pl-12 pr-4 py-3 rounded-xl w-full font-black text-sm focus:outline-none focus:border-[#3B82F6] transition-colors shadow-inner" />
                      </div>
-                     <button onClick={handleSupportLinkSave} className="bg-gradient-to-r from-[#10B981] to-[#00C6FF] text-white font-black px-8 rounded-xl hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Save Link</button>
                    </div>
+
+                   {/* Contact Link */}
+                   <div className="mb-4">
+                     <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-2">Global Admin Contact Link</label>
+                     <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#10B981] font-black">
+                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        </span>
+                        <input type="text" value={globalContactLink} onChange={(e)=>setGlobalContactLink(e.target.value)} placeholder="https://t.me/abdullah_124" className="bg-[#1E293B] border border-[#334155] text-white pl-12 pr-4 py-3 rounded-xl w-full font-black text-sm focus:outline-none focus:border-[#10B981] transition-colors shadow-inner" />
+                     </div>
+                   </div>
+
+                   <button onClick={handleLinksSave} className="w-full bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white font-black py-3 rounded-xl hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Save Both Links</button>
                 </div>
 
                 <div className={`p-6 rounded-2xl border transition-all duration-300 ${maintenanceMode ? 'bg-[#F43F5E]/10 border-[#F43F5E] shadow-[0_0_30px_rgba(244,63,94,0.15)]' : 'bg-[#0F172A]/80 border-[#334155]'}`}>

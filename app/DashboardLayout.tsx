@@ -4,6 +4,8 @@ import Link from "next/link";
 import Image from "next/image"; 
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
+// আলাদা করা ফুটার ইম্পোর্ট করা হলো
+import GlobalFooter from "./components/GlobalFooter"; 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -64,6 +66,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setUser(parsedUser);
     setIsAuthorized(true); 
 
+    // 💥 ম্যাজিক ৩: Cross-Tab Logout (যেকোনো এক ট্যাবে লগআউট করলে সব ট্যাব অটো লগআউট হবে) 💥
+    const syncLogout = (e: StorageEvent) => {
+      if (e.key === "user" && !e.newValue) {
+        window.location.href = "/login";
+      }
+    };
+    window.addEventListener("storage", syncLogout);
+
     const checkActiveSession = async () => {
       try {
         const res = await fetch("/api/check-session", { method: "GET" });
@@ -71,7 +81,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       } catch (e) {}
     };
 
-    const checkMaintenance = async () => {
+    const fetchSystemSettings = async () => {
       try {
         const res = await fetch("/api/system-settings");
         if(res.ok){
@@ -109,12 +119,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
     
     checkActiveSession();
-    checkMaintenance();
+    fetchSystemSettings();
     fetchRealBalance();
     fetchHeaderNotifications();
 
     const sessionInterval = setInterval(checkActiveSession, 30000); 
-    const maintInterval = setInterval(checkMaintenance, 5000); 
+    const maintInterval = setInterval(fetchSystemSettings, 10000); 
     const balanceInterval = setInterval(fetchRealBalance, 5000); 
     const notifInterval = setInterval(fetchHeaderNotifications, 30000); 
     
@@ -123,6 +133,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       clearInterval(maintInterval);
       clearInterval(balanceInterval);
       clearInterval(notifInterval);
+      window.removeEventListener("storage", syncLogout); // ইভেন্ট ক্লিনআপ
     }
   }, [router, handleLogout]);
 
@@ -331,8 +342,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="h-20 flex items-center justify-between px-8 border-b border-[#334155] shrink-0">
           
-          {/* 💥 Sidebar Logo: Text perfectly centered with Image 💥 */}
-          <Link href="/" className="flex items-center gap-3 group">
+          <Link href="/" className="flex items-center gap-3 group mt-2">
             <Image 
               src="/zenex-logo.png" 
               alt="ZENEX Logo" 
@@ -342,7 +352,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               priority
               unoptimized
             />
-            <h1 className="text-[24px] font-black tracking-widest text-white leading-none">
+            <h1 className="text-[24px] font-black tracking-widest text-white leading-none mt-1">
               ZENEX
             </h1>
           </Link>
@@ -441,13 +451,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className={`flex-1 flex flex-col h-screen overflow-hidden w-full relative ${isMaintenance && role === 'admin' ? 'mt-6' : ''}`}>
         <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full shrink-0 relative">
           
-          {/* 💥 Mobile Header Logo: Text perfectly centered with Image 💥 */}
           <div className="flex items-center gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30">
                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
              </button>
              
-             <Link href="/" className="md:hidden flex items-center gap-2 group">
+             <Link href="/" className="md:hidden flex items-center gap-2 group mt-1">
                <Image 
                  src="/zenex-logo.png" 
                  alt="ZENEX Logo" 
@@ -457,7 +466,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  priority
                  unoptimized
                />
-               <h1 className="text-[20px] font-black tracking-widest text-white leading-none">
+               <h1 className="text-[20px] font-black tracking-widest text-white leading-none mt-0.5">
                  ZENEX
                </h1>
              </Link>
@@ -548,11 +557,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto custom-scrollbar w-full relative z-[10]">
-           {children}
+        {/* 💥 Main Content Area - Updated for Scrolling Footer 💥 */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar w-full relative z-[10] flex flex-col">
+           
+           {/* এই min-h টির কারণে কনটেন্ট পেজটির ফুল স্ক্রিন নিয়ে নেবে, ফলে ফুটার নিচে চলে যাবে */}
+           <div className="w-full min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)] flex-shrink-0">
+              {children}
+           </div>
+
+           {/* 💥 Global Footer - স্ক্রল না করলে এটি আর দেখা যাবে না 💥 */}
+           <GlobalFooter />
+
         </div>
       </main>
 
+      {/* Floating System Core Badge */}
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-end md:items-center justify-end group">
         <div className={`absolute bottom-full mb-3 right-0 md:bottom-auto md:mb-0 md:right-full md:mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl md:rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 origin-bottom-right md:origin-right ${isBadgeOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'} md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}>
            <div className="flex flex-col md:flex-row items-center md:gap-4 px-4 py-3 md:py-2.5 whitespace-nowrap">
