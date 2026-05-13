@@ -12,10 +12,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 💥 সাইটের নাম এবং এসইও (SEO) ডেসক্রিপশন আপডেট করা হলো 💥
+// 💥 Advanced SEO Metadata for Google Ranking 💥
 export const metadata: Metadata = {
-  title: "ZENEX NETWORK",
-  description: "Premium OTP & Virtual Number Provider Network",
+  title: "ZENEX NETWORK - Premium OTP Service & Micro-Job Platform",
+  description: "Join ZENEX NETWORK, the most secure and automated OTP service and micro-job platform. Fast, reliable, and user-friendly dashboard for seamless experiences.",
+  keywords: ["ZENEX", "ZENEX NETWORK", "OTP Service", "Bangladesh OTP", "Micro Job", "Virtual Number", "Online Earning", "SMS Verification", "Auto Auto"],
+  authors: [{ name: "Zenex Team" }],
+  openGraph: {
+    title: "ZENEX NETWORK - Premium OTP Service",
+    description: "The most secure and automated OTP service platform.",
+    url: "https://www.zenexnetwork.com",
+    siteName: "ZENEX NETWORK",
+    images: [
+      {
+        url: "/zenex-logo.png", // আপনার পাবলিক ফোল্ডারে থাকা লোগো
+        width: 800,
+        height: 600,
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
