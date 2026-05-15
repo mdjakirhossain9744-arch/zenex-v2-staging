@@ -23,8 +23,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMaintenance, setIsMaintenance] = useState(false);
   
   const [headerNotifs, setHeaderNotifs] = useState<any[]>([]);
-
   const [globalToast, setGlobalToast] = useState("");
+  
+  // 💥 NEW: Live UTC Clock State
+  const [currentTime, setCurrentTime] = useState("");
+
   const pendingOrdersRef = useRef<any[]>([]);
   const isCheckingOTPRef = useRef(false);
 
@@ -136,6 +139,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       window.removeEventListener("storage", syncLogout); // ইভেন্ট ক্লিনআপ
     }
   }, [router, handleLogout]);
+
+  // 💥 NEW: Live UTC Clock Effect 💥
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const hours = String(now.getUTCHours()).padStart(2, '0');
+      const minutes = String(now.getUTCMinutes()).padStart(2, '0');
+      const seconds = String(now.getUTCSeconds()).padStart(2, '0');
+      const day = String(now.getUTCDate()).padStart(2, '0');
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const month = monthNames[now.getUTCMonth()];
+      setCurrentTime(`${hours}:${minutes}:${seconds} UTC - ${day} ${month}`);
+    };
+    
+    updateClock(); // Initial call
+    const clockInterval = setInterval(updateClock, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -479,10 +500,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   ${role === 'admin' ? 'bg-[#F43F5E]' : role === 'agent' ? 'bg-[#A855F7]' : 'bg-[#10B981]'}`}></span> 
                 {role === 'admin' ? 'System Online' : role === 'agent' ? 'Agent Active' : 'Active'}
              </span>
+
+             {/* 💥 NEW: LIVE UTC CLOCK 💥 */}
+             {currentTime && (
+               <div className="hidden md:flex px-3 py-1.5 bg-[#0F172A] border border-[#334155] rounded-md shadow-inner text-[10px] md:text-[11px] font-black tracking-widest text-[#94A3B8] items-center gap-2">
+                 <svg className="w-3.5 h-3.5 text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                 {currentTime}
+               </div>
+             )}
           </div>
           
           <div className="flex items-center gap-4 md:gap-6 relative">
             
+            {/* 💥 Mobile Time Display 💥 */}
+            {currentTime && (
+              <div className="md:hidden text-[9px] font-black text-[#94A3B8] tracking-widest mt-1">
+                {currentTime.split(' - ')[0]}
+              </div>
+            )}
+
             {role !== "admin" && (
               <div className="px-3 py-1.5 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-lg flex items-center gap-2 md:gap-3 shadow-inner">
                  <span className="text-[9px] md:text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Balance</span>
@@ -565,7 +601,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {children}
            </div>
 
-           {/* 💥 Global Footer - স্ক্রল না করলে এটি আর দেখা যাবে না 💥 */}
+           {/* 💥 Global Footer - স্ক্রল না করলে এটি আর দেখা যাবেবিধা নেই 💥 */}
            <GlobalFooter />
 
         </div>

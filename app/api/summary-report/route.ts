@@ -6,16 +6,16 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
-const getBDDateString = (dateObj: any = new Date()) => {
-  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj)); } 
+// 💥 UPDATE: UTC Date format 💥
+const getUTCDateString = (dateObj: any = new Date()) => {
+  try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-const getBDHour = (dateObj: any = new Date()) => {
-  try {
-    const hr = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hourCycle: 'h23' }).format(new Date(dateObj));
-    return parseInt(hr, 10) || 0;
-  } catch(e) { return 0; }
+// 💥 UPDATE: UTC Hour logic for Traffic Chart 💥
+const getUTCHour = (dateObj: any = new Date()) => {
+  try { return new Date(dateObj).getUTCHours(); } 
+  catch(e) { return 0; }
 };
 
 export async function POST(req: Request) {
@@ -60,14 +60,14 @@ export async function POST(req: Request) {
     }
 
     const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
 
-    const todayStrBD = getBDDateString(new Date());
+    const todayStrUTC = getUTCDateString(new Date());
     const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    const dailyStatQuery: any = { dateString: { $gte: getBDDateString(sixtyDaysAgo) } };
+    const dailyStatQuery: any = { dateString: { $gte: getUTCDateString(sixtyDaysAgo) } };
     if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
@@ -92,7 +92,6 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
     });
 
-    // 💥 updatedAt যোগ করা হলো যাতে ওটিপি আসার সঠিক টাইম পাওয়া যায় 💥
     const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
     if (role !== "admin") orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
 
@@ -101,20 +100,19 @@ export async function POST(req: Request) {
     orders.forEach((o: any) => {
        let finalDateStr = "";
        
-       // 💥 THE FIX: যদি ওটিপি আসে (DONE), তাহলে ওটিপি আসার দিনকে (updatedAt) মেইন ডেট হিসেবে ধরবে 💥
        if ((o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") && o.updatedAt) {
-           finalDateStr = getBDDateString(o.updatedAt);
+           finalDateStr = getUTCDateString(o.updatedAt);
        } else if (o.createdAt) {
-           finalDateStr = getBDDateString(o.createdAt);
+           finalDateStr = getUTCDateString(o.createdAt);
        } else if (o.dateString) {
-           finalDateStr = getBDDateString(new Date(o.dateString));
+           finalDateStr = getUTCDateString(new Date(o.dateString));
        } else {
-           finalDateStr = getBDDateString(new Date());
+           finalDateStr = getUTCDateString(new Date());
        }
 
        const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
-       if (finalDateStr !== todayStrBD && archivedKeys.has(`${finalDateStr}_${uEmail}`)) {
+       if (finalDateStr !== todayStrUTC && archivedKeys.has(`${finalDateStr}_${uEmail}`)) {
            return; 
        }
 
@@ -148,9 +146,8 @@ export async function POST(req: Request) {
               groupedRawData[finalDateStr].amount += (orderCostRate * validMsgCount);
           }
 
-          if (finalDateStr === todayStrBD) {
-              // 💥 ট্রাফিক চার্টের টাইমও ওটিপি আসার টাইম অনুযায়ী হবে 💥
-              const hour = getBDHour(o.updatedAt || o.createdAt || new Date());
+          if (finalDateStr === todayStrUTC) {
+              const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
               const bIdx = Math.floor(hour / 4);
               if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
 
@@ -173,7 +170,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
-       userRate, balance, serverDate: todayStrBD 
+       userRate, balance, serverDate: todayStrUTC 
     });
 
   } catch (error) { return NextResponse.json({ success: false }); }
