@@ -14,6 +14,7 @@ const geistMono = Geist_Mono({
 
 // 💥 Advanced SEO Metadata for Google Ranking 💥
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.zenexnetwork.com"), // 💥 SEO Warning Fixed
   title: "ZENEX NETWORK - Premium OTP Service & Micro-Job Platform",
   description: "Join ZENEX NETWORK, the most secure and automated OTP service and micro-job platform. Fast, reliable, and user-friendly dashboard for seamless experiences.",
   keywords: ["ZENEX", "ZENEX NETWORK", "OTP Service", "Bangladesh OTP", "Micro Job", "Virtual Number", "Online Earning", "SMS Verification", "Auto Auto"],
