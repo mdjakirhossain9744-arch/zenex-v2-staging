@@ -98,9 +98,10 @@ export async function POST(req: Request) {
     const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();
 
     orders.forEach((o: any) => {
+       const currentStatus = (o.status || "").toUpperCase(); 
+
        let finalDateStr = "";
-       
-       if ((o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") && o.updatedAt) {
+       if ((currentStatus === "DONE" || currentStatus === "SUCCESS") && o.updatedAt) {
            finalDateStr = getUTCDateString(o.updatedAt);
        } else if (o.createdAt) {
            finalDateStr = getUTCDateString(o.createdAt);
@@ -124,7 +125,7 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].total += 1; 
        groupedRawData[finalDateStr].allocation += 1;
 
-       if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
+       if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
           
           const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
           const uniqueCodes = new Set();
@@ -163,14 +164,32 @@ export async function POST(req: Request) {
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += validMsgCount;
           }
-       } else {
+       } else if (currentStatus === "FAILED" || currentStatus === "CANCELLED" || currentStatus === "CANCELED" || currentStatus === "TIMEOUT" || currentStatus === "ERROR") {
           groupedRawData[finalDateStr].failed += 1;
        }
     });
 
+    // 💥 Get Today and Yesterday Dates in UTC 💥
+    const yesterdayDate = new Date();
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
+
+    const todayData = groupedRawData[todayStrUTC] || { success: 0, amount: 0 };
+    const yesterdayData = groupedRawData[yesterdayStrUTC] || { success: 0, amount: 0 };
+
     return NextResponse.json({
-       success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
-       userRate, balance, serverDate: todayStrUTC 
+       success: true, 
+       groupedRawData, 
+       todayAppCounts, 
+       todayHourlyTraffic,
+       userRate, 
+       balance, 
+       serverDate: todayStrUTC,
+       // 🔥 Added for 4 Cards 🔥
+       todaySuccess: todayData.success,
+       todaySpend: todayData.amount, 
+       yesterdaySuccess: yesterdayData.success,
+       yesterdaySpend: yesterdayData.amount
     });
 
   } catch (error) { return NextResponse.json({ success: false }); }

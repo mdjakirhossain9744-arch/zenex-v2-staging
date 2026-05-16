@@ -23,7 +23,16 @@ export default function UserDashboardPage() {
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState("");
 
-  const [stats, setStats] = useState({ balance: "0.00", todayTotal: 0, todaySuccess: 0, yesterdaySuccess: 0 });
+  // 💥 UPDATE: Changed Cost to Earnings 💥
+  const [stats, setStats] = useState({ 
+    balance: "0.00", 
+    todayTotal: 0, 
+    todaySuccess: 0, 
+    yesterdaySuccess: 0,
+    todayEarnings: 0,
+    yesterdayEarnings: 0
+  });
+  
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
@@ -63,7 +72,6 @@ export default function UserDashboardPage() {
     
     const parsedUser = JSON.parse(storedUser);
     
-    // Security check
     if (parsedUser.role === "admin") { router.replace("/admin/dashboard"); return; }
     if (parsedUser.role === "agent") { router.replace("/manager/dashboard"); return; }
 
@@ -82,9 +90,11 @@ export default function UserDashboardPage() {
           fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
         ]);
 
+        let currentRate = 0;
         if (userDetailsRes && userDetailsRes.user) {
+          currentRate = Number(userDetailsRes.user.otpRate || 0);
           setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-          setLiveRate(Number(userDetailsRes.user.otpRate || 0)); 
+          setLiveRate(currentRate); 
         }
 
         if (ordersRes && ordersRes.success && ordersRes.orders) {
@@ -120,8 +130,15 @@ export default function UserDashboardPage() {
              }
            });
 
+           const finalTodaySuccess = ordersRes.stats ? ordersRes.stats.success : tSuccess;
+           // 💥 UPDATE: Mapping calculated values to Earnings 💥
            setStats(p => ({ 
-             ...p, todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, todaySuccess: ordersRes.stats ? ordersRes.stats.success : tSuccess, yesterdaySuccess: ySuccess 
+             ...p, 
+             todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 
+             todaySuccess: finalTodaySuccess, 
+             yesterdaySuccess: ySuccess,
+             todayEarnings: finalTodaySuccess * currentRate,
+             yesterdayEarnings: ySuccess * currentRate
            }));
            setTrafficData(buckets);
            setTopPerformers(formatTopApps(appCounts));
@@ -169,7 +186,7 @@ export default function UserDashboardPage() {
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full font-sans">
         
-        {/* Header */}
+        {/* Header - Only Time Badge Included */}
         <div className="mb-6 md:mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
@@ -191,20 +208,17 @@ export default function UserDashboardPage() {
           </div>
         </div>
 
-        {/* User Stats Cards */}
+        {/* 💥 User 4 Cards (Earnings & Success) 💥 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
-            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Wallet Balance</h3>
-            <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">৳ {stats.balance}</p>
-          </div>
-          <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
-            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Your OTP Rate</h3>
-            <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
+            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Earnings</h3>
+            {/* Changed from red to green color */}
+            <p className="text-xl md:text-3xl font-black text-green-400">৳ {Number(stats.todayEarnings).toFixed(2)}</p>
           </div>
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
             <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
             <div className="flex items-center gap-2">
-               <p className="text-xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
+               <p className="text-xl md:text-3xl font-black text-white">{stats.todaySuccess}</p>
                {stats.todaySuccess > 0 && (
                   <span className="flex h-2.5 w-2.5 relative ml-1">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
@@ -212,6 +226,11 @@ export default function UserDashboardPage() {
                   </span>
                )}
             </div>
+          </div>
+          <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
+            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Yesterday's Earnings</h3>
+            {/* Changed from red to green color */}
+            <p className="text-xl md:text-3xl font-black text-green-400/70">৳ {Number(stats.yesterdayEarnings).toFixed(2)}</p>
           </div>
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
             <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Yesterday's Success</h3>

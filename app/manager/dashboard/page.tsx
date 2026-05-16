@@ -9,6 +9,23 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch(e) { return new Date().toISOString().split('T')[0]; }
 };
 
+// 💥 Time Ago function for Inactive Users 💥
+const timeAgo = (dateStr: string | null) => {
+  if (!dateStr) return "Never";
+  const seconds = Math.floor((new Date().getTime() - new Date(dateStr).getTime()) / 1000);
+  let interval = seconds / 31536000;
+  if (interval > 1) return Math.floor(interval) + " years ago";
+  interval = seconds / 2592000;
+  if (interval > 1) return Math.floor(interval) + " months ago";
+  interval = seconds / 86400;
+  if (interval > 1) return Math.floor(interval) + " days ago";
+  interval = seconds / 3600;
+  if (interval > 1) return Math.floor(interval) + " hours ago";
+  interval = seconds / 60;
+  if (interval > 1) return Math.floor(interval) + " mins ago";
+  return "Just now";
+};
+
 export default function ManagerDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -16,9 +33,14 @@ export default function ManagerDashboardPage() {
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState("");
 
-  const [stats, setStats] = useState({ balance: "0.00", todayTotal: 0, todaySuccess: 0 });
+  const [stats, setStats] = useState({ 
+    balance: "0.00", todayTotal: 0, todaySuccess: 0, 
+    todayRevenue: 0, yesterdaySuccess: 0, yesterdayRevenue: 0 
+  });
+  
   const [topApps, setTopApps] = useState<any[]>([]);
   const [topUsers, setTopUsers] = useState<any[]>([]); 
+  const [inactiveUsers, setInactiveUsers] = useState<any[]>([]); // 🔥 Inactive Users State
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
   const [globalTrafficData, setGlobalTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
@@ -87,10 +109,19 @@ export default function ManagerDashboardPage() {
 
         if (agentSummaryRes && agentSummaryRes.success) {
            const todayData = agentSummaryRes.groupedRawData[todayStr] || { total: 0, success: 0 };
-           setStats(p => ({ ...p, todayTotal: todayData.total, todaySuccess: todayData.success }));
+           setStats(p => ({ 
+               ...p, 
+               todayTotal: todayData.total, 
+               todaySuccess: agentSummaryRes.todaySuccess || 0,
+               todayRevenue: agentSummaryRes.todayRevenue || 0,
+               yesterdaySuccess: agentSummaryRes.yesterdaySuccess || 0,
+               yesterdayRevenue: agentSummaryRes.yesterdayRevenue || 0
+           }));
+           
            if (agentSummaryRes.todayAppCounts) setTopApps(formatTopApps(agentSummaryRes.todayAppCounts));
            if (agentSummaryRes.todayHourlyTraffic) setTrafficData(agentSummaryRes.todayHourlyTraffic);
            if (agentSummaryRes.topPerformers) setTopUsers(agentSummaryRes.topPerformers); 
+           if (agentSummaryRes.inactiveUsers) setInactiveUsers(agentSummaryRes.inactiveUsers); // 🔥 Setting Inactive Users
         }
       } catch (e) {} finally { setIsPageLoading(false); }
     };
@@ -151,24 +182,16 @@ export default function ManagerDashboardPage() {
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* 4 Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
-            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Balance</h3>
-            <p className="text-xl md:text-3xl font-black text-[#F8FAFC]">৳ {stats.balance}</p>
-          </div>
-          <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#00C6FF] flex flex-col items-center md:items-start">
-            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Admin Given Rate</h3>
-            <p className="text-xl md:text-3xl font-black text-[#00C6FF]">৳ {Number(liveRate).toFixed(2)}</p>
-          </div>
-          <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#F59E0B] flex flex-col items-center md:items-start">
-            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Network Today's Numbers</h3>
-            <p className="text-xl md:text-3xl font-black text-[#F59E0B]">{stats.todayTotal}</p>
+            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Revenue</h3>
+            <p className="text-xl md:text-3xl font-black text-green-400">৳ {Number(stats.todayRevenue).toFixed(2)}</p>
           </div>
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
             <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Success OTP</h3>
             <div className="flex items-center gap-2">
-               <p className="text-xl md:text-3xl font-black text-[#10B981]">{stats.todaySuccess}</p>
+               <p className="text-xl md:text-3xl font-black text-white">{stats.todaySuccess}</p>
                {stats.todaySuccess > 0 && (
                   <span className="flex h-2.5 w-2.5 relative ml-1">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
@@ -176,6 +199,14 @@ export default function ManagerDashboardPage() {
                   </span>
                )}
             </div>
+          </div>
+          <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
+            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Yesterday's Revenue</h3>
+            <p className="text-xl md:text-3xl font-black text-green-400/70">৳ {Number(stats.yesterdayRevenue).toFixed(2)}</p>
+          </div>
+          <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
+            <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Yesterday's Success</h3>
+            <p className="text-xl md:text-3xl font-black text-[#E2E8F0]">{stats.yesterdaySuccess}</p>
           </div>
         </div>
 
@@ -202,7 +233,6 @@ export default function ManagerDashboardPage() {
              </div>
           </div>
 
-          {/* 💥 RESTORED: Network Top Services & Global Traffic 💥 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6">
               <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide mb-6 text-center md:text-left">Network Top Services</h3>
@@ -247,78 +277,126 @@ export default function ManagerDashboardPage() {
           </div>
         </div>
 
-        {/* TOP PERFORMING USERS MAGIC BOX */}
-        <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl mb-10">
-            <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
-               <div>
-                 <h3 className="text-lg md:text-2xl font-black bg-gradient-to-r from-[#A855F7] to-[#00C6FF] bg-clip-text text-transparent tracking-wide flex items-center gap-2">
-                    Top Performing Users 👑
-                 </h3>
-                 <p className="text-[10px] md:text-xs text-[#94A3B8] font-medium mt-1">Live ranking based on Today's OTP Success.</p>
-               </div>
-               <div className="px-2 py-1 md:px-3 md:py-1.5 bg-[#A855F7]/10 border border-[#A855F7]/30 rounded-lg text-center hidden md:block">
-                 <span className="block text-[8px] md:text-[9px] font-black text-[#A855F7] uppercase tracking-widest">Ranked Users</span>
-                 <span className="text-xs md:text-sm font-black text-white">{topUsers.length}</span>
-               </div>
+        {/* 💥 USER PERFORMANCE & INACTIVE USERS (SIDE BY SIDE GRID) 💥 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+            
+            {/* Box 1: TOP PERFORMING USERS */}
+            <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
+                   <div>
+                     <h3 className="text-lg md:text-xl font-black bg-gradient-to-r from-[#A855F7] to-[#00C6FF] bg-clip-text text-transparent tracking-wide flex items-center gap-2">
+                        Top Performing Users 👑
+                     </h3>
+                     <p className="text-[10px] md:text-xs text-[#94A3B8] font-medium mt-1">Live ranking based on Today's OTP Success.</p>
+                   </div>
+                   <div className="px-2 py-1 md:px-3 md:py-1.5 bg-[#A855F7]/10 border border-[#A855F7]/30 rounded-lg text-center hidden sm:block">
+                     <span className="block text-[8px] md:text-[9px] font-black text-[#A855F7] uppercase tracking-widest">Ranked</span>
+                     <span className="text-xs md:text-sm font-black text-white">{topUsers.length}</span>
+                   </div>
+                </div>
+
+                {topUsers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10">
+                        <svg className="w-12 h-12 text-[#334155] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <p className="text-sm font-bold text-[#64748B]">No OTPs processed today yet.</p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col relative w-full">
+                        <div className="flex mb-3 pb-2 border-b border-[#334155]/50 text-[9px] md:text-[10px] font-black text-slate-400">
+                             <div className="w-[110px] shrink-0 uppercase tracking-widest pl-1">Identity</div>
+                             <div className="flex-1 flex justify-between relative px-2">
+                                 {axisLabels.map((val, i) => (
+                                     <span key={i} className="absolute -translate-x-1/2" style={{left: `${(i/4)*100}%`}}>{val}</span>
+                                 ))}
+                             </div>
+                        </div>
+                        <div className="relative pt-2 pb-2">
+                            <div className="absolute top-0 bottom-0 left-[110px] right-0 pointer-events-none px-2">
+                                {axisLabels.map((_, i) => (
+                                    <div key={i} className={`absolute top-0 bottom-0 border-l ${i === 0 ? 'border-[#334155]' : 'border-[#334155]/30 border-dashed'}`} style={{left: `${(i/4)*100}%`}}></div>
+                                ))}
+                            </div>
+                            <div className="space-y-3 md:space-y-4 relative z-10 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
+                                {topUsers.map((u, index) => {
+                                    const percentage = (u.otpCount / maxScale) * 100;
+                                    const isTop1 = index === 0; const isTop2 = index === 1; const isTop3 = index === 2;
+                                    let barColor = "from-slate-500 to-slate-400";
+                                    let rankColor = "text-slate-400 bg-slate-400/10";
+                                    if (isTop1) { barColor = "from-[#F59E0B] to-[#FCD34D]"; rankColor = "text-[#F59E0B]"; }
+                                    else if (isTop2) { barColor = "from-[#94A3B8] to-[#E2E8F0]"; rankColor = "text-[#E2E8F0]"; }
+                                    else if (isTop3) { barColor = "from-[#B45309] to-[#D97706]"; rankColor = "text-[#D97706]"; }
+                                    else { barColor = "from-[#3B82F6] to-[#00C6FF]"; rankColor = "text-[#3B82F6]"; }
+
+                                    return (
+                                        <div key={index} className="flex items-center text-xs md:text-sm group hover:bg-[#0F172A]/50 rounded-lg transition-colors p-1 md:p-0">
+                                            <div className="w-[110px] shrink-0 flex items-center gap-1.5 md:gap-3 pr-2">
+                                                <span className={`font-black w-4 md:w-6 text-[10px] md:text-sm ${rankColor}`}>#{index + 1}</span>
+                                                <div className="truncate">
+                                                    <p className="font-bold text-slate-200 truncate text-[11px] md:text-sm">{u.name}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 relative flex items-center h-5 md:h-7 bg-[#0F172A] rounded overflow-hidden border border-[#334155] mx-2">
+                                                <div className={`h-full bg-gradient-to-r ${barColor} flex items-center justify-end pr-1.5 md:pr-2 transition-all duration-1000 min-w-[20px]`} style={{width: `${percentage}%`}}>
+                                                    <span className="text-[9px] md:text-xs font-black text-[#0B0F1A] drop-shadow-sm">{u.otpCount}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {topUsers.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10">
-                    <svg className="w-12 h-12 text-[#334155] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    <p className="text-sm font-bold text-[#64748B]">No OTPs processed today yet.</p>
+            {/* 🔥 Box 2: INACTIVE USERS 🔥 */}
+            <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
+                   <div>
+                     <h3 className="text-lg md:text-xl font-black text-red-400 tracking-wide flex items-center gap-2">
+                        Unseen Users <span className="text-[10px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded border border-red-500/30">INACTIVE</span>
+                     </h3>
+                     <p className="text-[10px] md:text-xs text-[#94A3B8] font-medium mt-1">Users with the oldest last login time.</p>
+                   </div>
+                   <div className="p-2 bg-red-500/10 rounded-full border border-red-500/20">
+                      <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                   </div>
                 </div>
-            ) : (
-                <div className="flex flex-col relative w-full">
-                    <div className="flex mb-3 pb-2 border-b border-[#334155]/50 text-[9px] md:text-[10px] font-black text-slate-400">
-                         <div className="w-[110px] md:w-[180px] shrink-0 uppercase tracking-widest pl-1">User Identity</div>
-                         <div className="flex-1 flex justify-between relative px-2 md:px-0">
-                             {axisLabels.map((val, i) => (
-                                 <span key={i} className="absolute -translate-x-1/2" style={{left: `${(i/4)*100}%`}}>{val}</span>
-                             ))}
-                         </div>
+
+                {inactiveUsers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10">
+                        <p className="text-sm font-bold text-[#64748B]">All your users are active! 🎉</p>
                     </div>
+                ) : (
+                    <div className="space-y-3 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
+                        {inactiveUsers.map((u, index) => {
+                            const initials = u.name.substring(0, 2).toUpperCase();
+                            const lastSeenText = timeAgo(u.lastLogin);
+                            const isNever = lastSeenText === "Never";
 
-                    <div className="relative pt-2 pb-2">
-                        <div className="absolute top-0 bottom-0 left-[110px] md:left-[180px] right-0 pointer-events-none px-2 md:px-0">
-                            {axisLabels.map((_, i) => (
-                                <div key={i} className={`absolute top-0 bottom-0 border-l ${i === 0 ? 'border-[#334155]' : 'border-[#334155]/30 border-dashed'}`} style={{left: `${(i/4)*100}%`}}></div>
-                            ))}
-                        </div>
-
-                        <div className="space-y-3 md:space-y-4 relative z-10 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
-                            {topUsers.map((u, index) => {
-                                const percentage = (u.otpCount / maxScale) * 100;
-                                const isTop1 = index === 0; const isTop2 = index === 1; const isTop3 = index === 2;
-                                
-                                let barColor = "from-slate-500 to-slate-400";
-                                let rankColor = "text-slate-400 bg-slate-400/10";
-                                
-                                if (isTop1) { barColor = "from-[#F59E0B] to-[#FCD34D]"; rankColor = "text-[#F59E0B]"; }
-                                else if (isTop2) { barColor = "from-[#94A3B8] to-[#E2E8F0]"; rankColor = "text-[#E2E8F0]"; }
-                                else if (isTop3) { barColor = "from-[#B45309] to-[#D97706]"; rankColor = "text-[#D97706]"; }
-                                else { barColor = "from-[#3B82F6] to-[#00C6FF]"; rankColor = "text-[#3B82F6]"; }
-
-                                return (
-                                    <div key={index} className="flex items-center text-xs md:text-sm group hover:bg-[#0F172A]/50 rounded-lg transition-colors p-1 md:p-0">
-                                        <div className="w-[110px] md:w-[180px] shrink-0 flex items-center gap-1.5 md:gap-3 pr-2">
-                                            <span className={`font-black w-4 md:w-6 text-[10px] md:text-sm ${rankColor}`}>#{index + 1}</span>
-                                            <div className="truncate">
-                                                <p className="font-bold text-slate-200 truncate text-[11px] md:text-sm">{u.name}</p>
-                                                <p className="text-[8px] md:text-[10px] text-slate-500 font-mono bg-slate-800/50 px-1 mt-0.5 inline-block rounded border border-slate-700">{u.id}</p>
-                                            </div>
+                            return (
+                                <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-[#0F172A]/50 border border-[#334155] hover:border-red-500/50 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-slate-300 text-sm">
+                                            {initials}
                                         </div>
-                                        <div className="flex-1 relative flex items-center h-5 md:h-7 bg-[#0F172A] rounded overflow-hidden border border-[#334155] mx-2 md:mx-0">
-                                            <div className={`h-full bg-gradient-to-r ${barColor} flex items-center justify-end pr-1.5 md:pr-2 transition-all duration-1000 min-w-[20px]`} style={{width: `${percentage}%`}}>
-                                                <span className="text-[9px] md:text-xs font-black text-[#0B0F1A] drop-shadow-sm">{u.otpCount}</span>
-                                            </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-200">{u.name}</p>
+                                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">{u.id}</p>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <div className="text-right">
+                                        <span className={`text-xs font-black ${isNever ? 'text-red-500' : 'text-orange-400'}`}>
+                                            {lastSeenText}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
-                </div>
-            )}
+                )}
+            </div>
+
         </div>
 
       </div>

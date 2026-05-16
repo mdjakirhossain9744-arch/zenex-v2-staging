@@ -29,12 +29,14 @@ export async function POST(req: Request) {
     const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
     if (agent.customAgentMail) emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
 
-    // 🔥 Added `fullName` and `uid` or `_id` to get user details for Top Performers
-    const networkUsers = await User.find({ $or: emailConditions, role: "user" }).select("email otpRate fullName uid _id").lean();
+    // 🔥 Added `lastLogin` and `createdAt` to find Inactive Users 🔥
+    const networkUsers = await User.find({ $or: emailConditions, role: "user" })
+      .select("email otpRate fullName uid _id lastLogin createdAt")
+      .lean();
 
     const targetEmails = new Set<string>();
     const userRateMap: Record<string, number> = {};
-    const userInfoMap: Record<string, any> = {}; // 🔥 Stores user info mapping
+    const userInfoMap: Record<string, any> = {}; 
 
     targetEmails.add(safeAgentEmail);
     if (agent.customAgentMail) targetEmails.add(agent.customAgentMail.toLowerCase().trim());
@@ -48,7 +50,7 @@ export async function POST(req: Request) {
             userInfoMap[e] = {
                 id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
                 name: u.fullName || u.email.split('@')[0],
-                todayOTP: 0 // Will count below
+                todayOTP: 0 
             };
         }
     });
@@ -75,8 +77,10 @@ export async function POST(req: Request) {
     const todayStrUTC = getUTCDateString(new Date());
 
     orders.forEach((o: any) => {
+       const currentStatus = (o.status || "").toUpperCase(); 
+
        let finalDateStr = "";
-       if ((o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") && o.updatedAt) {
+       if ((currentStatus === "DONE" || currentStatus === "SUCCESS") && o.updatedAt) {
            finalDateStr = getUTCDateString(o.updatedAt);
        } else if (o.createdAt) {
            finalDateStr = getUTCDateString(o.createdAt);
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].total += 1;
        groupedRawData[finalDateStr].allocation += 1;
 
-       if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
+       if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
           
           const msgLower = (o.fullMessage || "").toLowerCase();
           const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
@@ -122,7 +126,6 @@ export async function POST(req: Request) {
               const bIdx = Math.floor(hour / 4);
               if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
 
-              // 🔥 Count Today OTP for Top Performers 🔥
               if (userInfoMap[safeUserEmail]) {
                   userInfoMap[safeUserEmail].todayOTP += validMsgCount;
               }
@@ -139,12 +142,11 @@ export async function POST(req: Request) {
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += validMsgCount;
           }
-       } else {
+       } else if (currentStatus === "FAILED" || currentStatus === "CANCELLED" || currentStatus === "CANCELED" || currentStatus === "TIMEOUT" || currentStatus === "ERROR") {
           groupedRawData[finalDateStr].failed += 1;
        }
     });
 
-    // 💥 Sort and Filter Top Performers 💥
     const topPerformersArr = Object.values(userInfoMap)
        .map((u: any) => ({
            id: u.id,
@@ -153,7 +155,28 @@ export async function POST(req: Request) {
        }))
        .filter(u => u.otpCount > 0)
        .sort((a, b) => b.otpCount - a.otpCount)
-       .slice(0, 15); // Show Top 15
+       .slice(0, 15); 
+
+    // 💥 NEW: Processing Inactive Users (Oldest login first) 💥
+    const inactiveUsersArr = networkUsers.map((u: any) => ({
+        id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
+        name: u.fullName || u.email.split('@')[0],
+        lastLogin: u.lastLogin || null,
+    }))
+    .sort((a, b) => {
+        if (!a.lastLogin && !b.lastLogin) return 0;
+        if (!a.lastLogin) return -1; // Never logged in comes first
+        if (!b.lastLogin) return 1;
+        return new Date(a.lastLogin).getTime() - new Date(b.lastLogin).getTime();
+    })
+    .slice(0, 10); // Show Top 10 most inactive
+
+    const yesterdayDate = new Date();
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
+
+    const todayData = groupedRawData[todayStrUTC] || { success: 0, amount: 0 };
+    const yesterdayData = groupedRawData[yesterdayStrUTC] || { success: 0, amount: 0 };
 
     return NextResponse.json({
        success: true, 
@@ -163,7 +186,12 @@ export async function POST(req: Request) {
        userRate: agentMaxRate, 
        balance: agent.agentEarning || 0, 
        serverDate: todayStrUTC,
-       topPerformers: topPerformersArr // 🔥 Top Users array added here
+       topPerformers: topPerformersArr,
+       inactiveUsers: inactiveUsersArr, // 🔥 Added Inactive Users Here
+       todaySuccess: todayData.success,
+       todayRevenue: todayData.amount, 
+       yesterdaySuccess: yesterdayData.success,
+       yesterdayRevenue: yesterdayData.amount
     });
 
   } catch (error) { return NextResponse.json({ success: false }); }
