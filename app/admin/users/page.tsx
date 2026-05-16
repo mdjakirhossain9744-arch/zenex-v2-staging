@@ -188,7 +188,6 @@ export default function AdminUsersManagementPage() {
         const storedUser = localStorage.getItem("user");
         const adminEmail = storedUser ? JSON.parse(storedUser).email : "";
 
-        // 🔥 Fix: Using ID if email is missing
         const deleteUrl = selectedUser?.email 
            ? `/api/admin/delete-user?email=${selectedUser.email}` 
            : `/api/admin/delete-user?id=${selectedUser.id}`;
@@ -268,7 +267,6 @@ export default function AdminUsersManagementPage() {
           </div>
         </div>
 
-        {/* ফিল্টার বার */}
         <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#1E293B]/50 border border-[#334155] p-4 rounded-xl">
           <div>
             <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Status</label>
@@ -313,7 +311,18 @@ export default function AdminUsersManagementPage() {
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                <tr><td colSpan={7} className="text-center p-8 text-[#3B82F6] font-bold">Loading Page {currentPage}...</td></tr>
+                // 💥 SMOOTH SKELETON ANIMATION 💥
+                Array.from({ length: 10 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="p-4 pl-6"><div className="h-4 bg-[#334155] rounded w-3/4 mb-2"></div><div className="h-3 bg-[#334155]/50 rounded w-1/2"></div></td>
+                    <td className="p-4"><div className="h-5 bg-[#334155] rounded w-20"></div></td>
+                    <td className="p-4 text-center"><div className="h-4 bg-[#334155] rounded w-10 mx-auto"></div></td>
+                    <td className="p-4"><div className="h-4 bg-[#334155] rounded w-16"></div></td>
+                    <td className="p-4 text-center"><div className="h-4 bg-[#334155] rounded w-8 mx-auto"></div></td>
+                    <td className="p-4"><div className="h-5 bg-[#334155] rounded w-16"></div></td>
+                    <td className="p-4 pr-6 text-right"><div className="h-8 bg-[#334155] rounded w-20 ml-auto"></div></td>
+                  </tr>
+                ))
               ) : allUsers.length === 0 ? (
                 <tr><td colSpan={7} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
               ) : (
@@ -321,14 +330,12 @@ export default function AdminUsersManagementPage() {
                   <tr key={u.id} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
-                        {/* 🔥 SAFE FALLBACK FOR NAME 🔥 */}
                         <p className="font-bold text-[#E2E8F0]">{u.name || "Unknown User"}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#3B82F6]/20 text-[#3B82F6] border border-[#3B82F6]/30">{u.uid}</span>
                         {u.isApiActive && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest">API</span>
                         )}
                       </div>
-                      {/* 🔥 SAFE FALLBACK FOR EMAIL 🔥 */}
                       <p className="text-[10px] text-[#64748B]">{u.email || "No Email Provided"}</p>
                     </td>
                     <td className="p-4">
@@ -387,11 +394,9 @@ export default function AdminUsersManagementPage() {
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#3B82F6] to-[#00C6FF] flex items-center justify-center text-white font-black">
-                   {/* 🔥 SAFE FALLBACK FOR AVATAR 🔥 */}
                    {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
-                   {/* 🔥 SAFE FALLBACK FOR NAME AND EMAIL 🔥 */}
                    <h3 className="text-lg font-black text-white leading-tight">{selectedUser?.name || "Unknown User"} <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser?.role || "user"}</span></h3>
                    <p className="text-[10px] font-mono text-[#3B82F6] font-bold">{selectedUser?.email || "No Email"}</p>
                  </div>

@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../../DashboardLayout"; 
 
-// UTC Date Format
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch(e) { return new Date().toISOString().split('T')[0]; }
@@ -59,7 +58,6 @@ export default function ManagerDashboardPage() {
     
     const parsedUser = JSON.parse(storedUser);
     
-    // Security check
     if (parsedUser.role !== "agent") {
       router.replace(parsedUser.role === "admin" ? "/admin/dashboard" : "/dashboard"); 
       return;
@@ -124,12 +122,9 @@ export default function ManagerDashboardPage() {
 
   const userName = user?.name ? user.name.split(" ")[0] : "Agent";
   
-  // 💥 Dynamic Scale Logic (0, 9, 18, 27, 36...) 💥
   const highestOTP = topUsers.length > 0 ? topUsers[0].otpCount : 0; 
-  let maxScale = 36; // Default Max Limit is 36
-  while (maxScale <= highestOTP && highestOTP > 0) {
-     maxScale += 12; // If OTP crosses 36, scale auto-increases to 48, 60, etc.
-  }
+  let maxScale = 36; 
+  while (maxScale <= highestOTP && highestOTP > 0) { maxScale += 12; }
   const axisLabels = [0, maxScale * 0.25, maxScale * 0.50, maxScale * 0.75, maxScale];
 
   return (
@@ -184,7 +179,6 @@ export default function ManagerDashboardPage() {
           </div>
         </div>
 
-        {/* Charts & Graphs */}
         <div className="flex flex-col gap-6 mb-10">
           <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
              <div className="flex justify-between items-center mb-6 relative z-10">
@@ -207,9 +201,53 @@ export default function ManagerDashboardPage() {
                <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span>
              </div>
           </div>
+
+          {/* 💥 RESTORED: Network Top Services & Global Traffic 💥 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6">
+              <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide mb-6 text-center md:text-left">Network Top Services</h3>
+              <div className="space-y-4">
+                {topApps.length === 0 ? (
+                  <div className="text-center text-[#64748B] text-sm py-4 border border-dashed border-[#334155] rounded-xl">No OTP data yet.</div>
+                ) : (
+                  topApps.map((app, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-[#0F172A] border border-[#334155] hover:border-[#8B5CF6]/50 transition-colors shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg ${app.info.bg} ${app.info.text} flex items-center justify-center font-bold`}>{app.info.icon}</div>
+                        <div><p className="text-sm font-bold text-[#E2E8F0]">{app.name}</p><p className="text-[10px] text-[#94A3B8] font-medium uppercase tracking-wider">Service</p></div>
+                      </div>
+                      <span className="text-lg font-black text-white font-mono">{app.count} <span className="text-[10px] text-slate-500">OTP</span></span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
+               <div className="flex justify-between items-center mb-6 relative z-10">
+                 <h3 className="text-lg font-black text-[#F8FAFC] tracking-wide">Global Traffic Overview</h3>
+                 <span className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black rounded-full tracking-widest uppercase">
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span> LIVE
+                 </span>
+               </div>
+               <div className="flex-1 w-full h-40 relative z-10">
+                  {Math.max(...globalTrafficData) === 0 ? (
+                    <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">Loading Live Data...</div>
+                  ) : (
+                    <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
+                      <defs><linearGradient id="globalLineGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#EF4444" /><stop offset="100%" stopColor="#F59E0B" /></linearGradient></defs>
+                      <path d={generateTrafficPath(globalTrafficData)} fill="none" stroke="url(#globalLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+               </div>
+               <div className="flex justify-between items-center text-[10px] font-bold text-[#64748B] uppercase mt-2 relative z-10">
+                 <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span>
+               </div>
+            </div>
+          </div>
         </div>
 
-        {/* 💥 NEW: DYNAMIC TOP PERFORMING USERS GRID CHART 💥 */}
+        {/* TOP PERFORMING USERS MAGIC BOX */}
         <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl mb-10">
             <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
                <div>
@@ -231,7 +269,6 @@ export default function ManagerDashboardPage() {
                 </div>
             ) : (
                 <div className="flex flex-col relative w-full">
-                    {/* Header Row for Axis (Scale: 0, 9, 18, 27, 36...) */}
                     <div className="flex mb-3 pb-2 border-b border-[#334155]/50 text-[9px] md:text-[10px] font-black text-slate-400">
                          <div className="w-[110px] md:w-[180px] shrink-0 uppercase tracking-widest pl-1">User Identity</div>
                          <div className="flex-1 flex justify-between relative px-2 md:px-0">
@@ -241,16 +278,13 @@ export default function ManagerDashboardPage() {
                          </div>
                     </div>
 
-                    {/* Chart Area */}
                     <div className="relative pt-2 pb-2">
-                        {/* Vertical Grid Lines */}
                         <div className="absolute top-0 bottom-0 left-[110px] md:left-[180px] right-0 pointer-events-none px-2 md:px-0">
                             {axisLabels.map((_, i) => (
                                 <div key={i} className={`absolute top-0 bottom-0 border-l ${i === 0 ? 'border-[#334155]' : 'border-[#334155]/30 border-dashed'}`} style={{left: `${(i/4)*100}%`}}></div>
                             ))}
                         </div>
 
-                        {/* User Bars */}
                         <div className="space-y-3 md:space-y-4 relative z-10 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
                             {topUsers.map((u, index) => {
                                 const percentage = (u.otpCount / maxScale) * 100;
