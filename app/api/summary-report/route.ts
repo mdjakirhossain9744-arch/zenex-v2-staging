@@ -59,7 +59,6 @@ let cachedAdminCostMap: Record<string, number> = {};
 let lastCostMapFetchTime = 0;
 const CACHE_TTL = 60 * 1000;
 
-// 🔥 ULTRA-RESILIENT KEYWORD FETCHING (String & Array both supported) 🔥
 const getHiddenKeywordsFromCache = async () => {
     if (Date.now() - lastKeywordFetchTime < CACHE_TTL) return cachedKeywords;
     try {
@@ -107,7 +106,6 @@ const getAdminCostMapFromCache = async () => {
     return cachedAdminCostMap;
 };
 
-// 💥 STRICT UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
@@ -145,10 +143,13 @@ export async function POST(req: Request) {
         const limitNum = Number(limitDays) || 60;
         const pastDaysLimit = new Date();
         pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
-        
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit) };
-        orderQuery.createdAt = { $gte: pastDaysLimit };
     }
+
+    // 🔥 MEMORY CRASH PROTECTION: Never fetch unlimited Orders. Max 60 Days. 🔥
+    const maxOrderLimit = new Date();
+    maxOrderLimit.setUTCDate(maxOrderLimit.getUTCDate() - 60);
+    orderQuery.createdAt = { $gte: maxOrderLimit };
 
     if (role !== "admin") {
         dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
@@ -229,7 +230,6 @@ export async function POST(req: Request) {
 
               let sName = extractServiceName(o.fullMessage);
               
-              // 🔥 SECRET MASKING LOGIC RUNS HERE 🔥
               hiddenKeywords.forEach((kw: string) => {
                   if (kw && sName.toLowerCase().includes(kw.trim())) {
                       sName = "******";
