@@ -5,10 +5,10 @@ import User from "../../../models/User";
 
 export const dynamic = "force-dynamic";
 
-// 💥 বাংলাদেশ টাইম বের করার গ্লোবাল ফাংশন 💥
-const getBDDateString = (dateObj: Date | number | string = new Date()) => {
+// 💥 UTC টাইম বের করার গ্লোবাল ফাংশন (Fixed from Asia/Dhaka) 💥
+const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Dhaka',
+      timeZone: 'UTC', // ✅ Changed to UTC
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).skip(skip).limit(limit);
       
       const finalOrders: any[] = [];
-      const todayStr = getBDDateString(); 
+      const todayStr = getUTCDateString(); // ✅ Using UTC Date
       const fetchDate = targetDate || todayStr;
 
       const statQuery = { userEmail: email, dateString: fetchDate };
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     }
 
     if (action === "CREATE") {
-      const todayStr = getBDDateString(); 
+      const todayStr = getUTCDateString(); // ✅ Using UTC Date
       const newOrder = new Order({
         userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
         country: orderData.country, operator: orderData.operator, status: orderData.status,
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
             return match ? match[0] : msg.trim();
         });
 
-        // 💥 যদি একই 6-digit বা 4-digit কোড আবার আসে, তাহলে পেমেন্টও হবে না, সেভও হবে না! 💥
+        // 💥 যদি একই 6-digit বা 4-digit কোড আবার আসে, তাহলে পেমেন্টও হবে ওয়েবসাইটে সেভও হবে না! 💥
         if (existingCodes.includes(incomingCode)) {
           return NextResponse.json({ success: true, message: "Duplicate Exact OTP code detected. Ignored." });
         }

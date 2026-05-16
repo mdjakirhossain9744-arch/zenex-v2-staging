@@ -1,9 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import DashboardLayout from "../DashboardLayout"; 
+import { useRouter } from "next/navigation"; // 💥 রাউটার ইম্পোর্ট
+import DashboardLayout from "../../DashboardLayout"; 
 
-export default function UsersDirectoryPage() {
+export default function ManagerUsersDirectoryPage() {
+  const router = useRouter(); // 💥 রাউটার ইনিশিয়ালাইজ
+
   const [role, setRole] = useState("user");
   const [userEmail, setUserEmail] = useState("");
   const [agentRate, setAgentRate] = useState<number>(0.70); 
@@ -31,13 +34,11 @@ export default function UsersDirectoryPage() {
 
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Search Debounce
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset page to 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, statusFilter]);
@@ -45,42 +46,24 @@ export default function UsersDirectoryPage() {
   const fetchNetworkUsers = useCallback((email: string, userRole: string, isSilent = false) => {
     if (!isSilent) setLoading(true); 
 
-    if (userRole === "admin") {
-      fetch(`/api/get-all-users?page=${currentPage}&limit=${itemsPerPage}&search=${encodeURIComponent(debouncedSearch)}&status=${statusFilter}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
-          if (data?.pagination) {
-            setTotalPages(data.pagination.totalPages);
-            setTotalUsersCount(data.pagination.total);
-          }
-          if (data?.stats) {
-            setStats({ activeUsers: data.stats.activeAccounts, pendingUsers: 0, bannedUsers: data.stats.bannedAccounts });
-          }
-          setAgentMaxLimit(999999); 
-          setLoading(false);
-        })
-        .catch(err => { console.error(err); setLoading(false); });
-    } else {
-      fetch(`/api/get-agent-users?t=${Date.now()}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentEmail: email, page: currentPage, limit: itemsPerPage, search: debouncedSearch, status: statusFilter })
+    fetch(`/api/get-agent-users?t=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentEmail: email, page: currentPage, limit: itemsPerPage, search: debouncedSearch, status: statusFilter })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
+        if (data?.pagination) {
+          setTotalPages(data.pagination.totalPages);
+          setTotalUsersCount(data.pagination.total);
+        }
+        if (data?.stats) setStats(data.stats);
+        if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
+        if (data?.agentRate) setAgentRate(Number(data.agentRate));
+        setLoading(false);
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
-          if (data?.pagination) {
-            setTotalPages(data.pagination.totalPages);
-            setTotalUsersCount(data.pagination.total);
-          }
-          if (data?.stats) setStats(data.stats);
-          if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
-          if (data?.agentRate) setAgentRate(Number(data.agentRate));
-          setLoading(false);
-        })
-        .catch(err => { console.error(err); setLoading(false); });
-    }
+      .catch(err => { console.error(err); setLoading(false); });
   }, [currentPage, debouncedSearch, statusFilter]);
 
   useEffect(() => {
@@ -88,24 +71,27 @@ export default function UsersDirectoryPage() {
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
-        const currentRole = parsedUser?.role || "user";
-        setRole(currentRole);
+        
+        // 💥 SMART REDIRECT 💥
+        if (parsedUser.role === "admin") { router.push("/admin/users"); return; }
+        if (parsedUser.role !== "agent") { router.push("/dashboard"); return; }
 
-        if (currentRole === "agent" || currentRole === "admin") {
-          setUserEmail(parsedUser.email); 
-          fetchNetworkUsers(parsedUser.email, currentRole, false); 
-          
-          const interval = setInterval(() => {
-             fetchNetworkUsers(parsedUser.email, currentRole, true); 
-          }, 10000); 
-          
-          return () => clearInterval(interval);
-        }
+        setRole(parsedUser.role);
+        setUserEmail(parsedUser.email); 
+        fetchNetworkUsers(parsedUser.email, parsedUser.role, false); 
+        
+        const interval = setInterval(() => {
+           fetchNetworkUsers(parsedUser.email, parsedUser.role, true); 
+        }, 10000); 
+        
+        return () => clearInterval(interval);
       } catch (e) {
         console.error("Local Storage Error:", e);
       }
+    } else {
+      router.push("/login");
     }
-  }, [fetchNetworkUsers]);
+  }, [fetchNetworkUsers, router]);
 
   const isSeatFull = role === "agent" && stats.activeUsers >= agentMaxLimit;
 
@@ -189,15 +175,6 @@ export default function UsersDirectoryPage() {
     }
   };
 
-  if (role !== "agent" && role !== "admin") {
-    return (
-      <div className="min-h-screen bg-[#0B0F1A] text-white flex flex-col items-center justify-center font-black tracking-widest uppercase">
-        <span className="text-[#F43F5E] text-4xl mb-2">⛔</span>
-        Access Denied. Admins & Agents Only.
-      </div>
-    );
-  }
-
   return (
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full min-h-screen bg-[#0B0F1A] text-slate-200 pb-20">
@@ -205,8 +182,8 @@ export default function UsersDirectoryPage() {
         <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
             <div className="flex items-center gap-3">
-               <h2 className={`text-2xl md:text-3xl font-black bg-gradient-to-r bg-clip-text text-transparent uppercase tracking-wider ${role === 'admin' ? 'from-[#F43F5E] to-[#EAB308]' : 'from-[#A855F7] to-[#EC4899]'}`}>
-                 {role === "admin" ? "Global Users Directory" : "My Network Users"}
+               <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r bg-clip-text text-transparent uppercase tracking-wider from-[#A855F7] to-[#EC4899]">
+                 My Network Users
                </h2>
                <span className="flex h-3 w-3 relative">
                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -214,7 +191,7 @@ export default function UsersDirectoryPage() {
                </span>
             </div>
             <p className="text-sm text-[#94A3B8] mt-1">
-              {role === "admin" ? "Master control panel for all registered users across the system." : "Manage your team, set custom OTP rates, and update passwords. (Max 40/Page)"}
+              Manage your team, set custom OTP rates, and update passwords. (Max 40/Page)
             </p>
           </div>
           
@@ -224,9 +201,7 @@ export default function UsersDirectoryPage() {
               <input 
                 type="text" 
                 value={searchQuery}
-                onChange={(e) => {
-                   setSearchQuery(e.target.value);
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by ID, Name or Email..." 
                 className="w-full bg-[#0F172A] border border-[#334155] text-white pl-10 pr-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#A855F7] transition-colors" 
               />
@@ -245,26 +220,19 @@ export default function UsersDirectoryPage() {
           </div>
         </div>
 
-        {/* স্ট্যাটস কার্ড সেকশন (আগের মতোই) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          
-          <div className={`bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 ${role === 'admin' ? 'border-t-[#F43F5E]' : 'border-t-[#A855F7]'}`}>
+          <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#A855F7]">
             <p className="text-[#94A3B8] text-xs font-bold uppercase tracking-wider mb-1">Total Users</p>
-            <h3 className="text-2xl md:text-3xl font-black text-white">
-              {totalUsersCount}
-            </h3>
+            <h3 className="text-2xl md:text-3xl font-black text-white">{totalUsersCount}</h3>
           </div>
           
           <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#10B981]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981] relative overflow-hidden">
             <p className="text-[#10B981] text-xs font-bold uppercase tracking-wider mb-1">Active Users</p>
             <h3 className="text-2xl md:text-3xl font-black text-[#10B981]">
-              {stats.activeUsers} 
-              <span className="text-sm text-[#64748B] font-medium ml-1">{role === 'agent' ? `/ ${agentMaxLimit}` : ''}</span>
+              {stats.activeUsers} <span className="text-sm text-[#64748B] font-medium ml-1">/ {agentMaxLimit}</span>
             </h3>
             {isSeatFull && (
-              <span className="inline-block mt-2 px-2 py-0.5 bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 text-[10px] font-black uppercase tracking-widest rounded animate-pulse">
-                Seat Full
-              </span>
+              <span className="inline-block mt-2 px-2 py-0.5 bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 text-[10px] font-black uppercase tracking-widest rounded animate-pulse">Seat Full</span>
             )}
           </div>
           
@@ -275,13 +243,10 @@ export default function UsersDirectoryPage() {
 
           <div className="bg-red-500/5 backdrop-blur-xl border border-[#F43F5E]/30 p-5 rounded-2xl shadow-lg border-t-2 border-t-[#F43F5E] relative overflow-hidden">
             <p className="text-[#F43F5E] text-xs font-bold uppercase tracking-wider mb-1">Banned</p>
-            <h3 className="text-2xl md:text-3xl font-black text-[#F43F5E]">
-              {stats.bannedUsers}
-            </h3>
+            <h3 className="text-2xl md:text-3xl font-black text-[#F43F5E]">{stats.bannedUsers}</h3>
           </div>
         </div>
 
-        {/* টেবিল (আগের মতোই বড় এবং স্পেসড) */}
         <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[400px]">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
@@ -306,9 +271,6 @@ export default function UsersDirectoryPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-bold text-[#E2E8F0]">{u?.name || "Unknown"}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u?.uid || "N/A"}</span>
-                        {role === 'admin' && u?.role === 'agent' && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-widest">AGENT</span>
-                        )}
                       </div>
                       <p className="text-[10px] text-[#64748B]">{u?.email || "No Email"}</p>
                     </td>
@@ -323,7 +285,7 @@ export default function UsersDirectoryPage() {
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      <button onClick={() => openManageModal(u)} className={`px-4 py-2 rounded-lg text-xs font-black transition-colors border ${role === 'admin' ? 'bg-[#F43F5E]/10 hover:bg-[#F43F5E] text-[#F43F5E] hover:text-white border-[#F43F5E]/30' : 'bg-[#A855F7]/10 hover:bg-[#A855F7] text-[#A855F7] hover:text-white border-[#A855F7]/30'}`}>
+                      <button onClick={() => openManageModal(u)} className="px-4 py-2 rounded-lg text-xs font-black transition-colors border bg-[#A855F7]/10 hover:bg-[#A855F7] text-[#A855F7] hover:text-white border-[#A855F7]/30">
                         Manage User
                       </button>
                     </td>
@@ -354,7 +316,7 @@ export default function UsersDirectoryPage() {
               <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
-                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-black ${role === 'admin' ? 'bg-gradient-to-tr from-[#F43F5E] to-[#EAB308]' : 'bg-gradient-to-tr from-[#A855F7] to-[#EC4899]'}`}>
+                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black bg-gradient-to-tr from-[#A855F7] to-[#EC4899]">
                    {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
@@ -375,7 +337,7 @@ export default function UsersDirectoryPage() {
 
                 <div>
                   <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
-                    Set User Pay Rate {role === "agent" ? `(Max: ৳ ${Number(agentRate || 0).toFixed(2)})` : `(Admin Override)`}
+                    Set User Pay Rate (Max: ৳ {Number(agentRate || 0).toFixed(2)})
                   </label>
                   <input type="number" step="0.01" value={newRate} onChange={(e) => setNewRate(e.target.value)} required
                     className="w-full bg-[#0F172A] border border-[#334155] text-white font-black px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#EAB308]" />
@@ -395,20 +357,17 @@ export default function UsersDirectoryPage() {
                   </div>
                 </div>
                 
-                <button type="submit" disabled={isSaving} className={`w-full py-3.5 mt-2 rounded-xl text-white font-black text-sm transition-transform hover:-translate-y-1 disabled:opacity-50 ${role === 'admin' ? 'bg-gradient-to-r from-[#F43F5E] to-[#EAB308] shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-gradient-to-r from-[#A855F7] to-[#EC4899] shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}>
+                <button type="submit" disabled={isSaving} className="w-full py-3.5 mt-2 rounded-xl text-white font-black text-sm transition-transform hover:-translate-y-1 disabled:opacity-50 bg-gradient-to-r from-[#A855F7] to-[#EC4899] shadow-[0_0_15px_rgba(168,85,247,0.4)]">
                   {isSaving ? "Saving..." : "Update User Details"}
                 </button>
 
-                {selectedUser?.role !== 'admin' && selectedUser?.role !== 'agent' && (
-                  <div className="pt-2 text-center">
-                    <button type="button" onClick={handleDeleteUser} className="text-[10px] font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      Permanently delete this user
-                    </button>
-                  </div>
-                )}
+                <div className="pt-2 text-center">
+                  <button type="button" onClick={handleDeleteUser} className="text-[10px] font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    Permanently delete this user
+                  </button>
+                </div>
               </form>
-
             </div>
           </div>
         )}

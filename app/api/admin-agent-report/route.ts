@@ -6,8 +6,16 @@ import User from "../../../models/User";
 import Order from "../../../models/Order";
 import DailyStat from "../../../models/DailyStat"; 
 
-const getBDDateString = (dateObj: any = new Date()) => {
-  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj)); } 
+// 🌍 UTC Timezone Converter (Fixed from Asia/Dhaka)
+const getUTCDateString = (dateObj: any = new Date()) => {
+  try { 
+    return new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'UTC', 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit' 
+    }).format(new Date(dateObj)); 
+  } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
@@ -18,7 +26,9 @@ export async function GET(req: NextRequest) {
 
     try {
       const payloadBase64 = token.split('.')[1];
-      const decodedPayload = JSON.parse(atob(payloadBase64));
+      // Node.js standard Buffer used for consistency
+      const decodedString = Buffer.from(payloadBase64, 'base64').toString('utf-8');
+      const decodedPayload = JSON.parse(decodedString);
       if (decodedPayload.role !== "admin") {
         return NextResponse.json({ message: "🔴 FORBIDDEN: Admins only!" }, { status: 403 });
       }
@@ -57,10 +67,10 @@ export async function GET(req: NextRequest) {
     });
 
     const now = new Date();
-    const todayStrBD = getBDDateString(now);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1); 
+    const todayStrUTC = getUTCDateString(now);
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); // ✅ Start of month in UTC
 
-    const dailyStats = await DailyStat.find({ dateString: { $gte: getBDDateString(startOfMonth) } }).lean();
+    const dailyStats = await DailyStat.find({ dateString: { $gte: getUTCDateString(startOfMonth) } }).lean();
     const archivedKeys = new Set<string>();
 
     dailyStats.forEach((ds: any) => {
@@ -76,7 +86,7 @@ export async function GET(req: NextRequest) {
 
             if (targetAgent) {
                 targetAgent.thisMonthOTPs += ds.successOTP;
-                if (dDate === todayStrBD) targetAgent.todayOTPs += ds.successOTP;
+                if (dDate === todayStrUTC) targetAgent.todayOTPs += ds.successOTP;
                 
                 const commissionPerOtp = Math.max(0, targetAgent.agentRate - userToAgentMap[uEmail].userRate);
                 targetAgent.thisMonthCommission += (commissionPerOtp * ds.successOTP);
@@ -91,11 +101,11 @@ export async function GET(req: NextRequest) {
     }).select("userEmail fullMessage createdAt updatedAt dateString").lean();
 
     orders.forEach((o: any) => {
-        // 💥 সঠিক ডেট বের করা হলো 💥
-        const oDate = getBDDateString(o.updatedAt || o.createdAt || new Date(o.dateString));
+        // 💥 সঠিক ডেট বের করা হলো (UTC) 💥
+        const oDate = getUTCDateString(o.updatedAt || o.createdAt || new Date(o.dateString));
         const uEmail = (o.userEmail || "").toLowerCase().trim();
         
-        if (oDate !== todayStrBD && archivedKeys.has(`${oDate}_${uEmail}`)) return;
+        if (oDate !== todayStrUTC && archivedKeys.has(`${oDate}_${uEmail}`)) return;
 
         const msgLower = (o.fullMessage || "").toLowerCase();
         const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
@@ -122,7 +132,7 @@ export async function GET(req: NextRequest) {
 
             if (targetAgent) {
                 targetAgent.thisMonthOTPs += validMsgCount;
-                if (oDate === todayStrBD) targetAgent.todayOTPs += validMsgCount; 
+                if (oDate === todayStrUTC) targetAgent.todayOTPs += validMsgCount; 
                 
                 if (!isFreeService) {
                     const commissionPerOtp = Math.max(0, targetAgent.agentRate - userToAgentMap[uEmail].userRate);
@@ -144,7 +154,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ 
         success: true, 
-        currentMonth: now.toLocaleString('default', { month: 'long', year: 'numeric' }), 
+        currentMonth: now.toLocaleString('default', { month: 'long', year: 'numeric', timeZone: 'UTC' }), // ✅ UTC month name
         report: finalReport 
     }, { status: 200 });
 

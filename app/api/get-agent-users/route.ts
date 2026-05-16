@@ -5,9 +5,10 @@ import connectToDatabase from "../../lib/mongodb";
 import User from "../../../models/User"; 
 import Order from "../../../models/Order";
 
-const getBDDateString = (dateObj: any = new Date()) => {
+// 🌍 UTC Timezone Converter (Fixed from Asia/Dhaka)
+const getUTCDateString = (dateObj: any = new Date()) => {
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj));
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj));
   } catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
-    const todayStr = getBDDateString();
+    const todayStr = getUTCDateString(); // ✅ Changed to UTC
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
@@ -76,8 +77,8 @@ export async function POST(req: NextRequest) {
     
     orders.forEach((o: any) => {
         const finalDateStr = o.updatedAt 
-            ? getBDDateString(o.updatedAt) 
-            : (o.createdAt ? getBDDateString(o.createdAt) : (o.dateString ? getBDDateString(new Date(o.dateString)) : getBDDateString(new Date())));
+            ? getUTCDateString(o.updatedAt) 
+            : (o.createdAt ? getUTCDateString(o.createdAt) : (o.dateString ? getUTCDateString(new Date(o.dateString)) : getUTCDateString(new Date())));
         
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();

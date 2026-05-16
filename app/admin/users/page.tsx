@@ -1,9 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import DashboardLayout from "../DashboardLayout"; 
+import { useRouter } from "next/navigation"; 
+import DashboardLayout from "../../DashboardLayout"; 
 
-export default function UsersManagementPage() {
+export default function AdminUsersManagementPage() {
+  const router = useRouter(); 
+
   const [role, setRole] = useState("user");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -32,11 +35,8 @@ export default function UsersManagementPage() {
   const [newAgentEmail, setNewAgentEmail] = useState(""); 
   const [handoverEmail, setHandoverEmail] = useState(""); 
 
-  // ফিল্টার স্টেট
   const [statusFilter, setStatusFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
-  
-  // 🔥 ফিক্স: এজেন্ট লিস্ট আলাদা স্টেটে সেভ রাখা হচ্ছে, যাতে ফিল্টার করলেও না মুছে যায়
   const [cachedAgentOptions, setCachedAgentOptions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -62,7 +62,6 @@ export default function UsersManagementPage() {
         if (data.pagination) setTotalPages(data.pagination.totalPages);
         if (data.stats) setStats(data.stats);
         
-        // 🔥 ফিক্স: প্রথমবার লোড হওয়ার সময় বা এজেন্ট লিস্ট খালি থাকলে এজেন্টদের ক্যাশ করে রাখছি
         if (cachedAgentOptions.length === 0 && data.users) {
            const agents = data.users.filter((u: any) => u.role === 'agent');
            if (agents.length > 0) {
@@ -79,19 +78,23 @@ export default function UsersManagementPage() {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
+      
+      if (parsedUser.role === "agent") { router.push("/manager/users"); return; }
+      if (parsedUser.role !== "admin") { router.push("/dashboard"); return; }
+
       setRole(parsedUser.role);
-      if (parsedUser.role === "admin") {
-        fetchUsers(false);
-        const interval = setInterval(() => { fetchUsers(true); }, 10000);
-        return () => clearInterval(interval);
-      }
+      fetchUsers(false);
+      const interval = setInterval(() => { fetchUsers(true); }, 10000);
+      return () => clearInterval(interval);
+    } else {
+      router.push("/login");
     }
-  }, [fetchUsers]);
+  }, [fetchUsers, router]);
 
   const openManageModal = (user: any) => {
     setSelectedUser(user);
     setNewRate(user.rate);
-    setNewStatus(user.status.toLowerCase());
+    setNewStatus(user.status?.toLowerCase() || "active");
     setNewPassword(""); 
     setNewPin(""); 
     setNewApiStatus(user.isApiActive || false); 
@@ -152,7 +155,7 @@ export default function UsersManagementPage() {
   };
 
   const handleQuickUnban = async (user: any) => {
-    if (!confirm(`Are you sure you want to UNBAN ${user.name}?`)) return;
+    if (!confirm(`Are you sure you want to UNBAN ${user.name || "this user"}?`)) return;
     
     const res = await fetch("/api/update-user", {
       method: "POST",
@@ -178,14 +181,19 @@ export default function UsersManagementPage() {
   };
 
   const handleDeleteUser = async () => {
-    const confirmDelete = window.confirm(`⚠️ DANGER ZONE!\nAre you absolutely sure you want to permanently delete "${selectedUser?.name || 'this user'}"?\nAll their data and balance will be lost. This CANNOT be undone!`);
+    const confirmDelete = window.confirm(`⚠️ DANGER ZONE!\nAre you absolutely sure you want to permanently delete "${selectedUser?.name || 'this Unknown user'}"?\nAll their data and balance will be lost. This CANNOT be undone!`);
     
     if (confirmDelete) {
       try {
         const storedUser = localStorage.getItem("user");
         const adminEmail = storedUser ? JSON.parse(storedUser).email : "";
 
-        const res = await fetch(`/api/admin/delete-user?email=${selectedUser?.email}`, {
+        // 🔥 Fix: Using ID if email is missing
+        const deleteUrl = selectedUser?.email 
+           ? `/api/admin/delete-user?email=${selectedUser.email}` 
+           : `/api/admin/delete-user?id=${selectedUser.id}`;
+
+        const res = await fetch(deleteUrl, {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
@@ -208,8 +216,6 @@ export default function UsersManagementPage() {
       }
     }
   };
-
-  if (role !== "admin") return <div className="min-h-screen bg-[#0B0F1A] text-white flex items-center justify-center">Access Denied. Admins Only.</div>;
 
   return (
     <DashboardLayout>
@@ -285,9 +291,8 @@ export default function UsersManagementPage() {
               className="w-full bg-[#0F172A] border border-[#334155] text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]"
             >
               <option value="all">All Agents</option>
-              {/* 🔥 ফিক্স: এখানে cachedAgentOptions ব্যবহার করা হচ্ছে */}
               {cachedAgentOptions.map(ag => (
-                <option key={ag.id} value={ag.customAgentMail || ag.email}>{ag.name} ({ag.customAgentMail || ag.email})</option>
+                <option key={ag.id} value={ag.customAgentMail || ag.email}>{ag.name || "Unknown"} ({ag.customAgentMail || ag.email || "No Email"})</option>
               ))}
             </select>
           </div>
@@ -316,13 +321,15 @@ export default function UsersManagementPage() {
                   <tr key={u.id} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="font-bold text-[#E2E8F0]">{u.name}</p>
+                        {/* 🔥 SAFE FALLBACK FOR NAME 🔥 */}
+                        <p className="font-bold text-[#E2E8F0]">{u.name || "Unknown User"}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#3B82F6]/20 text-[#3B82F6] border border-[#3B82F6]/30">{u.uid}</span>
                         {u.isApiActive && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest">API</span>
                         )}
                       </div>
-                      <p className="text-[10px] text-[#64748B]">{u.email}</p>
+                      {/* 🔥 SAFE FALLBACK FOR EMAIL 🔥 */}
+                      <p className="text-[10px] text-[#64748B]">{u.email || "No Email Provided"}</p>
                     </td>
                     <td className="p-4">
                       {u.role === 'admin' ? (
@@ -330,19 +337,19 @@ export default function UsersManagementPage() {
                       ) : u.role === 'agent' ? (
                         <span className="text-[10px] font-black px-2 py-0.5 bg-[#8B5CF6]/10 text-[#8B5CF6] rounded border border-[#8B5CF6]/30 uppercase tracking-widest">Agent 👑</span>
                       ) : (
-                        <span className="text-xs font-medium text-[#3B82F6]">{u.agentEmail}</span>
+                        <span className="text-xs font-medium text-[#3B82F6]">{u.agentEmail || "Admin"}</span>
                       )}
                     </td>
                     <td className="p-4 text-center text-[12px] font-bold text-[#EAB308]">৳ {u.rate}</td>
                     <td className="p-4 font-black text-[#10B981]">৳ {u.balance}</td>
                     <td className="p-4 text-center font-black text-[#00C6FF]">{u.todayOTP}</td>
                     <td className="p-4">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.status.toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : u.status.toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
-                        {u.status}
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.status?.toLowerCase() === 'active' ? 'bg-[#10B981]/10 text-[#10B981]' : u.status?.toLowerCase() === 'banned' ? 'bg-[#F43F5E]/10 text-[#F43F5E]' : 'bg-[#EAB308]/10 text-[#EAB308]'}`}>
+                        {u.status || "Unknown"}
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      {u.status.toLowerCase() === 'banned' && (
+                      {u.status?.toLowerCase() === 'banned' && (
                         <button onClick={() => handleQuickUnban(u)} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg mr-2 text-xs font-black transition-colors border border-red-500/30">
                           Unban
                         </button>
@@ -380,11 +387,13 @@ export default function UsersManagementPage() {
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#3B82F6] to-[#00C6FF] flex items-center justify-center text-white font-black">
-                   {selectedUser.name.charAt(0)}
+                   {/* 🔥 SAFE FALLBACK FOR AVATAR 🔥 */}
+                   {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
-                   <h3 className="text-lg font-black text-white leading-tight">{selectedUser.name} <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser.role}</span></h3>
-                   <p className="text-[10px] font-mono text-[#3B82F6] font-bold">{selectedUser.email}</p>
+                   {/* 🔥 SAFE FALLBACK FOR NAME AND EMAIL 🔥 */}
+                   <h3 className="text-lg font-black text-white leading-tight">{selectedUser?.name || "Unknown User"} <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser?.role || "user"}</span></h3>
+                   <p className="text-[10px] font-mono text-[#3B82F6] font-bold">{selectedUser?.email || "No Email"}</p>
                  </div>
               </div>
               
@@ -494,7 +503,7 @@ export default function UsersManagementPage() {
                 </div>
                 
                 <div className="flex gap-3 pt-3">
-                  {selectedUser.role === "user" && isMakingAgent && (
+                  {selectedUser?.role === "user" && isMakingAgent && (
                     <button type="button" onClick={() => setIsMakingAgent(false)} className="flex-1 py-2.5 bg-[#334155] text-white text-xs font-bold rounded-lg hover:bg-[#475569]">Cancel</button>
                   )}
                   <button type="submit" className="w-full flex-1 py-2.5 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white text-xs font-black rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.4)]">

@@ -2,16 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation"; 
-import DashboardLayout from "../DashboardLayout"; 
+import DashboardLayout from "../../DashboardLayout"; 
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
-export default function UserSummary() {
-  const router = useRouter();
+export default function AdminSummary() {
+  const router = useRouter(); 
 
   const [dateFilter, setDateFilter] = useState("7"); 
-  const [userRate, setUserRate] = useState(0.50);
-  const [dbEarnings, setDbEarnings] = useState("0.00"); 
-
   const [reportData, setReportData] = useState<any[]>([]);
   const [totals, setTotals] = useState({ allocation: 0, success: 0, failed: 0, amount: 0 });
   const [overallRate, setOverallRate] = useState("0%");
@@ -23,8 +20,7 @@ export default function UserSummary() {
     for (let i = 0; i < days; i++) {
       const d = new Date(baseDate);
       d.setDate(d.getDate() - i);
-      const localDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      dates.push(localDateStr);
+      dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
     }
     return dates;
   };
@@ -33,33 +29,27 @@ export default function UserSummary() {
     if (!isSilent) setLoading(true); 
     const storedUser = localStorage.getItem("user");
     if (!storedUser) { router.push("/login"); return; }
-
+    
     const parsedUser = JSON.parse(storedUser);
 
     // 💥 SMART REDIRECT 💥
-    if (parsedUser.role === "admin") { router.push("/admin/summary"); return; }
     if (parsedUser.role === "agent") { router.push("/manager/summary"); return; }
+    if (parsedUser.role !== "admin") { router.push("/summary"); return; }
 
     try {
       const res = await fetch("/api/summary-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: parsedUser.email, role: "user" })
+        body: JSON.stringify({ email: parsedUser.email, role: "admin" })
       });
       
       const data = await res.json();
-      
       if (data.success) {
-        setUserRate(data.userRate || 0.50);
-        setDbEarnings(Number(data.balance || 0).toFixed(2));
-
         let daysToShow = dateFilter === "today" ? 1 : dateFilter === "15" ? 15 : dateFilter === "30" ? 30 : dateFilter === "all" ? 60 : 7;
         const serverDate = data.serverDate || new Date().toISOString(); 
-        const dateTemplate = generateDateRange(daysToShow, serverDate);
-        
         const rawData = data.groupedRawData || {};
 
-        const finalData = dateTemplate.map(dateStr => {
+        const finalData = generateDateRange(daysToShow, serverDate).map(dateStr => {
           let existingData = rawData[dateStr] || rawData[new Date(dateStr).toLocaleDateString('en-US')];
           return {
             dateStr: dateStr, displayDate: new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
@@ -70,7 +60,6 @@ export default function UserSummary() {
         });
 
         setReportData(finalData);
-
         const t = finalData.reduce((acc: any, curr: any) => ({
             allocation: acc.allocation + curr.allocation, success: acc.success + curr.success,
             failed: acc.failed + curr.failed, amount: acc.amount + curr.amount,
@@ -93,52 +82,41 @@ export default function UserSummary() {
   return (
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full relative z-10 pb-20 font-sans">
-        
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent uppercase tracking-wider">
-                My Performance Report
-              </h2>
-              <span className="flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </span>
+              <h2 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent uppercase tracking-wider">Global System Report</h2>
+              <span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
             </div>
-            <p className="text-xs text-[#94A3B8] font-medium">Your personal OTP success and earnings overview.</p>
+            <p className="text-xs text-[#94A3B8] font-medium">Overall website performance and stats.</p>
           </div>
-          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-[#0F172A] border border-[#334155] text-xs font-bold text-white px-4 py-2.5 rounded-xl focus:outline-none focus:border-[#3B82F6] cursor-pointer shadow-lg">
+          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-[#0F172A] border border-[#334155] text-xs font-bold text-white px-4 py-2.5 rounded-xl">
             <option value="today">Today's Data</option>
             <option value="7">Last 7 Days</option>
-            <option value="15">Last 15 Days</option>
             <option value="30">Last 30 Days</option>
-            <option value="all">All Time History</option>
           </select>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#3B82F6]">
-              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">My Allocation</span>
+              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">Global Allocation</span>
               <div className="flex items-end gap-3 mb-2"><span className="text-3xl font-black text-white">{totals.allocation}</span></div>
-              <span className="text-[9px] font-black text-[#3B82F6] bg-[#3B82F6]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#3B82F6]/20">Generated</span>
            </div>
            
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#EAB308]">
-              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">Success Rate</span>
+              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">Global Win Rate</span>
               <div className="flex items-end gap-3 mb-2"><span className="text-3xl font-black text-white">{overallRate}</span></div>
-              <span className="text-[9px] font-black text-[#EAB308] bg-[#EAB308]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#EAB308]/20">Average</span>
            </div>
 
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#10B981]">
-              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">My Earnings</span>
-              <div className="flex items-end gap-3 mb-2"><span className="text-3xl font-black text-[#10B981]">৳ {dbEarnings}</span></div>
-              <span className="text-[9px] font-black text-[#10B981] bg-[#10B981]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#10B981]/20">Total Value</span>
+              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">Total Payout</span>
+              <div className="flex items-end gap-3 mb-2"><span className="text-3xl font-black text-[#10B981]">৳ {totals.amount.toFixed(2)}</span></div>
            </div>
 
            <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#8B5CF6]">
-              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">Your OTP Rate</span>
-              <div className="flex items-end gap-3 mb-2"><span className="text-3xl font-black text-[#8B5CF6]">৳ {userRate.toFixed(2)}</span></div>
-              <span className="text-[9px] font-black text-[#8B5CF6] bg-[#8B5CF6]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#8B5CF6]/20">Per OTP</span>
+              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest mb-1 block">Platform Status</span>
+              <div className="flex items-end gap-3 mb-2"><span className="text-3xl font-black text-[#8B5CF6]">ONLINE</span></div>
+              <span className="text-[9px] font-black text-[#8B5CF6] bg-[#8B5CF6]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#8B5CF6]/20">All Systems Go</span>
            </div>
         </div>
 
@@ -163,7 +141,7 @@ export default function UserSummary() {
            </div>
 
            <div className="bg-[#1E293B]/80 border border-[#334155] p-6 rounded-2xl shadow-lg h-[350px] flex flex-col">
-              <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6">My Earnings Overview</h3>
+              <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6">Total Payout Overview</h3>
               <div className="flex-1">
                 {reportData.length === 0 ? <div className="flex items-center justify-center h-full text-[#64748B] font-bold text-sm">No data available.</div> : (
                   <ResponsiveContainer width="100%" height="100%">
@@ -191,7 +169,7 @@ export default function UserSummary() {
                    <th className="p-4 text-center">Success (OTP)</th>
                    <th className="p-4 text-center">Failed</th>
                    <th className="p-4 text-center">Win Rate</th>
-                   <th className="p-4 pr-6 text-right">My Earnings (৳)</th>
+                   <th className="p-4 pr-6 text-right">Total Payout (৳)</th>
                  </tr>
                </thead>
                <tbody className="text-sm font-medium text-[#E2E8F0] divide-y divide-[#334155]/50">
@@ -219,6 +197,7 @@ export default function UserSummary() {
              </table>
            </div>
         </div>
+
       </div>
     </DashboardLayout>
   );

@@ -83,9 +83,9 @@ export async function POST(req: Request) {
       const data = await response.json();
 
       if (data.meta?.status === "success") {
-        const bdTimeString = new Date().toLocaleString("en-US", { timeZone: "Asia/Dhaka" });
-        const bdDate = new Date(bdTimeString);
-        const todayStr = `${bdDate.getFullYear()}-${String(bdDate.getMonth() + 1).padStart(2, '0')}-${String(bdDate.getDate()).padStart(2, '0')}`;
+        // ✅ Changed to strictly UTC Date string
+        const utcDate = new Date();
+        const todayStr = `${utcDate.getUTCFullYear()}-${String(utcDate.getUTCMonth() + 1).padStart(2, '0')}-${String(utcDate.getUTCDate()).padStart(2, '0')}`;
         
         const newOrder = new Order({
           userEmail: user.email,
