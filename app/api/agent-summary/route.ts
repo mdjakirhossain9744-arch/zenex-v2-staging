@@ -130,7 +130,6 @@ export async function POST(req: Request) {
 
     const isAllTime = limitDays === "all";
     const dailyStatQuery: any = {};
-    const orderQuery: any = {};
 
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
@@ -138,11 +137,6 @@ export async function POST(req: Request) {
         pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit) };
     }
-
-    // 🔥 MEMORY CRASH PROTECTION: Max 60 Days for Orders 🔥
-    const maxOrderLimit = new Date();
-    maxOrderLimit.setUTCDate(maxOrderLimit.getUTCDate() - 60);
-    orderQuery.createdAt = { $gte: maxOrderLimit };
 
     const queryConditions: any[] = [];
     uniqueEmails.forEach(e => {
@@ -152,12 +146,12 @@ export async function POST(req: Request) {
 
     if (queryConditions.length > 0) {
         dailyStatQuery.$or = queryConditions;
-        orderQuery.$or = queryConditions;
     }
 
     const groupedRawData: Record<string, any> = {};
     const archivedKeys = new Set<string>();
 
+    // 1. Fetch EVERYTHING from Diary
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
     
     dailyStats.forEach((ds: any) => {
@@ -176,6 +170,16 @@ export async function POST(req: Request) {
         const uRate = userRateMap[dEmail] || 0.50;
         groupedRawData[dDate].amount += Math.max(0, agentMaxRate - uRate) * (ds.successOTP || 0);
     });
+
+    // 2. 🔥 ULTIMATE OOM PROTECTION: Fetch ONLY the last 3 days from LIVE Orders! 🔥
+    const orderQuery: any = {};
+    const recentLimit = new Date();
+    recentLimit.setUTCDate(recentLimit.getUTCDate() - 3);
+    orderQuery.createdAt = { $gte: recentLimit };
+    
+    if (queryConditions.length > 0) {
+        orderQuery.$or = queryConditions;
+    }
 
     const orders = await Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email").lean(); 
 
@@ -199,6 +203,7 @@ export async function POST(req: Request) {
 
        const safeUserEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
+       // 💥 SKIP if already covered by the Diary
        if (finalDateStr !== todayStrUTC && archivedKeys.has(`${finalDateStr}_${safeUserEmail}`)) return;
 
        if (!groupedRawData[finalDateStr]) {

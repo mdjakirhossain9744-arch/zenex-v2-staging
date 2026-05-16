@@ -137,8 +137,7 @@ export async function POST(req: Request) {
 
     const isAllTime = limitDays === "all";
     const dailyStatQuery: any = {};
-    const orderQuery: any = {};
-
+    
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
         const pastDaysLimit = new Date();
@@ -146,14 +145,8 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit) };
     }
 
-    // 🔥 MEMORY CRASH PROTECTION: Never fetch unlimited Orders. Max 60 Days. 🔥
-    const maxOrderLimit = new Date();
-    maxOrderLimit.setUTCDate(maxOrderLimit.getUTCDate() - 60);
-    orderQuery.createdAt = { $gte: maxOrderLimit };
-
     if (role !== "admin") {
         dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
-        orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     }
 
     const todayStrUTC = getUTCDateString(new Date());
@@ -161,6 +154,7 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
     
+    // 1. Load EVERYTHING from Diary (DailyStat) first!
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
     const archivedKeys = new Set<string>();
 
@@ -181,6 +175,16 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
     });
 
+    // 2. 🔥 ULTIMATE OOM PROTECTION: Fetch ONLY the last 3 days from the LIVE Orders! 🔥
+    const orderQuery: any = {};
+    const recentLimit = new Date();
+    recentLimit.setUTCDate(recentLimit.getUTCDate() - 3); // Max 3 days live data!
+    orderQuery.createdAt = { $gte: recentLimit };
+    
+    if (role !== "admin") {
+        orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+    }
+
     const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();
 
     orders.forEach((o: any) => {
@@ -199,6 +203,7 @@ export async function POST(req: Request) {
 
        const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
+       // 💥 MAGIC LOCK: If this date is already handled by the Diary, SKIP the live order!
        if (finalDateStr !== todayStrUTC && archivedKeys.has(`${finalDateStr}_${uEmail}`)) return; 
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
