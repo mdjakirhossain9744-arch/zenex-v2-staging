@@ -21,7 +21,7 @@ const extractServiceName = (msg: string) => {
     return "Other";
 };
 
-// 🔥 IN-MEMORY RAM CACHES 🔥
+// 🔥 SAFE IN-MEMORY RAM CACHES 🔥
 let cachedKeywords: string[] = [];
 let lastKeywordFetchTime = 0;
 
@@ -29,9 +29,6 @@ let cachedAdminCostMap: Record<string, number> = {};
 let lastCostMapFetchTime = 0;
 
 const CACHE_TTL = 60 * 1000;
-
-// 🔥 SMART HISTORICAL CACHE (PAST DAYS DATA NEVER CHANGES) 🔥
-const historicalCache = new Map<string, { dateStr: string, pastData: Record<string, any>, archivedKeys: Set<string> }>();
 
 const getHiddenKeywordsFromCache = async () => {
     if (Date.now() - lastKeywordFetchTime < CACHE_TTL) return cachedKeywords;
@@ -91,8 +88,7 @@ export async function POST(req: Request) {
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
     if (!currentUser) return NextResponse.json({ success: false });
 
-    // 🔥 TYPE ERROR FIXED HERE 🔥
-    // as [string[], Record<string, number>] যুক্ত করা হয়েছে, ফলে Typescript এখন ক্লিয়ারলি জানবে ডাটা টাইপ কী!
+    // 🔥 TYPE ERROR FIXED & SAFE PARALLEL FETCH 🔥
     const [hiddenKeywords, userToAdminCostMap] = (await Promise.all([
         getHiddenKeywordsFromCache(),
         role === "admin" ? getAdminCostMapFromCache() : Promise.resolve({})
@@ -102,56 +98,59 @@ export async function POST(req: Request) {
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     let targetEmail = role === "admin" ? "" : safeEmail;
 
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
+
     const todayStrUTC = getUTCDateString(new Date());
-    const cacheKey = `${role}_${targetEmail}`;
-    
-    let groupedRawData: Record<string, any> = {};
-    let archivedKeys = new Set<string>();
-
-    // 🔥 SMART CACHE LOGIC: Fetch Past Data from RAM if Date matches Today 🔥
-    if (historicalCache.has(cacheKey) && historicalCache.get(cacheKey)!.dateStr === todayStrUTC) {
-        const cached = historicalCache.get(cacheKey)!;
-        groupedRawData = JSON.parse(JSON.stringify(cached.pastData)); // Deep Copy
-        archivedKeys = new Set(cached.archivedKeys);
-    } else {
-        // No Cache or Date Changed: Fetch Past Data from DB & Save to Cache
-        const sixtyDaysAgo = new Date();
-        sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
-
-        const dailyStatQuery: any = { dateString: { $gte: getUTCDateString(sixtyDaysAgo), $lt: todayStrUTC } }; // Fetch only before today
-        if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
-        
-        const pastDailyStats = await DailyStat.find(dailyStatQuery).lean();
-
-        pastDailyStats.forEach((ds: any) => {
-            const dDate = ds.dateString;
-            const dEmail = (ds.userEmail || "").toLowerCase().trim();
-            archivedKeys.add(`${dDate}_${dEmail}`);
-            if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
-            groupedRawData[dDate].total += (ds.totalNumbers || 0);
-            groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
-            groupedRawData[dDate].success += (ds.successOTP || 0);
-            groupedRawData[dDate].failed += (ds.failedNumbers || ds.failed || 0); 
-            let orderCostRate = role === "admin" ? (userToAdminCostMap[dEmail] || 0) : userRate;
-            groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
-        });
-
-        historicalCache.set(cacheKey, { dateStr: todayStrUTC, pastData: JSON.parse(JSON.stringify(groupedRawData)), archivedKeys });
-    }
-
-    // 🔥 LIVE QUERY: Fetch ONLY Today's Orders from DB 🔥
+    const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    const todayQuery: any = { dateString: todayStrUTC }; // Only Today's Data
-    if (role !== "admin") todayQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+    const dailyStatQuery: any = { dateString: { $gte: getUTCDateString(sixtyDaysAgo) } };
+    if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+    
+    const dailyStats = await DailyStat.find(dailyStatQuery).lean();
+    const archivedKeys = new Set<string>();
 
-    const liveOrders = await Order.find(todayQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();
+    dailyStats.forEach((ds: any) => {
+        const dDate = ds.dateString;
+        const dEmail = (ds.userEmail || "").toLowerCase().trim();
+        
+        archivedKeys.add(`${dDate}_${dEmail}`);
 
-    liveOrders.forEach((o: any) => {
+        if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+
+        groupedRawData[dDate].total += (ds.totalNumbers || 0);
+        groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
+        groupedRawData[dDate].success += (ds.successOTP || 0);
+        groupedRawData[dDate].failed += (ds.failedNumbers || ds.failed || 0); 
+
+        let orderCostRate = role === "admin" ? (userToAdminCostMap[dEmail] || 0) : userRate;
+        groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
+    });
+
+    const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
+    if (role !== "admin") orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+
+    const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();
+
+    orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
-       let finalDateStr = todayStrUTC;
+
+       let finalDateStr = "";
+       if ((currentStatus === "DONE" || currentStatus === "SUCCESS") && o.updatedAt) {
+           finalDateStr = getUTCDateString(o.updatedAt);
+       } else if (o.createdAt) {
+           finalDateStr = getUTCDateString(o.createdAt);
+       } else if (o.dateString) {
+           finalDateStr = getUTCDateString(new Date(o.dateString));
+       } else {
+           finalDateStr = getUTCDateString(new Date());
+       }
+
        const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
+
+       if (finalDateStr !== todayStrUTC && archivedKeys.has(`${finalDateStr}_${uEmail}`)) return; 
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
@@ -171,23 +170,26 @@ export async function POST(req: Request) {
           const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
           groupedRawData[finalDateStr].success += validMsgCount;
+
           let orderCostRate = role === "admin" ? (userToAdminCostMap[uEmail] || 0) : userRate;
           if (!isFreeService) groupedRawData[finalDateStr].amount += (orderCostRate * validMsgCount);
 
-          const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
-          const bIdx = Math.floor(hour / 4);
-          if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
+          if (finalDateStr === todayStrUTC) {
+              const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
+              const bIdx = Math.floor(hour / 4);
+              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
 
-          let sName = extractServiceName(o.fullMessage);
-          
-          hiddenKeywords.forEach((kw: string) => {
-              if (kw && sName.toLowerCase().includes(kw.trim())) {
-                  sName = "******";
-              }
-          });
-          
-          if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
-          todayAppCounts[sName] += validMsgCount;
+              let sName = extractServiceName(o.fullMessage);
+              
+              hiddenKeywords.forEach((kw: string) => {
+                  if (kw && sName.toLowerCase().includes(kw.trim())) {
+                      sName = "******";
+                  }
+              });
+              
+              if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
+              todayAppCounts[sName] += validMsgCount;
+          }
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
           groupedRawData[finalDateStr].failed += 1;
        }
