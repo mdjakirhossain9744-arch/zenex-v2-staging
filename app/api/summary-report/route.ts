@@ -7,14 +7,50 @@ import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
 
-const STOP_WORDS = new Set(['your', 'is', 'code', 'the', 'otp', 'verification', 'verify', 'for', 'to', 'use', 'do', 'not', 'share', 'this', 'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 'and', 'from', 'g', 'v']);
+// 🔥 ULTRA SMART MULTI-LANGUAGE STOP WORDS (RESTORED) 🔥
+const STOP_WORDS = new Set([
+    'your', 'code', 'otp', 'verification', 'verify', 'use', 'not', 'share', 'this', 
+    'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 
+    'from', 'with', 'anyone', 'number', 'secret', 'valid', 'auth', 'authentication', 
+    'never', 'give', 'out', 'only', 'http', 'https', 'www', 'com', 'net', 'org', 
+    'info', 'sms', 'reply', 'stop', 'the', 'and', 'for',
+    'kode', 'rahasia', 'anda', 'adalah', 'jangan', 'berikan', 'kepada', 'siapapun', 
+    'untuk', 'masuk', 'silakan', 'kasih', 'yang', 'dari', 'ini', 'kami',
+    'codigo', 'compartas', 'para', 'nadie', 'cuenta', 'este', 'seguridad', 'sua', 
+    'nao', 'con', 'los', 'las', 'por', 'que', 'digo',
+    'votre', 'partager', 'pour', 'compte', 'est', 'jou', 'nin'
+]);
 
+// 🔥 EXACT BRAND MATCHING LOGIC (RESTORED) 🔥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
+    const lowerMsg = msg.toLowerCase();
+    
+    if (lowerMsg.includes('whatsapp')) return 'WhatsApp';
+    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
+    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
+    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
+    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg)) return 'Google';
+    if (lowerMsg.includes('microsoft')) return 'Microsoft';
+    if (lowerMsg.includes('amazon')) return 'Amazon';
+    if (lowerMsg.includes('netflix')) return 'Netflix';
+    if (lowerMsg.includes('paypal')) return 'PayPal';
+    if (lowerMsg.includes('tiktok')) return 'TikTok';
+    if (lowerMsg.includes('tinder')) return 'Tinder';
+    if (lowerMsg.includes('uber')) return 'Uber';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    if (lowerMsg.includes('snapchat')) return 'Snapchat';
+    if (lowerMsg.includes('discord')) return 'Discord';
+    if (lowerMsg.includes('airbnb')) return 'Airbnb';
+    if (lowerMsg.includes('line')) return 'LINE';
+    if (lowerMsg.includes('wechat')) return 'WeChat';
+
     const words = msg.match(/[a-zA-Z]+/g) || [];
     for (let w of words) {
-        if (w.length > 2 && !STOP_WORDS.has(w.toLowerCase())) {
-            return w.charAt(0).toUpperCase() + w.slice(1);
+        const wordLower = w.toLowerCase();
+        // Skip words that are 3 characters or less, and stop words
+        if (wordLower.length > 3 && !STOP_WORDS.has(wordLower)) {
+            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
         }
     }
     return "Other";
