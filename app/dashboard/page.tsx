@@ -2,15 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
-import DashboardLayout from "../DashboardLayout"; // Note: ../
+import DashboardLayout from "../DashboardLayout"; 
 
-// UTC Date Format
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch(e) { return new Date().toISOString().split('T')[0]; }
 };
 
-// UTC Hour Logic
 const getUTCHour = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).getUTCHours(); } 
   catch(e) { return 0; }
@@ -23,7 +21,6 @@ export default function UserDashboardPage() {
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState("");
 
-  // 💥 UPDATE: Changed Cost to Earnings 💥
   const [stats, setStats] = useState({ 
     balance: "0.00", 
     todayTotal: 0, 
@@ -36,18 +33,32 @@ export default function UserDashboardPage() {
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
+  // 🔥 DYNAMIC APP FORMATTER 🔥
   const formatTopApps = (countsObj: Record<string, number>) => {
     return Object.entries(countsObj).map(([name, count]) => {
-      let info = { icon: "N", text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
-      if (name === "Facebook") info = { icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
-      else if (name === "WhatsApp") info = { icon: "W", text: "text-[#25D366]", bg: "bg-[#25D366]/10" };
-      else if (name === "Instagram") info = { icon: "IG", text: "text-[#E1306C]", bg: "bg-[#E1306C]/10" };
-      else if (name === "Telegram") info = { icon: "TG", text: "text-[#0088cc]", bg: "bg-[#0088cc]/10" };
-      else if (name === "Google") info = { icon: "G", text: "text-[#EA4335]", bg: "bg-[#EA4335]/10" };
-      else if (name === "TikTok") info = { icon: "T", text: "text-[#00F2FE]", bg: "bg-[#00F2FE]/10" };
-      else if (name === "Apple") info = { icon: "A", text: "text-[#A3AAAE]", bg: "bg-[#A3AAAE]/10" };
+      let info = { icon: name.charAt(0).toUpperCase(), text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
+      const nLower = name.toLowerCase();
+      
+      if (nLower.includes("facebook") || nLower === "fb") info = { icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
+      else if (nLower.includes("whatsapp") || nLower === "wa") info = { icon: "W", text: "text-[#25D366]", bg: "bg-[#25D366]/10" };
+      else if (nLower.includes("instagram") || nLower === "ig") info = { icon: "IG", text: "text-[#E1306C]", bg: "bg-[#E1306C]/10" };
+      else if (nLower.includes("telegram") || nLower === "tg") info = { icon: "TG", text: "text-[#0088cc]", bg: "bg-[#0088cc]/10" };
+      else if (nLower.includes("google") || nLower === "gmail") info = { icon: "G", text: "text-[#EA4335]", bg: "bg-[#EA4335]/10" };
+      else if (nLower.includes("tiktok") || nLower === "tt") info = { icon: "T", text: "text-[#00F2FE]", bg: "bg-[#00F2FE]/10" };
+      else if (nLower.includes("apple") || nLower === "ap") info = { icon: "A", text: "text-[#A3AAAE]", bg: "bg-[#A3AAAE]/10" };
+      else {
+          const colors = [
+              { t: "text-purple-400", b: "bg-purple-400/10" },
+              { t: "text-amber-400", b: "bg-amber-400/10" },
+              { t: "text-emerald-400", b: "bg-emerald-400/10" },
+              { t: "text-rose-400", b: "bg-rose-400/10" },
+              { t: "text-cyan-400", b: "bg-cyan-400/10" }
+          ];
+          const cIdx = name.length % colors.length; 
+          info = { icon: name.substring(0, 2).toUpperCase(), text: colors[cIdx].t, bg: colors[cIdx].b };
+      }
       return { name, count, info };
-    }).sort((a, b) => b.count - a.count).slice(0, 3); 
+    }).sort((a, b) => b.count - a.count).slice(0, 10); 
   };
 
   useEffect(() => {
@@ -71,7 +82,6 @@ export default function UserDashboardPage() {
     if (!storedUser) { router.replace("/login"); return; }
     
     const parsedUser = JSON.parse(storedUser);
-    
     if (parsedUser.role === "admin") { router.replace("/admin/dashboard"); return; }
     if (parsedUser.role === "agent") { router.replace("/manager/dashboard"); return; }
 
@@ -111,19 +121,6 @@ export default function UserDashboardPage() {
                  const hour = getUTCHour(log.createdAt);
                  const bIdx = Math.floor(hour / 4);
                  if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
- 
-                 let sName = "Other Network";
-                 const mLower = (log.fullMessage || "").toLowerCase();
-                 if (mLower.includes("facebook") || mLower.includes("fb")) sName = "Facebook";
-                 else if (mLower.includes("whatsapp") || mLower.includes("wa")) sName = "WhatsApp";
-                 else if (mLower.includes("instagram") || mLower.includes("ig")) sName = "Instagram";
-                 else if (mLower.includes("telegram") || mLower.includes("tg")) sName = "Telegram";
-                 else if (mLower.includes("google") || mLower.includes("gmail")) sName = "Google";
-                 else if (mLower.includes("tiktok") || mLower.includes("tt")) sName = "TikTok";
-                 else if (mLower.includes("apple") || mLower.includes("ap")) sName = "Apple";
-
-                 if (!appCounts[sName]) appCounts[sName] = 0;
-                 appCounts[sName]++;
                }
              } else if (logDate === yesterdayStr) {
                if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") ySuccess++;
@@ -131,7 +128,6 @@ export default function UserDashboardPage() {
            });
 
            const finalTodaySuccess = ordersRes.stats ? ordersRes.stats.success : tSuccess;
-           // 💥 UPDATE: Mapping calculated values to Earnings 💥
            setStats(p => ({ 
              ...p, 
              todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 
@@ -141,7 +137,15 @@ export default function UserDashboardPage() {
              yesterdayEarnings: ySuccess * currentRate
            }));
            setTrafficData(buckets);
-           setTopPerformers(formatTopApps(appCounts));
+           
+           // Fetch today's summary for Top Apps from summary API to sync perfectly
+           fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) })
+             .then(r => r.json())
+             .then(res => {
+                 if (res && res.todayAppCounts) {
+                     setTopPerformers(formatTopApps(res.todayAppCounts));
+                 }
+             });
         }
       } catch (e) {} finally { setIsPageLoading(false); }
     };
@@ -186,7 +190,6 @@ export default function UserDashboardPage() {
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full font-sans">
         
-        {/* Header - Only Time Badge Included */}
         <div className="mb-6 md:mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
@@ -208,11 +211,9 @@ export default function UserDashboardPage() {
           </div>
         </div>
 
-        {/* 💥 User 4 Cards (Earnings & Success) 💥 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
             <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Today's Earnings</h3>
-            {/* Changed from red to green color */}
             <p className="text-xl md:text-3xl font-black text-green-400">৳ {Number(stats.todayEarnings).toFixed(2)}</p>
           </div>
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#10B981] flex flex-col items-center md:items-start relative overflow-hidden">
@@ -229,7 +230,6 @@ export default function UserDashboardPage() {
           </div>
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
             <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Yesterday's Earnings</h3>
-            {/* Changed from red to green color */}
             <p className="text-xl md:text-3xl font-black text-green-400/70">৳ {Number(stats.yesterdayEarnings).toFixed(2)}</p>
           </div>
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/50 border border-[#334155] backdrop-blur-xl p-4 md:p-6 flex flex-col items-center md:items-start shadow-inner border-t-2 border-t-[#64748B]">
@@ -238,7 +238,6 @@ export default function UserDashboardPage() {
           </div>
         </div>
 
-        {/* Charts & Graphs */}
         <div className="flex flex-col gap-6 mb-10">
           <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
              <div className="flex justify-between items-center mb-6 relative z-10">

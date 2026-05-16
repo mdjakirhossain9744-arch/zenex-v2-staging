@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "../../DashboardLayout"; 
 
-// UTC Date Format
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch(e) { return new Date().toISOString().split('T')[0]; }
@@ -22,18 +21,32 @@ export default function AdminGlobalDashboard() {
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
+  // 🔥 DYNAMIC APP FORMATTER 🔥
   const formatTopApps = (countsObj: Record<string, number>) => {
     return Object.entries(countsObj).map(([name, count]) => {
-      let info = { icon: "N", text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
-      if (name === "Facebook") info = { icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
-      else if (name === "WhatsApp") info = { icon: "W", text: "text-[#25D366]", bg: "bg-[#25D366]/10" };
-      else if (name === "Instagram") info = { icon: "IG", text: "text-[#E1306C]", bg: "bg-[#E1306C]/10" };
-      else if (name === "Telegram") info = { icon: "TG", text: "text-[#0088cc]", bg: "bg-[#0088cc]/10" };
-      else if (name === "Google") info = { icon: "G", text: "text-[#EA4335]", bg: "bg-[#EA4335]/10" };
-      else if (name === "TikTok") info = { icon: "T", text: "text-[#00F2FE]", bg: "bg-[#00F2FE]/10" };
-      else if (name === "Apple") info = { icon: "A", text: "text-[#A3AAAE]", bg: "bg-[#A3AAAE]/10" };
+      let info = { icon: name.charAt(0).toUpperCase(), text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
+      const nLower = name.toLowerCase();
+      
+      if (nLower.includes("facebook") || nLower === "fb") info = { icon: "F", text: "text-[#1877F2]", bg: "bg-[#1877F2]/10" };
+      else if (nLower.includes("whatsapp") || nLower === "wa") info = { icon: "W", text: "text-[#25D366]", bg: "bg-[#25D366]/10" };
+      else if (nLower.includes("instagram") || nLower === "ig") info = { icon: "IG", text: "text-[#E1306C]", bg: "bg-[#E1306C]/10" };
+      else if (nLower.includes("telegram") || nLower === "tg") info = { icon: "TG", text: "text-[#0088cc]", bg: "bg-[#0088cc]/10" };
+      else if (nLower.includes("google") || nLower === "gmail") info = { icon: "G", text: "text-[#EA4335]", bg: "bg-[#EA4335]/10" };
+      else if (nLower.includes("tiktok") || nLower === "tt") info = { icon: "T", text: "text-[#00F2FE]", bg: "bg-[#00F2FE]/10" };
+      else if (nLower.includes("apple") || nLower === "ap") info = { icon: "A", text: "text-[#A3AAAE]", bg: "bg-[#A3AAAE]/10" };
+      else {
+          const colors = [
+              { t: "text-purple-400", b: "bg-purple-400/10" },
+              { t: "text-amber-400", b: "bg-amber-400/10" },
+              { t: "text-emerald-400", b: "bg-emerald-400/10" },
+              { t: "text-rose-400", b: "bg-rose-400/10" },
+              { t: "text-cyan-400", b: "bg-cyan-400/10" }
+          ];
+          const cIdx = name.length % colors.length; 
+          info = { icon: name.substring(0, 2).toUpperCase(), text: colors[cIdx].t, bg: colors[cIdx].b };
+      }
       return { name, count, info };
-    }).sort((a, b) => b.count - a.count).slice(0, 3); 
+    }).sort((a, b) => b.count - a.count).slice(0, 10); 
   };
 
   useEffect(() => {
@@ -58,7 +71,6 @@ export default function AdminGlobalDashboard() {
     
     const parsedUser = JSON.parse(storedUser);
     
-    // 💥 SECURITY FIX: Admin Check 💥
     if (parsedUser.role !== "admin") {
       router.replace(parsedUser.role === "agent" ? "/manager/dashboard" : "/dashboard"); 
       return;
@@ -116,7 +128,6 @@ export default function AdminGlobalDashboard() {
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full font-sans">
         
-        {/* Header */}
         <div className="mb-6 md:mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
@@ -141,7 +152,6 @@ export default function AdminGlobalDashboard() {
           </div>
         </div>
 
-        {/* Admin Global Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-10">
           <div className="rounded-xl md:rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-sm border-t-2 border-t-[#3B82F6] flex flex-col items-center md:items-start">
             <h3 className="text-[#94A3B8] text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-1">Total Users</h3>
@@ -169,7 +179,6 @@ export default function AdminGlobalDashboard() {
           </div>
         </div>
 
-        {/* Charts & Graphs */}
         <div className="flex flex-col gap-6 mb-10">
           <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-6 flex flex-col relative overflow-hidden">
              <div className="flex justify-between items-center mb-6 relative z-10">
@@ -215,7 +224,6 @@ export default function AdminGlobalDashboard() {
           </div>
         </div>
 
-        {/* Top Agents Table */}
         <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-hidden w-full mb-10">
            <div className="flex justify-between items-center p-5 bg-[#0F172A]/50 border-b border-[#334155]">
              <div>

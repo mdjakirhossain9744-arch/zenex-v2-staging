@@ -5,10 +5,10 @@ import User from "../../../models/User";
 
 export const dynamic = "force-dynamic";
 
-// 💥 UTC টাইম বের করার গ্লোবাল ফাংশন (Fixed from Asia/Dhaka) 💥
+// 💥 UTC Time Global Function 💥
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'UTC', // ✅ Changed to UTC
+      timeZone: 'UTC',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       const orders = await Order.find({ userEmail: email }).sort({ createdAt: -1 }).skip(skip).limit(limit);
       
       const finalOrders: any[] = [];
-      const todayStr = getUTCDateString(); // ✅ Using UTC Date
+      const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
 
       const statQuery = { userEmail: email, dateString: fetchDate };
@@ -52,6 +52,7 @@ export async function POST(req: Request) {
           msgArray.forEach((msg: string, index: number) => {
             const codeMatch = msg.match(/\b\d{4,8}\b/);
             const extractedOtp = codeMatch ? codeMatch[0] : msg;
+            
             finalOrders.push({
               id: `${o._id.toString()}_${index}`,
               dateString: o.dateString, displayNumber: o.displayNumber, searchNumber: o.searchNumber,
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
     }
 
     if (action === "CREATE") {
-      const todayStr = getUTCDateString(); // ✅ Using UTC Date
+      const todayStr = getUTCDateString();
       const newOrder = new Order({
         userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
         country: orderData.country, operator: orderData.operator, status: orderData.status,
@@ -106,8 +107,6 @@ export async function POST(req: Request) {
       }
 
       if (orderData.status === "DONE" || orderData.otp) {
-        
-        // MNIT ২৫-৩০ মিনিটের বেশি কোনো লাইভ নাম্বার রাখে না। তাই ২৫ মিনিট পর কোনো ওটিপি আসলে রিজেক্ট।
         const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
         if (orderAgeMs > 25 * 60 * 1000) { 
             await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
@@ -122,7 +121,6 @@ export async function POST(req: Request) {
         const incomingMsg = (orderData.fullMessage || "").trim();
         const currentMsg = freshOrder.fullMessage || "";
 
-        // 💥 STRICT OTP CODE EXTRACTOR (আসল লস বন্ধ করার লজিক) 💥
         const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
         const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg.trim();
 
@@ -132,7 +130,6 @@ export async function POST(req: Request) {
             return match ? match[0] : msg.trim();
         });
 
-        // 💥 যদি একই 6-digit বা 4-digit কোড আবার আসে, তাহলে পেমেন্টও হবে ওয়েবসাইটে সেভও হবে না! 💥
         if (existingCodes.includes(incomingCode)) {
           return NextResponse.json({ success: true, message: "Duplicate Exact OTP code detected. Ignored." });
         }
@@ -158,12 +155,10 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: false, message: "Race condition locked. Retrying..." });
         }
 
-        // 💥 WHATSAPP / TELEGRAM BLOCKER (ফ্রি সার্ভিস) 💥
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
                               incomingMsg.toLowerCase().includes("telegram") || 
                               incomingMsg.toLowerCase().includes("t.me");
 
-        // 💥 PAYMENT LOGIC (শুধুমাত্র ভিন্ন ভিন্ন ওটিপি এবং পেইড সার্ভিসের জন্য পেমেন্ট অ্যাড হবে) 💥
         if (!isFreeService) {
           const user = await User.findOne({ email });
           if (user) {
@@ -197,7 +192,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ success: false, message: "Invalid action" });
   } catch (error) {
-    console.error("Sync Order API Error:", error);
     return NextResponse.json({ success: false, message: "Database Error" }, { status: 500 });
   }
 }

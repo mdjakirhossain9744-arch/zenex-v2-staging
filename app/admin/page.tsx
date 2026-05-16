@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import DashboardLayout from "../DashboardLayout"; 
+import DashboardLayout from "../DashboardLayout"; // 💥 Fixed Path
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -18,6 +18,9 @@ export default function AdminDashboard() {
   // দুটো লিংকের স্টেট
   const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
   const [globalContactLink, setGlobalContactLink] = useState("https://t.me/abdullah_124");
+
+  // 🔥 NEW: Hidden Keywords State 🔥
+  const [hiddenKeywords, setHiddenKeywords] = useState("");
 
   const [blockedRequests, setBlockedRequests] = useState(124);
   const [activeConnections, setActiveConnections] = useState(0);
@@ -49,7 +52,13 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/system-settings");
       const data = await res.json();
-      if (data) setMaintenanceMode(data.maintenance || false);
+      if (data) {
+          setMaintenanceMode(data.maintenance || false);
+          // 🔥 Load Hidden Keywords from DB 🔥
+          if (data.hiddenKeywords && Array.isArray(data.hiddenKeywords)) {
+              setHiddenKeywords(data.hiddenKeywords.join(", "));
+          }
+      }
     } catch (error) {}
   };
 
@@ -100,6 +109,20 @@ export default function AdminDashboard() {
       if(res.ok) alert("✅ System Settings Updated Successfully!");
       else alert("❌ Failed to update system.");
     } catch (error) {}
+  };
+
+  // 🔥 Handle Saving Hidden Keywords 🔥
+  const handleKeywordsSave = async () => {
+    try {
+      const keywordArray = hiddenKeywords.split(",").map(k => k.trim().toLowerCase()).filter(k => k);
+      const res = await fetch("/api/system-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hiddenKeywords: keywordArray })
+      });
+      if(res.ok) alert("✅ Secret Keywords Masked Successfully!");
+      else alert("❌ Failed to save keywords.");
+    } catch (error) { alert("❌ Server error."); }
   };
 
   const handleLinksSave = async () => {
@@ -191,8 +214,30 @@ export default function AdminDashboard() {
               </div>
 
               <div className="space-y-6">
+
+                {/* 🔥 Secret Brand Masking Box 🔥 */}
+                <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#F43F5E]/30 relative overflow-hidden">
+                   <div className="absolute top-0 right-0 bg-[#F43F5E] text-white text-[8px] font-black px-2 py-0.5 rounded-bl-lg uppercase tracking-widest">Security</div>
+                   <div className="mb-4">
+                     <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-[#F43F5E] uppercase mb-2">
+                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                       Secret Brand Masking (Hide Keywords)
+                     </label>
+                     <p className="text-xs text-[#94A3B8] mb-3 font-medium">Enter service names separated by commas. If a user receives an OTP from these services, the name will show as <span className="text-white font-mono bg-slate-800 px-1 rounded">******</span>.</p>
+                     <div className="relative">
+                        <textarea 
+                           rows={2}
+                           value={hiddenKeywords} 
+                           onChange={(e)=>setHiddenKeywords(e.target.value)} 
+                           placeholder="paypal, payoneer, wise, bank..." 
+                           className="bg-[#1E293B] border border-[#334155] text-white p-3 rounded-xl w-full font-mono text-sm focus:outline-none focus:border-[#F43F5E] transition-colors shadow-inner resize-none" 
+                        />
+                     </div>
+                   </div>
+                   <button onClick={handleKeywordsSave} className="w-full bg-[#F43F5E]/10 border border-[#F43F5E]/50 text-[#F43F5E] font-black py-2.5 rounded-xl hover:bg-[#F43F5E] hover:text-white transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Mask Keywords</button>
+                </div>
+
                 <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50">
-                   
                    {/* Support Link */}
                    <div className="mb-4">
                      <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-2">Global Telegram Support Link</label>

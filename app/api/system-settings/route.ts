@@ -1,23 +1,19 @@
 import { NextResponse } from "next/server";
-// 💥 পাথ পারফেক্টলি ফিক্স করা হলো (২টি ../) 💥
 import connectToDatabase from "../../lib/mongodb"; 
 import mongoose from "mongoose";
 
-// 💥 THE MAGIC FIX: Next.js কে ক্যাশ (Cache) করতে বারণ করা হলো 💥
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     await connectToDatabase();
     
-    // 💥 ম্যাজিক ফিক্স: `db` এর বদলে সরাসরি Mongoose connection থেকে collection কল করা হলো 💥
-    // এর ফলে Database missing এরর আর আসবে না।
     const collection = mongoose.connection.collection("system_settings");
     const settings = await collection.findOne({ type: "global" });
     
-    // যদি না থাকে, তবে ডিফল্ট রেসপন্স দিবে 
+    // 🔥 Added hiddenKeywords to response
     if (!settings) {
-      return NextResponse.json({ type: "global", maintenance: false, globalRate: 0.50 });
+      return NextResponse.json({ type: "global", maintenance: false, globalRate: 0.50, hiddenKeywords: [] });
     }
     
     return NextResponse.json(settings);
@@ -29,16 +25,22 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { maintenance, globalRate } = await req.json();
+    // 🔥 Extract hiddenKeywords from request body
+    const { maintenance, globalRate, hiddenKeywords } = await req.json();
     
     await connectToDatabase();
     
-    // 💥 ম্যাজিক ফিক্স: সরাসরি collection এ আপডেট 💥
     const collection = mongoose.connection.collection("system_settings");
+    
+    // 🔥 Dynamically build the update object so we don't overwrite existing values with undefined
+    const updateFields: any = {};
+    if (maintenance !== undefined) updateFields.maintenance = maintenance;
+    if (globalRate !== undefined) updateFields.globalRate = Number(globalRate);
+    if (hiddenKeywords !== undefined) updateFields.hiddenKeywords = hiddenKeywords; // Array of masked words
     
     await collection.updateOne(
       { type: "global" },
-      { $set: { maintenance: maintenance, globalRate: Number(globalRate) } },
+      { $set: updateFields },
       { upsert: true }
     );
 
