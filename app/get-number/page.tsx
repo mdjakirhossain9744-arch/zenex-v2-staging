@@ -47,7 +47,6 @@ export default function GetNumber() {
   };
 
   const changeDate = (days: number) => {
-    // 💥 UTC Date Logic 💥
     const current = new Date(selectedDate);
     current.setUTCDate(current.getUTCDate() + days);
     const newDateStr = current.toISOString().split('T')[0];
@@ -80,6 +79,19 @@ export default function GetNumber() {
     if (secondsPast < 86400) return `${Math.floor(secondsPast / 3600)} hour ago`;
     
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
+  };
+
+  // 🔥 Mathematical Time Fix for VPS: Calculates exact timeout moment 🔥
+  const getDisplayTime = (item: any) => {
+      if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
+      if (item.status === 'FAIL') {
+          // যদি টাইমআউট হয়, তাহলে কেনার ঠিক ২৫ মিনিট পরেই ফেইল হয়েছে।
+          if (item.otp === "Timeout") {
+              return new Date(item.createdAt).getTime() + (25 * 60 * 1000); 
+          }
+          return item.updatedAt || item.createdAt;
+      }
+      return item.createdAt; // For WAIT status
   };
 
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
@@ -390,7 +402,7 @@ export default function GetNumber() {
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                               <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
+                               <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(getDisplayTime(item))}</span>
                                <span className={`px-1.5 py-0.5 border text-[8px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
                             </div>
                          </div>
@@ -419,7 +431,7 @@ export default function GetNumber() {
                                  <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
                                  {item.operator}
                               </span>
-                              <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(item.receivedAt || item.updatedAt || item.createdAt)}</span>
+                              <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(getDisplayTime(item))}</span>
                             </div>
                          </div>
                       </div>
