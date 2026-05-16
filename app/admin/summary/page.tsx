@@ -14,13 +14,14 @@ export default function AdminSummary() {
   const [overallRate, setOverallRate] = useState("0%");
   const [loading, setLoading] = useState(true);
 
+  // 💥 PURE UTC DATE RANGE GENERATOR 💥
   const generateDateRange = (days: number, baseDateStr: string) => {
     const dates = [];
     const baseDate = new Date(baseDateStr);
     for (let i = 0; i < days; i++) {
       const d = new Date(baseDate);
-      d.setDate(d.getDate() - i);
-      dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+      d.setUTCDate(d.getUTCDate() - i);
+      dates.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`);
     }
     return dates;
   };
@@ -32,7 +33,6 @@ export default function AdminSummary() {
     
     const parsedUser = JSON.parse(storedUser);
 
-    // 💥 SMART REDIRECT 💥
     if (parsedUser.role === "agent") { router.push("/manager/summary"); return; }
     if (parsedUser.role !== "admin") { router.push("/summary"); return; }
 
@@ -40,21 +40,26 @@ export default function AdminSummary() {
       const res = await fetch("/api/summary-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: parsedUser.email, role: "admin" })
+        // 🔥 Sending limitDays to API 🔥
+        body: JSON.stringify({ email: parsedUser.email, role: "admin", limitDays: dateFilter === "today" ? 1 : dateFilter })
       });
       
       const data = await res.json();
       if (data.success) {
-        let daysToShow = dateFilter === "today" ? 1 : dateFilter === "15" ? 15 : dateFilter === "30" ? 30 : dateFilter === "all" ? 60 : 7;
-        const serverDate = data.serverDate || new Date().toISOString(); 
+        // 🔥 Dynamic Days Calculation 🔥
+        let daysToShow = dateFilter === "today" ? 1 : dateFilter === "all" ? 365 : Number(dateFilter) || 7;
+        const serverDate = data.serverDate || new Date().toISOString().split('T')[0]; 
         const rawData = data.groupedRawData || {};
 
         const finalData = generateDateRange(daysToShow, serverDate).map(dateStr => {
-          let existingData = rawData[dateStr] || rawData[new Date(dateStr).toLocaleDateString('en-US')];
+          let existingData = rawData[dateStr];
           return {
-            dateStr: dateStr, displayDate: new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-            allocation: existingData ? existingData.allocation : 0, success: existingData ? existingData.success : 0,
-            failed: existingData ? existingData.failed : 0, amount: existingData ? existingData.amount : 0,
+            dateStr: dateStr, 
+            displayDate: new Date(dateStr).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }),
+            allocation: existingData ? existingData.allocation : 0, 
+            success: existingData ? existingData.success : 0,
+            failed: existingData ? existingData.failed : 0, 
+            amount: existingData ? existingData.amount : 0,
             rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
           };
         });
@@ -90,10 +95,14 @@ export default function AdminSummary() {
             </div>
             <p className="text-xs text-[#94A3B8] font-medium">Overall website performance and stats.</p>
           </div>
-          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-[#0F172A] border border-[#334155] text-xs font-bold text-white px-4 py-2.5 rounded-xl">
+          {/* 🔥 NEW FILTER OPTIONS ADDED 🔥 */}
+          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-[#0F172A] border border-[#334155] text-xs font-bold text-white px-4 py-2.5 rounded-xl cursor-pointer hover:border-[#3B82F6] transition-colors focus:outline-none">
             <option value="today">Today's Data</option>
             <option value="7">Last 7 Days</option>
+            <option value="15">Last 15 Days</option>
             <option value="30">Last 30 Days</option>
+            <option value="60">Last 60 Days</option>
+            <option value="all">All Time (1 Year)</option>
           </select>
         </div>
 
