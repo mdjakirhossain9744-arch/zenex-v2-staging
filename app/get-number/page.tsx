@@ -3,13 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-const getBDDateString = (dateObj: Date | number | string = new Date()) => {
-  return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Dhaka',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-  }).format(new Date(dateObj));
+// 💥 PURE UTC TIMEZONE FUNCTION 💥
+const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
+  return new Date(dateObj).toISOString().split('T')[0];
 };
 
 export default function GetNumber() {
@@ -25,7 +21,7 @@ export default function GetNumber() {
   const [toastMessage, setToastMessage] = useState("");
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
-  const [selectedDate, setSelectedDate] = useState(getBDDateString());
+  const [selectedDate, setSelectedDate] = useState(getUTCDateString());
 
   const [stats, setStats] = useState({ total: 0, success: 0, wait: 0, fail: 0 });
 
@@ -51,21 +47,20 @@ export default function GetNumber() {
   };
 
   const changeDate = (days: number) => {
-    const [year, month, day] = selectedDate.split('-').map(Number);
-    const current = new Date(year, month - 1, day);
-    current.setDate(current.getDate() + days);
-    const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
-    if (newDateStr <= getBDDateString()) {
+    // 💥 UTC Date Logic 💥
+    const current = new Date(selectedDate);
+    current.setUTCDate(current.getUTCDate() + days);
+    const newDateStr = current.toISOString().split('T')[0];
+    if (newDateStr <= getUTCDateString()) {
        setSelectedDate(newDateStr);
        setPage(1); 
     }
   };
 
   const getFormattedDate = () => {
-    const [year, month, day] = selectedDate.split('-').map(Number);
-    const dateObj = new Date(year, month - 1, day);
-    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-    if (selectedDate === getBDDateString()) return `Today, ${dateObj.toLocaleDateString('en-GB', options)}`;
+    const dateObj = new Date(selectedDate);
+    const options: Intl.DateTimeFormatOptions = { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' };
+    if (selectedDate === getUTCDateString()) return `Today, ${dateObj.toLocaleDateString('en-GB', options)}`;
     return dateObj.toLocaleDateString('en-GB', options);
   };
 
@@ -105,23 +100,16 @@ export default function GetNumber() {
            
            data.orders.forEach((fetchedItem: any) => {
               const existingItem = prevMap.get(fetchedItem.id);
-              
-              // 💥 MAGIC: OPTIMISTIC UI LOCK (Anti-Flicker) 💥
-              // If frontend already knows this is "DONE", do NOT let the backend turn it back to "WAIT"
               if (existingItem && existingItem.status === "DONE" && fetchedItem.status === "WAIT") {
-                 // Ignore backend, keep our local DONE state
                  return;
               }
-
               prevMap.set(fetchedItem.id, fetchedItem);
            });
 
            if (isBackground) {
               const dbSearchNumbers = new Set(data.orders.map((o: any) => o.searchNumber));
               let combined = Array.from(prevMap.values()).filter(item => {
-                 if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) {
-                    return false; 
-                 }
+                 if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) return false; 
                  return true;
               });
               return combined.sort((a, b) => b.createdAt - a.createdAt);
@@ -219,7 +207,7 @@ export default function GetNumber() {
         showToast(`Copied: ${numberToCopy}`);
 
         const fullNumberDisplay = result.data.full_number.startsWith("+") ? result.data.full_number : `+${result.data.full_number}`;
-        const todayStr = getBDDateString();
+        const todayStr = getUTCDateString();
 
         const newEntry = {
           id: `temp_${Date.now()}`, dateString: todayStr, displayNumber: fullNumberDisplay, 
@@ -248,7 +236,7 @@ export default function GetNumber() {
     }
   };
 
-  const isToday = selectedDate === getBDDateString();
+  const isToday = selectedDate === getUTCDateString();
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
   const finalFilteredNumbers = dateFilteredNumbers.filter((item) => {
@@ -257,13 +245,11 @@ export default function GetNumber() {
   });
 
   const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => b.createdAt - a.createdAt);
-
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   return (
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 font-sans">
-        
         {toastMessage && (
           <div className="fixed top-24 right-5 md:right-10 z-[100] bg-[#10B981] text-white px-4 py-2 rounded-lg shadow-lg font-bold text-sm flex items-center gap-2 animate-bounce-in">
              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>

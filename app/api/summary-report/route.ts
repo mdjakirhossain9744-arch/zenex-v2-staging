@@ -7,7 +7,6 @@ import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
 
-// 🔥 GLOBAL OPTIMIZATIONS 🔥
 const STOP_WORDS = new Set(['your', 'is', 'code', 'the', 'otp', 'verification', 'verify', 'for', 'to', 'use', 'do', 'not', 'share', 'this', 'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 'and', 'from', 'g', 'v']);
 
 const extractServiceName = (msg: string) => {
@@ -21,13 +20,10 @@ const extractServiceName = (msg: string) => {
     return "Other";
 };
 
-// 🔥 SAFE IN-MEMORY RAM CACHES 🔥
 let cachedKeywords: string[] = [];
 let lastKeywordFetchTime = 0;
-
 let cachedAdminCostMap: Record<string, number> = {};
 let lastCostMapFetchTime = 0;
-
 const CACHE_TTL = 60 * 1000;
 
 const getHiddenKeywordsFromCache = async () => {
@@ -69,6 +65,7 @@ const getAdminCostMapFromCache = async () => {
     return cachedAdminCostMap;
 };
 
+// 💥 STRICT UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
@@ -82,13 +79,14 @@ const getUTCHour = (dateObj: any = new Date()) => {
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
-    const { email, role } = await req.json();
+    
+    // 🔥 Added limitDays (Frontend can pass 30, 60, or "all") 🔥
+    const { email, role, limitDays = 30 } = await req.json();
     const safeEmail = email.toLowerCase().trim();
 
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
     if (!currentUser) return NextResponse.json({ success: false });
 
-    // 🔥 TYPE ERROR FIXED & SAFE PARALLEL FETCH 🔥
     const [hiddenKeywords, userToAdminCostMap] = (await Promise.all([
         getHiddenKeywordsFromCache(),
         role === "admin" ? getAdminCostMapFromCache() : Promise.resolve({})
@@ -98,15 +96,17 @@ export async function POST(req: Request) {
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     let targetEmail = role === "admin" ? "" : safeEmail;
 
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
+    // 🔥 Dynamic Limit Logic 🔥
+    const limitNum = limitDays === "all" ? 365 : Number(limitDays) || 30;
+    const pastDaysLimit = new Date();
+    pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
 
     const todayStrUTC = getUTCDateString(new Date());
     const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    const dailyStatQuery: any = { dateString: { $gte: getUTCDateString(sixtyDaysAgo) } };
+    const dailyStatQuery: any = { dateString: { $gte: getUTCDateString(pastDaysLimit) } };
     if (role !== "admin") dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
@@ -129,7 +129,7 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
     });
 
-    const orderQuery: any = { createdAt: { $gte: sixtyDaysAgo } };
+    const orderQuery: any = { createdAt: { $gte: pastDaysLimit } };
     if (role !== "admin") orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
 
     const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();

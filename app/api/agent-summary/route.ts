@@ -7,7 +7,6 @@ import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
 
-// 🔥 GLOBAL OPTIMIZATIONS 🔥
 const STOP_WORDS = new Set(['your', 'is', 'code', 'the', 'otp', 'verification', 'verify', 'for', 'to', 'use', 'do', 'not', 'share', 'this', 'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 'and', 'from', 'g', 'v']);
 
 const extractServiceName = (msg: string) => {
@@ -21,7 +20,6 @@ const extractServiceName = (msg: string) => {
     return "Other";
 };
 
-// 🔥 SAFE IN-MEMORY CACHES 🔥
 let cachedKeywords: string[] = [];
 let lastKeywordFetchTime = 0;
 const CACHE_TTL = 60 * 1000;
@@ -36,6 +34,7 @@ const getHiddenKeywordsFromCache = async () => {
     return cachedKeywords;
 };
 
+// 💥 STRICT UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
@@ -49,7 +48,9 @@ const getUTCHour = (dateObj: any = new Date()) => {
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
-    const { email } = await req.json();
+    
+    // 🔥 Added limitDays (Frontend can pass 30, 60, or "all") 🔥
+    const { email, limitDays = 30 } = await req.json();
     const safeAgentEmail = email.toLowerCase().trim();
 
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
@@ -88,19 +89,21 @@ export async function POST(req: Request) {
     const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
 
+    // 🔥 Dynamic Limit Logic 🔥
+    const limitNum = limitDays === "all" ? 365 : Number(limitDays) || 30;
+    const pastDaysLimit = new Date();
+    pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
+
     const queryConditions: any[] = [];
     uniqueEmails.forEach(e => {
         const regex = new RegExp(`^${e}$`, 'i');
         queryConditions.push({ userEmail: regex }, { email: regex });
     });
 
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
-
     const groupedRawData: Record<string, any> = {};
     const archivedKeys = new Set<string>();
 
-    const dailyStats = await DailyStat.find({ dateString: { $gte: getUTCDateString(sixtyDaysAgo) }, $or: queryConditions }).lean();
+    const dailyStats = await DailyStat.find({ dateString: { $gte: getUTCDateString(pastDaysLimit) }, $or: queryConditions }).lean();
     
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
@@ -119,7 +122,7 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += Math.max(0, agentMaxRate - uRate) * (ds.successOTP || 0);
     });
 
-    const orders = await Order.find({ createdAt: { $gte: sixtyDaysAgo }, $or: queryConditions })
+    const orders = await Order.find({ createdAt: { $gte: pastDaysLimit }, $or: queryConditions })
     .select("status createdAt updatedAt dateString fullMessage userEmail email")
     .lean(); 
 

@@ -5,14 +5,9 @@ import User from "../../../models/User";
 
 export const dynamic = "force-dynamic";
 
-// 💥 UTC Time Global Function 💥
+// 💥 STRICT UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
-  return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'UTC',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-  }).format(new Date(dateObj));
+  return new Date(dateObj).toISOString().split('T')[0];
 };
 
 export async function POST(req: Request) {
