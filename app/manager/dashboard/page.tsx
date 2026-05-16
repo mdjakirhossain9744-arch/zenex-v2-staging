@@ -9,22 +9,6 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch(e) { return new Date().toISOString().split('T')[0]; }
 };
 
-const timeAgo = (dateStr: string | null) => {
-  if (!dateStr) return "Never";
-  const seconds = Math.floor((new Date().getTime() - new Date(dateStr).getTime()) / 1000);
-  let interval = seconds / 31536000;
-  if (interval > 1) return Math.floor(interval) + " years ago";
-  interval = seconds / 2592000;
-  if (interval > 1) return Math.floor(interval) + " months ago";
-  interval = seconds / 86400;
-  if (interval > 1) return Math.floor(interval) + " days ago";
-  interval = seconds / 3600;
-  if (interval > 1) return Math.floor(interval) + " hours ago";
-  interval = seconds / 60;
-  if (interval > 1) return Math.floor(interval) + " mins ago";
-  return "Just now";
-};
-
 export default function ManagerDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -378,8 +362,12 @@ export default function ManagerDashboardPage() {
                     <div className="space-y-3 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
                         {inactiveUsers.map((u, index) => {
                             const initials = u.name.substring(0, 2).toUpperCase();
-                            const lastSeenText = timeAgo(u.lastLogin);
-                            const isNever = lastSeenText === "Never";
+                            const lastSeenText = u.inactiveText || "Unknown";
+                            
+                            // 💥 SMART COLOR LOGIC 💥
+                            let statusColor = "text-orange-400"; 
+                            if (lastSeenText === "Never") statusColor = "text-red-500";
+                            else if (lastSeenText === "New Account") statusColor = "text-emerald-400";
 
                             return (
                                 <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-[#0F172A]/50 border border-[#334155] hover:border-red-500/50 transition-colors">
@@ -392,8 +380,8 @@ export default function ManagerDashboardPage() {
                                             <p className="text-[10px] text-slate-500 font-mono mt-0.5">{u.id}</p>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <span className={`text-xs font-black ${isNever ? 'text-red-500' : 'text-orange-400'}`}>
+                                    <div className="text-right flex flex-col items-end">
+                                        <span className={`text-xs font-black ${statusColor}`}>
                                             {lastSeenText}
                                         </span>
                                     </div>

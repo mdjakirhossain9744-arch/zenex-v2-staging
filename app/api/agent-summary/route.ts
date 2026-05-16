@@ -100,8 +100,9 @@ export async function POST(req: Request) {
     const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
     if (agent.customAgentMail) emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
 
+    // 💥 UPDATE: Added balance to check active status properly
     const networkUsers = await User.find({ $or: emailConditions, role: "user" })
-      .select("email otpRate fullName uid _id lastLogin createdAt")
+      .select("email otpRate fullName uid _id lastLogin createdAt balance")
       .lean();
 
     const targetEmails = new Set<string>();
@@ -149,17 +150,14 @@ export async function POST(req: Request) {
     }
 
     const groupedRawData: Record<string, any> = {};
-    const archivedKeys = new Set<string>();
 
-    // 1. Fetch EVERYTHING from Diary
+    // Fetch EVERYTHING from Diary First
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
     
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
         const dEmail = (ds.userEmail || "").toLowerCase().trim();
         
-        archivedKeys.add(`${dDate}_${dEmail}`);
-
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
 
         groupedRawData[dDate].total += (ds.totalNumbers || 0);
@@ -171,11 +169,12 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += Math.max(0, agentMaxRate - uRate) * (ds.successOTP || 0);
     });
 
-    // 2. 🔥 ULTIMATE OOM PROTECTION: Fetch ONLY the last 3 days from LIVE Orders! 🔥
+    const todayStrUTC = getUTCDateString(new Date());
+
+    // Fetch ONLY TODAY from LIVE Orders
     const orderQuery: any = {};
-    const recentLimit = new Date();
-    recentLimit.setUTCDate(recentLimit.getUTCDate() - 3);
-    orderQuery.createdAt = { $gte: recentLimit };
+    const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
+    orderQuery.createdAt = { $gte: todayMidnight };
     
     if (queryConditions.length > 0) {
         orderQuery.$or = queryConditions;
@@ -185,8 +184,7 @@ export async function POST(req: Request) {
 
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
-    const todayStrUTC = getUTCDateString(new Date());
-
+    
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
 
@@ -198,13 +196,12 @@ export async function POST(req: Request) {
        } else if (o.dateString) {
            finalDateStr = getUTCDateString(new Date(o.dateString));
        } else {
-           finalDateStr = getUTCDateString(new Date());
+           finalDateStr = todayStrUTC;
        }
 
-       const safeUserEmail = (o.userEmail || o.email || "").toLowerCase().trim();
+       if (finalDateStr !== todayStrUTC) return;
 
-       // 💥 SKIP if already covered by the Diary
-       if (finalDateStr !== todayStrUTC && archivedKeys.has(`${finalDateStr}_${safeUserEmail}`)) return;
+       const safeUserEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
        if (!groupedRawData[finalDateStr]) {
            groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
@@ -259,24 +256,61 @@ export async function POST(req: Request) {
        .map((u: any) => ({ id: u.id, name: u.name, otpCount: u.todayOTP }))
        .filter(u => u.otpCount > 0).sort((a, b) => b.otpCount - a.otpCount).slice(0, 15); 
 
-    const inactiveUsersArr = networkUsers.map((u: any) => ({
-        id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
-        name: u.fullName || u.email.split('@')[0],
-        lastLogin: u.lastLogin || null,
-    }))
-    .sort((a, b) => {
-        if (!a.lastLogin && !b.lastLogin) return 0;
-        if (!a.lastLogin) return -1; 
-        if (!b.lastLogin) return 1;
-        return new Date(a.lastLogin).getTime() - new Date(b.lastLogin).getTime();
-    }).slice(0, 10); 
+    // 💥 UPDATE: ULTIMATE SMART INACTIVE USERS LOGIC (Weeks, Months, Never, New Account) 💥
+    const nowTime = new Date().getTime();
+    const inactiveUsersArr = networkUsers.map((u: any) => {
+        const createdTime = new Date(u.createdAt || nowTime).getTime();
+        const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : null;
+        
+        let timeText = "";
+        let sortValue = 0; 
+
+        if (loginTime) {
+            sortValue = loginTime;
+            const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === 0) timeText = "Today";
+            else if (diffDays === 1) timeText = "Yesterday";
+            else if (diffDays < 7) timeText = `${diffDays} days ago`;
+            else if (diffDays < 30) {
+                const weeks = Math.floor(diffDays / 7);
+                timeText = weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+            } else if (diffDays < 365) {
+                const months = Math.floor(diffDays / 30);
+                timeText = months === 1 ? "1 month ago" : `${months} months ago`;
+            } else {
+                const years = Math.floor(diffDays / 365);
+                timeText = years === 1 ? "1 year ago" : `${years} years ago`;
+            }
+        } else {
+            sortValue = createdTime; 
+            const diffDays = Math.floor((nowTime - createdTime) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 3) {
+                timeText = "Never"; // ৩ দিনের বেশি হলে Never
+            } else {
+                timeText = "New Account"; // ৩ দিনের কম হলে New Account
+            }
+        }
+
+        return {
+            id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
+            name: u.fullName || u.email.split('@')[0],
+            inactiveText: timeText, // 👈 Frontend will use this field
+            balance: u.balance || 0,
+            sortValue
+        };
+    })
+    .sort((a, b) => a.sortValue - b.sortValue) // সবথেকে পুরনোরা আগে আসবে
+    .slice(0, 10); 
 
     const yesterdayDate = new Date();
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
     const yesterdayStrUTC = getUTCDateString(yesterdayDate);
 
-    const todayData = groupedRawData[todayStrUTC] || { success: 0, amount: 0 };
-    const yesterdayData = groupedRawData[yesterdayStrUTC] || { success: 0, amount: 0 };
+    const defaultData = { success: 0, amount: 0, total: 0, failed: 0 };
+    const todayData = groupedRawData[todayStrUTC] || defaultData;
+    const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
     return NextResponse.json({
        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
