@@ -7,53 +7,14 @@ import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
 
-// 🔥 ULTRA SMART MULTI-LANGUAGE STOP WORDS 🔥
-const STOP_WORDS = new Set([
-    // English
-    'your', 'code', 'otp', 'verification', 'verify', 'use', 'not', 'share', 'this', 
-    'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 
-    'from', 'with', 'anyone', 'number', 'secret', 'valid', 'auth', 'authentication', 
-    'never', 'give', 'out', 'only', 'http', 'https', 'www', 'com', 'net', 'org', 
-    'info', 'sms', 'reply', 'stop', 'the', 'and', 'for',
-    // Indonesian / Malay
-    'kode', 'rahasia', 'anda', 'adalah', 'jangan', 'berikan', 'kepada', 'siapapun', 
-    'untuk', 'masuk', 'silakan', 'kasih', 'yang', 'dari', 'ini', 'kami',
-    // Spanish / Portuguese
-    'codigo', 'compartas', 'para', 'nadie', 'cuenta', 'este', 'seguridad', 'sua', 
-    'nao', 'con', 'los', 'las', 'por', 'que', 'digo',
-    // French / Others
-    'votre', 'partager', 'pour', 'compte', 'est', 'jou', 'nin'
-]);
+const STOP_WORDS = new Set(['your', 'is', 'code', 'the', 'otp', 'verification', 'verify', 'for', 'to', 'use', 'do', 'not', 'share', 'this', 'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 'and', 'from', 'g', 'v']);
 
-// 🔥 EXACT BRAND MATCHING LOGIC 🔥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
-    const lowerMsg = msg.toLowerCase();
-    
-    if (lowerMsg.includes('whatsapp')) return 'WhatsApp';
-    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
-    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
-    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg)) return 'Google';
-    if (lowerMsg.includes('microsoft')) return 'Microsoft';
-    if (lowerMsg.includes('amazon')) return 'Amazon';
-    if (lowerMsg.includes('netflix')) return 'Netflix';
-    if (lowerMsg.includes('paypal')) return 'PayPal';
-    if (lowerMsg.includes('tiktok')) return 'TikTok';
-    if (lowerMsg.includes('tinder')) return 'Tinder';
-    if (lowerMsg.includes('uber')) return 'Uber';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
-    if (lowerMsg.includes('snapchat')) return 'Snapchat';
-    if (lowerMsg.includes('discord')) return 'Discord';
-    if (lowerMsg.includes('airbnb')) return 'Airbnb';
-    if (lowerMsg.includes('line')) return 'LINE';
-    if (lowerMsg.includes('wechat')) return 'WeChat';
-
     const words = msg.match(/[a-zA-Z]+/g) || [];
     for (let w of words) {
-        const wordLower = w.toLowerCase();
-        if (wordLower.length > 3 && !STOP_WORDS.has(wordLower)) {
-            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        if (w.length > 2 && !STOP_WORDS.has(w.toLowerCase())) {
+            return w.charAt(0).toUpperCase() + w.slice(1);
         }
     }
     return "Other";
@@ -127,20 +88,35 @@ export async function POST(req: Request) {
     const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
 
-    const limitNum = limitDays === "all" ? 365 : Number(limitDays) || 60;
-    const pastDaysLimit = new Date();
-    pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
-
     const queryConditions: any[] = [];
     uniqueEmails.forEach(e => {
         const regex = new RegExp(`^${e}$`, 'i');
         queryConditions.push({ userEmail: regex }, { email: regex });
     });
 
+    // 🔥 NO LIMIT FOR "ALL TIME" 🔥
+    const isAllTime = limitDays === "all";
+    const dailyStatQuery: any = {};
+    const orderQuery: any = {};
+
+    if (!isAllTime) {
+        const limitNum = Number(limitDays) || 60;
+        const pastDaysLimit = new Date();
+        pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
+        
+        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit) };
+        orderQuery.createdAt = { $gte: pastDaysLimit };
+    }
+
+    if (queryConditions.length > 0) {
+        dailyStatQuery.$or = queryConditions;
+        orderQuery.$or = queryConditions;
+    }
+
     const groupedRawData: Record<string, any> = {};
     const archivedKeys = new Set<string>();
 
-    const dailyStats = await DailyStat.find({ dateString: { $gte: getUTCDateString(pastDaysLimit) }, $or: queryConditions }).lean();
+    const dailyStats = await DailyStat.find(dailyStatQuery).lean();
     
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
@@ -159,7 +135,7 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += Math.max(0, agentMaxRate - uRate) * (ds.successOTP || 0);
     });
 
-    const orders = await Order.find({ createdAt: { $gte: pastDaysLimit }, $or: queryConditions })
+    const orders = await Order.find(orderQuery)
     .select("status createdAt updatedAt dateString fullMessage userEmail email")
     .lean(); 
 
@@ -218,7 +194,6 @@ export async function POST(req: Request) {
 
               if (userInfoMap[safeUserEmail]) userInfoMap[safeUserEmail].todayOTP += validMsgCount;
 
-              // 🔥 NEW SMART EXTRACTOR USED HERE 🔥
               let sName = extractServiceName(o.fullMessage);
 
               hiddenKeywords.forEach((kw: string) => {

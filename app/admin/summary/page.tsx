@@ -40,16 +40,29 @@ export default function AdminSummary() {
       const res = await fetch("/api/summary-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 🔥 Sending limitDays to API 🔥
         body: JSON.stringify({ email: parsedUser.email, role: "admin", limitDays: dateFilter === "today" ? 1 : dateFilter })
       });
       
       const data = await res.json();
       if (data.success) {
-        // 🔥 Dynamic Days Calculation 🔥
-        let daysToShow = dateFilter === "today" ? 1 : dateFilter === "all" ? 365 : Number(dateFilter) || 7;
         const serverDate = data.serverDate || new Date().toISOString().split('T')[0]; 
         const rawData = data.groupedRawData || {};
+
+        // 🔥 Dynamic Days Calculation for "All Time" 🔥
+        let daysToShow = 7;
+        if (dateFilter === "today") daysToShow = 1;
+        else if (dateFilter !== "all") daysToShow = Number(dateFilter);
+        else {
+           const keys = Object.keys(rawData).sort();
+           if (keys.length > 0) {
+               const oldestDate = new Date(keys[0]);
+               const todayDate = new Date(serverDate);
+               const diffTime = Math.abs(todayDate.getTime() - oldestDate.getTime());
+               daysToShow = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+           } else {
+               daysToShow = 30; // Fallback
+           }
+        }
 
         const finalData = generateDateRange(daysToShow, serverDate).map(dateStr => {
           let existingData = rawData[dateStr];
@@ -95,14 +108,13 @@ export default function AdminSummary() {
             </div>
             <p className="text-xs text-[#94A3B8] font-medium">Overall website performance and stats.</p>
           </div>
-          {/* 🔥 NEW FILTER OPTIONS ADDED 🔥 */}
           <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-[#0F172A] border border-[#334155] text-xs font-bold text-white px-4 py-2.5 rounded-xl cursor-pointer hover:border-[#3B82F6] transition-colors focus:outline-none">
             <option value="today">Today's Data</option>
             <option value="7">Last 7 Days</option>
             <option value="15">Last 15 Days</option>
             <option value="30">Last 30 Days</option>
             <option value="60">Last 60 Days</option>
-            <option value="all">All Time (1 Year)</option>
+            <option value="all">All Time History</option>
           </select>
         </div>
 
