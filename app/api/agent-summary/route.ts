@@ -7,7 +7,6 @@ import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
 
-// 🔥 ULTRA SMART MULTI-LANGUAGE STOP WORDS (RESTORED) 🔥
 const STOP_WORDS = new Set([
     'your', 'code', 'otp', 'verification', 'verify', 'use', 'not', 'share', 'this', 
     'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 
@@ -21,7 +20,6 @@ const STOP_WORDS = new Set([
     'votre', 'partager', 'pour', 'compte', 'est', 'jou', 'nin'
 ]);
 
-// 🔥 EXACT BRAND MATCHING LOGIC (RESTORED) 🔥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
@@ -59,11 +57,20 @@ let cachedKeywords: string[] = [];
 let lastKeywordFetchTime = 0;
 const CACHE_TTL = 60 * 1000;
 
+// 🔥 ULTRA-RESILIENT KEYWORD FETCHING 🔥
 const getHiddenKeywordsFromCache = async () => {
     if (Date.now() - lastKeywordFetchTime < CACHE_TTL) return cachedKeywords;
     try {
         const settings = await Setting.findOne({}).lean();
-        cachedKeywords = (settings?.hiddenKeywords || []).map((k: string) => k.toLowerCase());
+        let rawKeys: string[] = [];
+        if (settings?.hiddenKeywords) {
+            if (Array.isArray(settings.hiddenKeywords)) {
+                rawKeys = settings.hiddenKeywords;
+            } else if (typeof settings.hiddenKeywords === 'string') {
+                rawKeys = (settings.hiddenKeywords as string).split(',');
+            }
+        }
+        cachedKeywords = rawKeys.map((k: string) => k.toLowerCase().trim()).filter(Boolean);
         lastKeywordFetchTime = Date.now();
     } catch (e) {}
     return cachedKeywords;
@@ -123,13 +130,6 @@ export async function POST(req: Request) {
     const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
 
-    const queryConditions: any[] = [];
-    uniqueEmails.forEach(e => {
-        const regex = new RegExp(`^${e}$`, 'i');
-        queryConditions.push({ userEmail: regex }, { email: regex });
-    });
-
-    // 🔥 NO LIMIT FOR "ALL TIME" 🔥
     const isAllTime = limitDays === "all";
     const dailyStatQuery: any = {};
     const orderQuery: any = {};
@@ -170,9 +170,7 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += Math.max(0, agentMaxRate - uRate) * (ds.successOTP || 0);
     });
 
-    const orders = await Order.find(orderQuery)
-    .select("status createdAt updatedAt dateString fullMessage userEmail email")
-    .lean(); 
+    const orders = await Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email").lean(); 
 
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];

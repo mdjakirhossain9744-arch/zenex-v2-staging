@@ -7,7 +7,6 @@ import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
 
-// 🔥 ULTRA SMART MULTI-LANGUAGE STOP WORDS (RESTORED) 🔥
 const STOP_WORDS = new Set([
     'your', 'code', 'otp', 'verification', 'verify', 'use', 'not', 'share', 'this', 
     'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 
@@ -21,7 +20,6 @@ const STOP_WORDS = new Set([
     'votre', 'partager', 'pour', 'compte', 'est', 'jou', 'nin'
 ]);
 
-// 🔥 EXACT BRAND MATCHING LOGIC (RESTORED) 🔥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
@@ -48,7 +46,6 @@ const extractServiceName = (msg: string) => {
     const words = msg.match(/[a-zA-Z]+/g) || [];
     for (let w of words) {
         const wordLower = w.toLowerCase();
-        // Skip words that are 3 characters or less, and stop words
         if (wordLower.length > 3 && !STOP_WORDS.has(wordLower)) {
             return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
         }
@@ -62,11 +59,20 @@ let cachedAdminCostMap: Record<string, number> = {};
 let lastCostMapFetchTime = 0;
 const CACHE_TTL = 60 * 1000;
 
+// 🔥 ULTRA-RESILIENT KEYWORD FETCHING (String & Array both supported) 🔥
 const getHiddenKeywordsFromCache = async () => {
     if (Date.now() - lastKeywordFetchTime < CACHE_TTL) return cachedKeywords;
     try {
         const settings = await Setting.findOne({}).lean();
-        cachedKeywords = (settings?.hiddenKeywords || []).map((k: string) => k.toLowerCase());
+        let rawKeys: string[] = [];
+        if (settings?.hiddenKeywords) {
+            if (Array.isArray(settings.hiddenKeywords)) {
+                rawKeys = settings.hiddenKeywords;
+            } else if (typeof settings.hiddenKeywords === 'string') {
+                rawKeys = (settings.hiddenKeywords as string).split(',');
+            }
+        }
+        cachedKeywords = rawKeys.map((k: string) => k.toLowerCase().trim()).filter(Boolean);
         lastKeywordFetchTime = Date.now();
     } catch (e) {}
     return cachedKeywords;
@@ -131,7 +137,6 @@ export async function POST(req: Request) {
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     let targetEmail = role === "admin" ? "" : safeEmail;
 
-    // 🔥 NO LIMIT FOR "ALL TIME" 🔥
     const isAllTime = limitDays === "all";
     const dailyStatQuery: any = {};
     const orderQuery: any = {};
@@ -224,6 +229,7 @@ export async function POST(req: Request) {
 
               let sName = extractServiceName(o.fullMessage);
               
+              // 🔥 SECRET MASKING LOGIC RUNS HERE 🔥
               hiddenKeywords.forEach((kw: string) => {
                   if (kw && sName.toLowerCase().includes(kw.trim())) {
                       sName = "******";
