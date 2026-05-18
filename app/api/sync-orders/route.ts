@@ -22,14 +22,21 @@ export async function POST(req: Request) {
     }
 
     if (action === "FETCH") {
-      const skip = (page - 1) * limit;
-      const totalItems = await Order.countDocuments({ userEmail: email, dateString: targetDate || getUTCDateString() });
-      const orders = await Order.find({ userEmail: email, dateString: targetDate || getUTCDateString() }).sort({ createdAt: -1 }).skip(skip).limit(limit);
-      
-      const finalOrders: any[] = [];
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
 
+      // 💥 SMART FIX: Auto-Fail numbers older than 20 minutes in the Backend 💥
+      const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+      await Order.updateMany(
+        { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
+        { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }
+      );
+
+      const skip = (page - 1) * limit;
+      const totalItems = await Order.countDocuments({ userEmail: email, dateString: fetchDate });
+      const orders = await Order.find({ userEmail: email, dateString: fetchDate }).sort({ createdAt: -1 }).skip(skip).limit(limit);
+      
+      const finalOrders: any[] = [];
       let stats = { total: 0, success: 0, wait: 0, fail: 0 };
 
       if (fetchDate === todayStr) {
@@ -122,7 +129,8 @@ export async function POST(req: Request) {
 
       if (orderData.status === "DONE" || orderData.otp) {
         const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
-        if (orderAgeMs > 25 * 60 * 1000) { 
+        // 💥 UPDATE: Strict 20 minutes provider matching 💥
+        if (orderAgeMs > 20 * 60 * 1000) { 
             await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
             return NextResponse.json({ success: false, message: "Order expired. MNIT validity over." });
         }
@@ -137,11 +145,9 @@ export async function POST(req: Request) {
 
         const currentMsg = freshOrder.fullMessage || "";
 
-        // 💥 STRICT OTP CODE EXTRACTOR 💥
         const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
         const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg;
 
-        // 1. In-Memory Array Check
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
         const existingCodes = currentMsgsArray.map((msg: string) => {
             const match = msg.match(/\b\d{4,8}\b/);
@@ -156,7 +162,6 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Max safety limit reached." });
         }
 
-        // 2. 🔥 ATOMIC RACE-CONDITION LOCK (DB LEVEL) 🔥
         let regexStr = "";
         if (/^\d+$/.test(incomingCode)) {
              regexStr = `\\b${incomingCode}\\b`;
@@ -167,7 +172,7 @@ export async function POST(req: Request) {
         const updatedOrder = await Order.findOneAndUpdate(
           { 
              _id: existingOrder._id, 
-             fullMessage: { $not: new RegExp(regexStr) } // DB will reject if code already exists!
+             fullMessage: { $not: new RegExp(regexStr) } 
           }, 
           { 
             $set: {
@@ -180,7 +185,6 @@ export async function POST(req: Request) {
           { new: true }
         );
 
-        // If another thread already saved this OTP exactly at the same millisecond, updatedOrder will be null
         if (!updatedOrder) {
           return NextResponse.json({ success: true, message: "Race condition locked. Duplicate ignored safely!" });
         }

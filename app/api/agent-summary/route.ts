@@ -3,34 +3,20 @@ import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
-import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
-
-const STOP_WORDS = new Set([
-    'your', 'code', 'otp', 'verification', 'verify', 'use', 'not', 'share', 'this', 
-    'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 
-    'from', 'with', 'anyone', 'number', 'secret', 'valid', 'auth', 'authentication', 
-    'never', 'give', 'out', 'only', 'http', 'https', 'www', 'com', 'net', 'org', 
-    'info', 'sms', 'reply', 'stop', 'the', 'and', 'for',
-    'kode', 'rahasia', 'anda', 'adalah', 'jangan', 'berikan', 'kepada', 'siapapun', 
-    'untuk', 'masuk', 'silakan', 'kasih', 'yang', 'dari', 'ini', 'kami',
-    'codigo', 'compartas', 'para', 'nadie', 'cuenta', 'este', 'seguridad', 'sua', 
-    'nao', 'con', 'los', 'las', 'por', 'que', 'digo',
-    'votre', 'partager', 'pour', 'compte', 'est', 'jou', 'nin'
-]);
 
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
     
-    if (lowerMsg.includes('whatsapp')) return 'WhatsApp';
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
     if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
     if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg)) return 'Google';
-    if (lowerMsg.includes('microsoft')) return 'Microsoft';
-    if (lowerMsg.includes('amazon')) return 'Amazon';
+    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
+    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
+    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'Amazon';
     if (lowerMsg.includes('netflix')) return 'Netflix';
     if (lowerMsg.includes('paypal')) return 'PayPal';
     if (lowerMsg.includes('tiktok')) return 'TikTok';
@@ -42,37 +28,12 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('airbnb')) return 'Airbnb';
     if (lowerMsg.includes('line')) return 'LINE';
     if (lowerMsg.includes('wechat')) return 'WeChat';
+    if (lowerMsg.includes('apple')) return 'Apple';
+    if (lowerMsg.includes('viber')) return 'Viber';
+    if (lowerMsg.includes('foodpanda')) return 'FoodPanda';
+    if (lowerMsg.includes('imo')) return 'Imo';
 
-    const words = msg.match(/[a-zA-Z]+/g) || [];
-    for (let w of words) {
-        const wordLower = w.toLowerCase();
-        if (wordLower.length > 3 && !STOP_WORDS.has(wordLower)) {
-            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-        }
-    }
-    return "Other";
-};
-
-let cachedKeywords: string[] = [];
-let lastKeywordFetchTime = 0;
-const CACHE_TTL = 60 * 1000;
-
-const getHiddenKeywordsFromCache = async () => {
-    if (Date.now() - lastKeywordFetchTime < CACHE_TTL) return cachedKeywords;
-    try {
-        const settings = await Setting.findOne({}).lean();
-        let rawKeys: string[] = [];
-        if (settings?.hiddenKeywords) {
-            if (Array.isArray(settings.hiddenKeywords)) {
-                rawKeys = settings.hiddenKeywords;
-            } else if (typeof settings.hiddenKeywords === 'string') {
-                rawKeys = (settings.hiddenKeywords as string).split(',');
-            }
-        }
-        cachedKeywords = rawKeys.map((k: string) => k.toLowerCase().trim()).filter(Boolean);
-        lastKeywordFetchTime = Date.now();
-    } catch (e) {}
-    return cachedKeywords;
+    return "Other"; 
 };
 
 const getUTCDateString = (dateObj: any = new Date()) => {
@@ -95,12 +56,9 @@ export async function POST(req: Request) {
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
 
-    const hiddenKeywords = await getHiddenKeywordsFromCache();
-
     const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
     if (agent.customAgentMail) emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
 
-    // 💥 UPDATE: Added balance to check active status properly
     const networkUsers = await User.find({ $or: emailConditions, role: "user" })
       .select("email otpRate fullName uid _id lastLogin createdAt balance")
       .lean();
@@ -151,7 +109,6 @@ export async function POST(req: Request) {
 
     const groupedRawData: Record<string, any> = {};
 
-    // Fetch EVERYTHING from Diary First
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
     
     dailyStats.forEach((ds: any) => {
@@ -171,7 +128,6 @@ export async function POST(req: Request) {
 
     const todayStrUTC = getUTCDateString(new Date());
 
-    // Fetch ONLY TODAY from LIVE Orders
     const orderQuery: any = {};
     const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
     orderQuery.createdAt = { $gte: todayMidnight };
@@ -238,12 +194,6 @@ export async function POST(req: Request) {
 
               let sName = extractServiceName(o.fullMessage);
 
-              hiddenKeywords.forEach((kw: string) => {
-                  if (kw && sName.toLowerCase().includes(kw.trim())) {
-                      sName = "******";
-                  }
-              });
-
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += validMsgCount;
           }
@@ -256,7 +206,6 @@ export async function POST(req: Request) {
        .map((u: any) => ({ id: u.id, name: u.name, otpCount: u.todayOTP }))
        .filter(u => u.otpCount > 0).sort((a, b) => b.otpCount - a.otpCount).slice(0, 15); 
 
-    // 💥 UPDATE: ULTIMATE SMART INACTIVE USERS LOGIC (Weeks, Months, Never, New Account) 💥
     const nowTime = new Date().getTime();
     const inactiveUsersArr = networkUsers.map((u: any) => {
         const createdTime = new Date(u.createdAt || nowTime).getTime();
@@ -287,21 +236,21 @@ export async function POST(req: Request) {
             const diffDays = Math.floor((nowTime - createdTime) / (1000 * 60 * 60 * 24));
             
             if (diffDays > 3) {
-                timeText = "Never"; // ৩ দিনের বেশি হলে Never
+                timeText = "Never"; 
             } else {
-                timeText = "New Account"; // ৩ দিনের কম হলে New Account
+                timeText = "New Account"; 
             }
         }
 
         return {
             id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
             name: u.fullName || u.email.split('@')[0],
-            inactiveText: timeText, // 👈 Frontend will use this field
+            inactiveText: timeText, 
             balance: u.balance || 0,
             sortValue
         };
     })
-    .sort((a, b) => a.sortValue - b.sortValue) // সবথেকে পুরনোরা আগে আসবে
+    .sort((a, b) => a.sortValue - b.sortValue) 
     .slice(0, 10); 
 
     const yesterdayDate = new Date();

@@ -81,17 +81,16 @@ export default function GetNumber() {
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
   };
 
-  // 🔥 Mathematical Time Fix for VPS: Calculates exact timeout moment 🔥
+  // 💥 MATHEMATICAL TIME FIX (Calculates exactly when the order failed) 💥
   const getDisplayTime = (item: any) => {
       if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
-      if (item.status === 'FAIL') {
-          // যদি টাইমআউট হয়, তাহলে কেনার ঠিক ২৫ মিনিট পরেই ফেইল হয়েছে।
-          if (item.otp === "Timeout") {
-              return new Date(item.createdAt).getTime() + (25 * 60 * 1000); 
-          }
+      
+      if (item.status === 'FAIL' || (item.status === 'WAIT' && (currentTime - item.createdAt) >= 20 * 60 * 1000)) {
+          // এটি ঠিক ২০ মিনিট পরের টাইমস্ট্যাম্প রিটার্ন করবে। ফলে ১ ঘন্টা পর আসলেও "40 min ago" দেখাবে।
+          if (item.otp === "Timeout") return item.createdAt + (20 * 60 * 1000); 
           return item.updatedAt || item.createdAt;
       }
-      return item.createdAt; // For WAIT status
+      return item.createdAt; 
   };
 
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
@@ -251,7 +250,15 @@ export default function GetNumber() {
   const isToday = selectedDate === getUTCDateString();
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
-  const finalFilteredNumbers = dateFilteredNumbers.filter((item) => {
+  const finalFilteredNumbers = dateFilteredNumbers.map((item) => {
+      if (item.status === "WAIT" && (currentTime - item.createdAt) >= 20 * 60 * 1000) {
+          return { ...item, status: "FAIL", otp: "Timeout" };
+      }
+      return item;
+  }).filter((item) => {
+    // 💥 FIX: HISTORY MODE ONLY SHOWS SUCCESS (DONE) NUMBERS 💥
+    if (!isToday && item.status !== "DONE") return false;
+
     if (activeFilter === "ALL") return true;
     return item.status === activeFilter;
   });
@@ -308,7 +315,7 @@ export default function GetNumber() {
         <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
            {!isToday && (
              <div className="absolute inset-0 bg-[#0F172A]/50 z-20 flex items-center justify-center">
-               <span className="bg-[#EAB308] text-black font-black px-4 py-1.5 rounded-lg text-xs uppercase tracking-widest shadow-md">History Mode Locked</span>
+               <span className="bg-[#EAB308] text-black font-black px-4 py-1.5 rounded-lg text-xs uppercase tracking-widest shadow-md">History Mode Locked (Only Success)</span>
              </div>
            )}
            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF]"></div>

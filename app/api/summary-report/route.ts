@@ -3,34 +3,20 @@ import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
-import Setting from "../../../models/Setting";
 
 export const dynamic = "force-dynamic";
-
-const STOP_WORDS = new Set([
-    'your', 'code', 'otp', 'verification', 'verify', 'use', 'not', 'share', 'this', 
-    'pin', 'msg', 'message', 'please', 'password', 'security', 'account', 'login', 
-    'from', 'with', 'anyone', 'number', 'secret', 'valid', 'auth', 'authentication', 
-    'never', 'give', 'out', 'only', 'http', 'https', 'www', 'com', 'net', 'org', 
-    'info', 'sms', 'reply', 'stop', 'the', 'and', 'for',
-    'kode', 'rahasia', 'anda', 'adalah', 'jangan', 'berikan', 'kepada', 'siapapun', 
-    'untuk', 'masuk', 'silakan', 'kasih', 'yang', 'dari', 'ini', 'kami',
-    'codigo', 'compartas', 'para', 'nadie', 'cuenta', 'este', 'seguridad', 'sua', 
-    'nao', 'con', 'los', 'las', 'por', 'que', 'digo',
-    'votre', 'partager', 'pour', 'compte', 'est', 'jou', 'nin'
-]);
 
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
     
-    if (lowerMsg.includes('whatsapp')) return 'WhatsApp';
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
     if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
     if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg)) return 'Google';
-    if (lowerMsg.includes('microsoft')) return 'Microsoft';
-    if (lowerMsg.includes('amazon')) return 'Amazon';
+    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
+    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
+    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'Amazon';
     if (lowerMsg.includes('netflix')) return 'Netflix';
     if (lowerMsg.includes('paypal')) return 'PayPal';
     if (lowerMsg.includes('tiktok')) return 'TikTok';
@@ -42,40 +28,17 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('airbnb')) return 'Airbnb';
     if (lowerMsg.includes('line')) return 'LINE';
     if (lowerMsg.includes('wechat')) return 'WeChat';
+    if (lowerMsg.includes('apple')) return 'Apple';
+    if (lowerMsg.includes('viber')) return 'Viber';
+    if (lowerMsg.includes('foodpanda')) return 'FoodPanda';
+    if (lowerMsg.includes('imo')) return 'Imo';
 
-    const words = msg.match(/[a-zA-Z]+/g) || [];
-    for (let w of words) {
-        const wordLower = w.toLowerCase();
-        if (wordLower.length > 3 && !STOP_WORDS.has(wordLower)) {
-            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-        }
-    }
-    return "Other";
+    return "Other"; // 💥 No more guessing garbage names! 💥
 };
 
-let cachedKeywords: string[] = [];
-let lastKeywordFetchTime = 0;
 let cachedAdminCostMap: Record<string, number> = {};
 let lastCostMapFetchTime = 0;
 const CACHE_TTL = 60 * 1000;
-
-const getHiddenKeywordsFromCache = async () => {
-    if (Date.now() - lastKeywordFetchTime < CACHE_TTL) return cachedKeywords;
-    try {
-        const settings = await Setting.findOne({}).lean();
-        let rawKeys: string[] = [];
-        if (settings?.hiddenKeywords) {
-            if (Array.isArray(settings.hiddenKeywords)) {
-                rawKeys = settings.hiddenKeywords;
-            } else if (typeof settings.hiddenKeywords === 'string') {
-                rawKeys = (settings.hiddenKeywords as string).split(',');
-            }
-        }
-        cachedKeywords = rawKeys.map((k: string) => k.toLowerCase().trim()).filter(Boolean);
-        lastKeywordFetchTime = Date.now();
-    } catch (e) {}
-    return cachedKeywords;
-};
 
 const getAdminCostMapFromCache = async () => {
     if (Date.now() - lastCostMapFetchTime < CACHE_TTL && Object.keys(cachedAdminCostMap).length > 0) return cachedAdminCostMap;
@@ -126,10 +89,7 @@ export async function POST(req: Request) {
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
     if (!currentUser) return NextResponse.json({ success: false });
 
-    const [hiddenKeywords, userToAdminCostMap] = (await Promise.all([
-        getHiddenKeywordsFromCache(),
-        role === "admin" ? getAdminCostMapFromCache() : Promise.resolve({})
-    ])) as [string[], Record<string, number>];
+    const userToAdminCostMap = role === "admin" ? await getAdminCostMapFromCache() : {};
 
     let userRate = role === "admin" ? 0 : (currentUser.otpRate || 0.50);
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
@@ -154,16 +114,13 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
     
-    // 1. Load EVERYTHING from Diary (DailyStat) first!
+    // Fetch EVERYTHING from Diary
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
-    const archivedKeys = new Set<string>();
 
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
         const dEmail = (ds.userEmail || "").toLowerCase().trim();
         
-        archivedKeys.add(`${dDate}_${dEmail}`);
-
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
 
         groupedRawData[dDate].total += (ds.totalNumbers || 0);
@@ -175,11 +132,10 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
     });
 
-    // 2. 🔥 ULTIMATE OOM PROTECTION: Fetch ONLY the last 3 days from the LIVE Orders! 🔥
+    // Fetch ONLY TODAY from LIVE Orders
     const orderQuery: any = {};
-    const recentLimit = new Date();
-    recentLimit.setUTCDate(recentLimit.getUTCDate() - 3); // Max 3 days live data!
-    orderQuery.createdAt = { $gte: recentLimit };
+    const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
+    orderQuery.createdAt = { $gte: todayMidnight }; 
     
     if (role !== "admin") {
         orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
@@ -198,13 +154,12 @@ export async function POST(req: Request) {
        } else if (o.dateString) {
            finalDateStr = getUTCDateString(new Date(o.dateString));
        } else {
-           finalDateStr = getUTCDateString(new Date());
+           finalDateStr = todayStrUTC;
        }
 
-       const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
+       if (finalDateStr !== todayStrUTC) return; 
 
-       // 💥 MAGIC LOCK: If this date is already handled by the Diary, SKIP the live order!
-       if (finalDateStr !== todayStrUTC && archivedKeys.has(`${finalDateStr}_${uEmail}`)) return; 
+       const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
@@ -235,12 +190,6 @@ export async function POST(req: Request) {
 
               let sName = extractServiceName(o.fullMessage);
               
-              hiddenKeywords.forEach((kw: string) => {
-                  if (kw && sName.toLowerCase().includes(kw.trim())) {
-                      sName = "******";
-                  }
-              });
-              
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += validMsgCount;
           }
@@ -253,8 +202,9 @@ export async function POST(req: Request) {
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
     const yesterdayStrUTC = getUTCDateString(yesterdayDate);
 
-    const todayData = groupedRawData[todayStrUTC] || { success: 0, amount: 0 };
-    const yesterdayData = groupedRawData[yesterdayStrUTC] || { success: 0, amount: 0 };
+    const defaultData = { success: 0, amount: 0, total: 0, failed: 0 };
+    const todayData = groupedRawData[todayStrUTC] || defaultData;
+    const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
     return NextResponse.json({
        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
