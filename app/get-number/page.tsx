@@ -35,15 +35,36 @@ export default function GetNumber() {
     return storedUser ? JSON.parse(storedUser).email : "";
   };
 
+  // 💥 UPDATE: Load Saved Preferences (Range, National, No +) on Page Load 💥
   useEffect(() => {
     const savedRange = localStorage.getItem("zenex_saved_range");
     if (savedRange) setRangeInput(savedRange);
+
+    const savedNational = localStorage.getItem("zenex_saved_national");
+    if (savedNational === "true") setIsNational(true);
+
+    const savedRemovePlus = localStorage.getItem("zenex_saved_remove_plus");
+    if (savedRemovePlus === "true") setRemovePlus(true);
   }, []);
 
   const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setRangeInput(val);
     localStorage.setItem("zenex_saved_range", val); 
+  };
+
+  // 💥 UPDATE: Save National Checkbox State 💥
+  const toggleNational = () => {
+    const newVal = !isNational;
+    setIsNational(newVal);
+    localStorage.setItem("zenex_saved_national", newVal.toString());
+  };
+
+  // 💥 UPDATE: Save No (+) Checkbox State 💥
+  const toggleRemovePlus = () => {
+    const newVal = !removePlus;
+    setRemovePlus(newVal);
+    localStorage.setItem("zenex_saved_remove_plus", newVal.toString());
   };
 
   const changeDate = (days: number) => {
@@ -81,12 +102,10 @@ export default function GetNumber() {
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
   };
 
-  // 💥 MATHEMATICAL TIME FIX (Calculates exactly when the order failed) 💥
   const getDisplayTime = (item: any) => {
       if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
       
       if (item.status === 'FAIL' || (item.status === 'WAIT' && (currentTime - item.createdAt) >= 20 * 60 * 1000)) {
-          // এটি ঠিক ২০ মিনিট পরের টাইমস্ট্যাম্প রিটার্ন করবে। ফলে ১ ঘন্টা পর আসলেও "40 min ago" দেখাবে।
           if (item.otp === "Timeout") return item.createdAt + (20 * 60 * 1000); 
           return item.updatedAt || item.createdAt;
       }
@@ -256,7 +275,6 @@ export default function GetNumber() {
       }
       return item;
   }).filter((item) => {
-    // 💥 FIX: HISTORY MODE ONLY SHOWS SUCCESS (DONE) NUMBERS 💥
     if (!isToday && item.status !== "DONE") return false;
 
     if (activeFilter === "ALL") return true;
@@ -328,13 +346,13 @@ export default function GetNumber() {
                  />
               </div>
               <div className="flex gap-4 pb-2 md:pb-0">
-                 <label className="flex items-center gap-2 cursor-pointer group" onClick={() => setIsNational(!isNational)}>
+                 <label className="flex items-center gap-2 cursor-pointer group" onClick={toggleNational}>
                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isNational ? "bg-[#3B82F6] border-[#3B82F6]" : "bg-[#0F172A] border-[#334155]"}`}>
                        {isNational && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                     </div>
                     <span className="text-xs font-bold text-[#94A3B8] group-hover:text-white transition-colors">National</span>
                  </label>
-                 <label className="flex items-center gap-2 cursor-pointer group" onClick={() => setRemovePlus(!removePlus)}>
+                 <label className="flex items-center gap-2 cursor-pointer group" onClick={toggleRemovePlus}>
                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${removePlus ? "bg-[#3B82F6] border-[#3B82F6]" : "bg-[#0F172A] border-[#334155]"}`}>
                        {removePlus && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                     </div>
