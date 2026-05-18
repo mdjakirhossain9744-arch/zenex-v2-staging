@@ -33,40 +33,7 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('foodpanda')) return 'FoodPanda';
     if (lowerMsg.includes('imo')) return 'Imo';
 
-    return "Other"; // 💥 No more guessing garbage names! 💥
-};
-
-let cachedAdminCostMap: Record<string, number> = {};
-let lastCostMapFetchTime = 0;
-const CACHE_TTL = 60 * 1000;
-
-const getAdminCostMapFromCache = async () => {
-    if (Date.now() - lastCostMapFetchTime < CACHE_TTL && Object.keys(cachedAdminCostMap).length > 0) return cachedAdminCostMap;
-    try {
-        const allUsers = await User.find({}).select("email agentEmail role agentMaxRate customAgentMail").lean();
-        const agentRates: Record<string, number> = {};
-        const newCostMap: Record<string, number> = {};
-        allUsers.forEach((u: any) => {
-            if (u.role === "agent") {
-                const rate = u.agentMaxRate || 0;
-                if (u.email) agentRates[u.email.toLowerCase().trim()] = rate;
-                if (u.customAgentMail) agentRates[u.customAgentMail.toLowerCase().trim()] = rate;
-            }
-        });
-        allUsers.forEach((u: any) => {
-            if (u.email) {
-                const emailKey = u.email.toLowerCase().trim();
-                if (u.role === "agent") newCostMap[emailKey] = agentRates[emailKey] || 0;
-                else if (u.role === "user" && u.agentEmail) {
-                    const aEmail = u.agentEmail.toLowerCase().trim();
-                    newCostMap[emailKey] = agentRates[aEmail] || 0;
-                }
-            }
-        });
-        cachedAdminCostMap = newCostMap;
-        lastCostMapFetchTime = Date.now();
-    } catch (e) {}
-    return cachedAdminCostMap;
+    return "Other"; 
 };
 
 const getUTCDateString = (dateObj: any = new Date()) => {
@@ -89,37 +56,35 @@ export async function POST(req: Request) {
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
     if (!currentUser) return NextResponse.json({ success: false });
 
-    const userToAdminCostMap = role === "admin" ? await getAdminCostMapFromCache() : {};
-
     let userRate = role === "admin" ? 0 : (currentUser.otpRate || 0.50);
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     let targetEmail = role === "admin" ? "" : safeEmail;
 
+    const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
-    const dailyStatQuery: any = {};
+    
+    // 💥 STRICT PAST DATA ONLY (Diary থেকে আজকের ডাটা খুঁজবে না) 💥
+    const dailyStatQuery: any = { dateString: { $lt: todayStrUTC } };
     
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
         const pastDaysLimit = new Date();
         pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
-        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit) };
+        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
     }
 
     if (role !== "admin") {
         dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     }
 
-    const todayStrUTC = getUTCDateString(new Date());
     const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
     
-    // Fetch EVERYTHING from Diary
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
 
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
-        const dEmail = (ds.userEmail || "").toLowerCase().trim();
         
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
 
@@ -127,12 +92,10 @@ export async function POST(req: Request) {
         groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
         groupedRawData[dDate].success += (ds.successOTP || 0);
         groupedRawData[dDate].failed += (ds.failedNumbers || ds.failed || 0); 
-
-        let orderCostRate = role === "admin" ? (userToAdminCostMap[dEmail] || 0) : userRate;
-        groupedRawData[dDate].amount += (orderCostRate * (ds.successOTP || 0));
+        groupedRawData[dDate].amount += (ds.totalCost || 0);
     });
 
-    // Fetch ONLY TODAY from LIVE Orders
+    // 💥 STRICT TODAY DATA ONLY (Live Order থেকে শুধুমাত্র আজকের ডাটা খুঁজবে) 💥
     const orderQuery: any = {};
     const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
     orderQuery.createdAt = { $gte: todayMidnight }; 
@@ -141,7 +104,7 @@ export async function POST(req: Request) {
         orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     }
 
-    const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail").lean();
+    const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost").lean();
 
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
@@ -159,13 +122,8 @@ export async function POST(req: Request) {
 
        if (finalDateStr !== todayStrUTC) return; 
 
-       const uEmail = (o.userEmail || o.email || "").toLowerCase().trim();
-
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
-       const msgLower = (o.fullMessage || "").toLowerCase();
-       const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
-
        groupedRawData[finalDateStr].total += 1; 
        groupedRawData[finalDateStr].allocation += 1;
 
@@ -179,9 +137,7 @@ export async function POST(req: Request) {
           const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
           groupedRawData[finalDateStr].success += validMsgCount;
-
-          let orderCostRate = role === "admin" ? (userToAdminCostMap[uEmail] || 0) : userRate;
-          if (!isFreeService) groupedRawData[finalDateStr].amount += (orderCostRate * validMsgCount);
+          groupedRawData[finalDateStr].amount += (o.orderCost || 0);
 
           if (finalDateStr === todayStrUTC) {
               const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());

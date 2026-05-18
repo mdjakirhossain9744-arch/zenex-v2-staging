@@ -12,13 +12,16 @@ const orderSchema = new Schema(
     fullMessage: { type: String, default: "" },
     dateString: { type: String, required: true },
     
-    // 💥 ডাইনামিক অটো-ডিলিট (TTL) ফিল্ড 💥
-    expireAt: { type: Date, required: true, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) } 
+    // 💥 STATIC RATE FIX 💥
+    orderCost: { type: Number, default: 0 }, 
+    orderCommission: { type: Number, default: 0 }, 
+
+    // 💥 ২ দিন (৪৮ ঘণ্টা) গ্যারান্টি 💥
+    expireAt: { type: Date, required: true, default: () => new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } 
   },
   { timestamps: true }
 );
 
-// এই ম্যাজিকের কারণে ডাটাবেস নিজে থেকেই expireAt এর সময় অনুযায়ী ফাইলটি ডিলিট করে দেবে!
 orderSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 
 const Order = models.Order || mongoose.model("Order", orderSchema);

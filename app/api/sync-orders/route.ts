@@ -6,7 +6,6 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
-// 💥 STRICT UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
@@ -25,11 +24,10 @@ export async function POST(req: Request) {
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
 
-      // 💥 SMART FIX: Auto-Fail numbers older than 20 minutes in the Backend 💥
       const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
       await Order.updateMany(
         { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
-        { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }
+        { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } }
       );
 
       const skip = (page - 1) * limit;
@@ -109,7 +107,7 @@ export async function POST(req: Request) {
         country: orderData.country, operator: orderData.operator, status: orderData.status,
         otp: orderData.otp, fullMessage: orderData.fullMessage, 
         dateString: todayStr, 
-        expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+        expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
       return NextResponse.json({ success: true });
@@ -122,14 +120,13 @@ export async function POST(req: Request) {
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
         existingOrder.otp = orderData.otp || "Timeout"; 
-        existingOrder.expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        existingOrder.expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
         await existingOrder.save();
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
 
       if (orderData.status === "DONE" || orderData.otp) {
         const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
-        // 💥 UPDATE: Strict 20 minutes provider matching 💥
         if (orderAgeMs > 20 * 60 * 1000) { 
             await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
             return NextResponse.json({ success: false, message: "Order expired. MNIT validity over." });
@@ -169,6 +166,32 @@ export async function POST(req: Request) {
              regexStr = incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
+        const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
+                              incomingMsg.toLowerCase().includes("telegram") || 
+                              incomingMsg.toLowerCase().includes("t.me");
+
+        let currentOtpCost = 0;
+        let currentOtpCommission = 0;
+        let agentToUpdate = null;
+
+        if (!isFreeService) {
+          const user = await User.findOne({ email });
+          if (user) {
+            currentOtpCost = Number(user.otpRate) || 0.50;
+            if (user.agentEmail) {
+              agentToUpdate = await User.findOne({
+                $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
+                role: "agent"
+              });
+              if (agentToUpdate) {
+                const agentRate = Number(agentToUpdate.agentMaxRate) || 0.70;
+                const comm = Number((agentRate - currentOtpCost).toFixed(2));
+                if (comm > 0) currentOtpCommission = comm;
+              }
+            }
+          }
+        }
+
         const updatedOrder = await Order.findOneAndUpdate(
           { 
              _id: existingOrder._id, 
@@ -180,7 +203,8 @@ export async function POST(req: Request) {
               otp: orderData.otp || incomingCode,
               status: "DONE",
               expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
-            }
+            },
+            $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
           },
           { new: true }
         );
@@ -189,36 +213,14 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Race condition locked. Duplicate ignored safely!" });
         }
 
-        const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
-                              incomingMsg.toLowerCase().includes("telegram") || 
-                              incomingMsg.toLowerCase().includes("t.me");
-
-        if (!isFreeService) {
-          const user = await User.findOne({ email });
-          if (user) {
-            const userRate = Number(user.otpRate) || 0.50;
-            
-            await User.findOneAndUpdate({ email }, { $inc: { balance: userRate } });
-
-            if (user.agentEmail) {
-              const agent = await User.findOne({
-                $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
-                role: "agent"
-              });
-
-              if (agent) {
-                const agentRate = Number(agent.agentMaxRate) || 0.70;
-                const commission = Number((agentRate - userRate).toFixed(2));
-
-                if (commission > 0) {
-                  await User.findOneAndUpdate(
-                     { _id: agent._id }, 
-                     { $inc: { agentEarning: commission, balance: commission } }
-                  );
-                }
-              }
-            }
-          }
+        if (currentOtpCost > 0) {
+          await User.updateOne({ email }, { $inc: { balance: currentOtpCost } });
+        }
+        if (currentOtpCommission > 0 && agentToUpdate) {
+          await User.updateOne(
+            { _id: agentToUpdate._id }, 
+            { $inc: { agentEarning: currentOtpCommission, balance: currentOtpCommission } }
+          );
         }
 
         return NextResponse.json({ success: true, message: "Different OTP Processed successfully!" });

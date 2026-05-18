@@ -64,18 +64,15 @@ export async function POST(req: Request) {
       .lean();
 
     const targetEmails = new Set<string>();
-    const userRateMap: Record<string, number> = {};
     const userInfoMap: Record<string, any> = {}; 
 
     targetEmails.add(safeAgentEmail);
     if (agent.customAgentMail) targetEmails.add(agent.customAgentMail.toLowerCase().trim());
-    userRateMap[safeAgentEmail] = agent.otpRate || 0.50;
 
     networkUsers.forEach((u: any) => {
         if (u.email) {
             const e = u.email.toLowerCase().trim();
             targetEmails.add(e);
-            userRateMap[e] = u.otpRate || 0.50;
             userInfoMap[e] = {
                 id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
                 name: u.fullName || u.email.split('@')[0],
@@ -87,14 +84,17 @@ export async function POST(req: Request) {
     const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
 
+    const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
-    const dailyStatQuery: any = {};
+    
+    // 💥 STRICT PAST DATA ONLY 💥
+    const dailyStatQuery: any = { dateString: { $lt: todayStrUTC } };
 
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
         const pastDaysLimit = new Date();
         pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
-        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit) };
+        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
     }
 
     const queryConditions: any[] = [];
@@ -113,7 +113,6 @@ export async function POST(req: Request) {
     
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
-        const dEmail = (ds.userEmail || "").toLowerCase().trim();
         
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
 
@@ -121,13 +120,10 @@ export async function POST(req: Request) {
         groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
         groupedRawData[dDate].success += (ds.successOTP || 0);
         groupedRawData[dDate].failed += (ds.failedNumbers || ds.failed || 0); 
-
-        const uRate = userRateMap[dEmail] || 0.50;
-        groupedRawData[dDate].amount += Math.max(0, agentMaxRate - uRate) * (ds.successOTP || 0);
+        groupedRawData[dDate].amount += (ds.totalCommission || 0);
     });
 
-    const todayStrUTC = getUTCDateString(new Date());
-
+    // 💥 STRICT TODAY DATA ONLY 💥
     const orderQuery: any = {};
     const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
     orderQuery.createdAt = { $gte: todayMidnight };
@@ -136,7 +132,7 @@ export async function POST(req: Request) {
         orderQuery.$or = queryConditions;
     }
 
-    const orders = await Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email").lean(); 
+    const orders = await Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission").lean(); 
 
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
@@ -167,9 +163,6 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].allocation += 1;
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          const msgLower = (o.fullMessage || "").toLowerCase();
-          const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
-
           const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
           const uniqueCodes = new Set();
           msgArray.forEach((msg: string) => {
@@ -179,11 +172,7 @@ export async function POST(req: Request) {
           const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
           groupedRawData[finalDateStr].success += validMsgCount;
-          
-          if (!isFreeService) {
-              const uRate = userRateMap[safeUserEmail] || 0.50;
-              groupedRawData[finalDateStr].amount += Math.max(0, agentMaxRate - uRate) * validMsgCount;
-          }
+          groupedRawData[finalDateStr].amount += (o.orderCommission || 0);
 
           if (finalDateStr === todayStrUTC) {
               const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
