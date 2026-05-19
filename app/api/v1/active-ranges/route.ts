@@ -106,7 +106,10 @@ export async function GET(req: Request) {
         }
     });
 
-    const formattedRanges = Object.values(rangeMap).sort((a: any, b: any) => b.hits - a.hits);
+    // 💥 LIMIT ADDED: .slice(0, 10) ব্যবহার করে সর্বোচ্চ ১০টি রেঞ্জ করে দেওয়া হলো 💥
+    const formattedRanges = Object.values(rangeMap)
+        .sort((a: any, b: any) => b.hits - a.hits)
+        .slice(0, 10);
 
     cachedActiveData = { active_ranges: formattedRanges };
     lastFetchTime = Date.now();
