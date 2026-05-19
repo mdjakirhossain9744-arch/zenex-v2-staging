@@ -23,16 +23,6 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('tinder')) return 'Tinder';
     if (lowerMsg.includes('uber')) return 'Uber';
     if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
-    if (lowerMsg.includes('snapchat')) return 'Snapchat';
-    if (lowerMsg.includes('discord')) return 'Discord';
-    if (lowerMsg.includes('airbnb')) return 'Airbnb';
-    if (lowerMsg.includes('line')) return 'LINE';
-    if (lowerMsg.includes('wechat')) return 'WeChat';
-    if (lowerMsg.includes('apple')) return 'Apple';
-    if (lowerMsg.includes('viber')) return 'Viber';
-    if (lowerMsg.includes('foodpanda')) return 'FoodPanda';
-    if (lowerMsg.includes('imo')) return 'Imo';
-
     return "Other"; 
 };
 
@@ -62,15 +52,30 @@ export async function POST(req: Request) {
 
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
+
+    // 💥 THE MIDNIGHT CROSSOVER FIX (Smart Live Boundary) 💥
+    let liveQueryDateStr = todayStrUTC;
+    let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
+
+    const currentUTCHour = new Date().getUTCHours();
+    const currentUTCMin = new Date().getUTCMinutes();
     
-    // 💥 STRICT PAST DATA ONLY (Diary থেকে আজকের ডাটা খুঁজবে না) 💥
-    const dailyStatQuery: any = { dateString: { $lt: todayStrUTC } };
+    // রাত ০০:০০ থেকে ০০:৩৫ পর্যন্ত লাইভ কুয়েরি গতকাল থেকে শুরু হবে (কারণ ক্রন তখনো ডায়েরি লিখেনি)
+    if (currentUTCHour === 0 && currentUTCMin <= 35) {
+        const yesterdayDate = new Date();
+        yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+        liveQueryDateStr = getUTCDateString(yesterdayDate);
+        liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
+    }
+    
+    // ডায়েরি শুধু লাইভ সীমানার আগের ডাটা আনবে (ডাবল কাউন্ট রোধ করার জন্য)
+    const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
     
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
         const pastDaysLimit = new Date();
         pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
-        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
+        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
     if (role !== "admin") {
@@ -85,42 +90,36 @@ export async function POST(req: Request) {
 
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
-        
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
 
         groupedRawData[dDate].total += (ds.totalNumbers || 0);
         groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
         groupedRawData[dDate].success += (ds.successOTP || 0);
         groupedRawData[dDate].failed += (ds.failedNumbers || ds.failed || 0); 
-        groupedRawData[dDate].amount += (ds.totalCost || 0);
+        
+        if (role === "admin") {
+            groupedRawData[dDate].amount += ((ds.totalCost || 0) + (ds.totalCommission || 0));
+        } else {
+            groupedRawData[dDate].amount += (ds.totalCost || 0);
+        }
     });
 
-    // 💥 STRICT TODAY DATA ONLY (Live Order থেকে শুধুমাত্র আজকের ডাটা খুঁজবে) 💥
-    const orderQuery: any = {};
-    const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
-    orderQuery.createdAt = { $gte: todayMidnight }; 
+    // 💥 LIVE ORDERS FETCH 💥
+    const orderQuery: any = { createdAt: { $gte: liveQueryStart } }; 
     
     if (role !== "admin") {
         orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
     }
 
-    const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost").lean();
+    const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost orderCommission").lean();
 
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
 
-       let finalDateStr = "";
-       if ((currentStatus === "DONE" || currentStatus === "SUCCESS") && o.updatedAt) {
-           finalDateStr = getUTCDateString(o.updatedAt);
-       } else if (o.createdAt) {
-           finalDateStr = getUTCDateString(o.createdAt);
-       } else if (o.dateString) {
-           finalDateStr = getUTCDateString(new Date(o.dateString));
-       } else {
-           finalDateStr = todayStrUTC;
-       }
+       // 💥 DATE CONSISTENCY FIX: ওটিপি পরে আসলেও অর্ডারের মূল দিনের ঘরেই কাউন্ট হবে 💥
+       const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       if (finalDateStr !== todayStrUTC) return; 
+       if (finalDateStr < liveQueryDateStr) return; // সিকিউরিটি (ডাবল কাউন্ট রোধ)
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
@@ -137,7 +136,12 @@ export async function POST(req: Request) {
           const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
           groupedRawData[finalDateStr].success += validMsgCount;
-          groupedRawData[finalDateStr].amount += (o.orderCost || 0);
+          
+          if (role === "admin") {
+              groupedRawData[finalDateStr].amount += ((o.orderCost || 0) + (o.orderCommission || 0));
+          } else {
+              groupedRawData[finalDateStr].amount += (o.orderCost || 0);
+          }
 
           if (finalDateStr === todayStrUTC) {
               const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
@@ -145,7 +149,6 @@ export async function POST(req: Request) {
               if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
 
               let sName = extractServiceName(o.fullMessage);
-              
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += validMsgCount;
           }

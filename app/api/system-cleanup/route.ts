@@ -66,7 +66,9 @@ export async function GET(req: NextRequest) {
 
             const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
+            // 💥 MATH FIX: এখন WhatsApp ও Telegram-কেও Success হিসেবে কাউন্ট করা হবে 💥
             statsMap[key].success += validMsgCount;
+            
             statsMap[key].amount += (o.orderCost || 0);
             statsMap[key].commission += (o.orderCommission || 0);
             

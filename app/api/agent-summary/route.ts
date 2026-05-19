@@ -23,16 +23,6 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('tinder')) return 'Tinder';
     if (lowerMsg.includes('uber')) return 'Uber';
     if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
-    if (lowerMsg.includes('snapchat')) return 'Snapchat';
-    if (lowerMsg.includes('discord')) return 'Discord';
-    if (lowerMsg.includes('airbnb')) return 'Airbnb';
-    if (lowerMsg.includes('line')) return 'LINE';
-    if (lowerMsg.includes('wechat')) return 'WeChat';
-    if (lowerMsg.includes('apple')) return 'Apple';
-    if (lowerMsg.includes('viber')) return 'Viber';
-    if (lowerMsg.includes('foodpanda')) return 'FoodPanda';
-    if (lowerMsg.includes('imo')) return 'Imo';
-
     return "Other"; 
 };
 
@@ -87,14 +77,27 @@ export async function POST(req: Request) {
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
     
-    // 💥 STRICT PAST DATA ONLY 💥
-    const dailyStatQuery: any = { dateString: { $lt: todayStrUTC } };
+    // 💥 THE MIDNIGHT CROSSOVER FIX 💥
+    let liveQueryDateStr = todayStrUTC;
+    let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
+
+    const currentUTCHour = new Date().getUTCHours();
+    const currentUTCMin = new Date().getUTCMinutes();
+    
+    if (currentUTCHour === 0 && currentUTCMin <= 35) {
+        const yesterdayDate = new Date();
+        yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+        liveQueryDateStr = getUTCDateString(yesterdayDate);
+        liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
+    }
+
+    const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
 
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
         const pastDaysLimit = new Date();
         pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
-        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
+        dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
     const queryConditions: any[] = [];
@@ -108,12 +111,10 @@ export async function POST(req: Request) {
     }
 
     const groupedRawData: Record<string, any> = {};
-
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
     
     dailyStats.forEach((ds: any) => {
         const dDate = ds.dateString;
-        
         if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
 
         groupedRawData[dDate].total += (ds.totalNumbers || 0);
@@ -123,10 +124,7 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += (ds.totalCommission || 0);
     });
 
-    // 💥 STRICT TODAY DATA ONLY 💥
-    const orderQuery: any = {};
-    const todayMidnight = new Date(todayStrUTC + "T00:00:00.000Z"); 
-    orderQuery.createdAt = { $gte: todayMidnight };
+    const orderQuery: any = { createdAt: { $gte: liveQueryStart } };
     
     if (queryConditions.length > 0) {
         orderQuery.$or = queryConditions;
@@ -140,18 +138,10 @@ export async function POST(req: Request) {
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
 
-       let finalDateStr = "";
-       if ((currentStatus === "DONE" || currentStatus === "SUCCESS") && o.updatedAt) {
-           finalDateStr = getUTCDateString(o.updatedAt);
-       } else if (o.createdAt) {
-           finalDateStr = getUTCDateString(o.createdAt);
-       } else if (o.dateString) {
-           finalDateStr = getUTCDateString(new Date(o.dateString));
-       } else {
-           finalDateStr = todayStrUTC;
-       }
+       // 💥 DATE CONSISTENCY FIX 💥
+       const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       if (finalDateStr !== todayStrUTC) return;
+       if (finalDateStr < liveQueryDateStr) return;
 
        const safeUserEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
@@ -182,7 +172,6 @@ export async function POST(req: Request) {
               if (userInfoMap[safeUserEmail]) userInfoMap[safeUserEmail].todayOTP += validMsgCount;
 
               let sName = extractServiceName(o.fullMessage);
-
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += validMsgCount;
           }
@@ -197,16 +186,13 @@ export async function POST(req: Request) {
 
     const nowTime = new Date().getTime();
     const inactiveUsersArr = networkUsers.map((u: any) => {
+        // ... (Inactive Users calculation remains exactly the same)
         const createdTime = new Date(u.createdAt || nowTime).getTime();
         const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : null;
-        
-        let timeText = "";
-        let sortValue = 0; 
-
+        let timeText = ""; let sortValue = 0; 
         if (loginTime) {
             sortValue = loginTime;
             const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
-            
             if (diffDays === 0) timeText = "Today";
             else if (diffDays === 1) timeText = "Yesterday";
             else if (diffDays < 7) timeText = `${diffDays} days ago`;
@@ -223,24 +209,15 @@ export async function POST(req: Request) {
         } else {
             sortValue = createdTime; 
             const diffDays = Math.floor((nowTime - createdTime) / (1000 * 60 * 60 * 24));
-            
-            if (diffDays > 3) {
-                timeText = "Never"; 
-            } else {
-                timeText = "New Account"; 
-            }
+            if (diffDays > 3) timeText = "Never"; 
+            else timeText = "New Account"; 
         }
-
         return {
             id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
             name: u.fullName || u.email.split('@')[0],
-            inactiveText: timeText, 
-            balance: u.balance || 0,
-            sortValue
+            inactiveText: timeText, balance: u.balance || 0, sortValue
         };
-    })
-    .sort((a, b) => a.sortValue - b.sortValue) 
-    .slice(0, 10); 
+    }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 10); 
 
     const yesterdayDate = new Date();
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
