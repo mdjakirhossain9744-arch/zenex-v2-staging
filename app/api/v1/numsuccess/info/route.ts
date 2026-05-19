@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "../../../../../lib/mongodb"; 
-import User from "../../../../../../models/User";
-import Order from "../../../../../../models/Order";
+import connectToDatabase from "../../../../lib/mongodb"; 
+import User from "../../../../../models/User";
+import Order from "../../../../../models/Order";
 
 export const dynamic = "force-dynamic";
 
