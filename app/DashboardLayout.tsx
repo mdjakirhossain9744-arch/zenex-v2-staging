@@ -317,13 +317,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main className={`flex-1 flex flex-col h-screen overflow-hidden w-full relative ${isMaintenance && role === 'admin' ? 'mt-6' : ''}`}>
-        {/* 💥 FIX: Mobile Header Spacing Optimized 💥 */}
-        <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-3 md:px-10 z-[50] w-full shrink-0 relative">
-          <div className="flex items-center gap-2 md:gap-3">
+        <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full shrink-0 relative">
+          <div className="flex items-center gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
-             <Link href={dashboardUrl} className="md:hidden flex items-center gap-1.5 group mt-1">
-               <Image src="/zenex-logo.png" alt="ZENEX Logo" width={28} height={28} className="w-6 h-6 object-contain" priority unoptimized />
-               <h1 className="text-[18px] font-black tracking-widest text-white leading-none mt-0.5">ZENEX</h1>
+             <Link href={dashboardUrl} className="md:hidden flex items-center gap-2 group mt-1">
+               <Image src="/zenex-logo.png" alt="ZENEX Logo" width={30} height={30} className="w-7 h-7 object-contain" priority unoptimized />
+               <h1 className="text-[20px] font-black tracking-widest text-white leading-none mt-0.5">ZENEX</h1>
              </Link>
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${role === 'admin' ? 'bg-[#F43F5E]' : role === 'agent' ? 'bg-[#A855F7]' : 'bg-[#10B981]'}`}></span> 
@@ -331,22 +330,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              </span>
           </div>
           
-          {/* 💥 FIX: Reduced gaps exclusively for mobile (gap-1.5 to md:gap-5) 💥 */}
-          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-5 relative">
+          {/* Changed gap-4 to gap-2.5 for mobile here */}
+          <div className="flex items-center gap-2.5 md:gap-6 relative">
             {role !== "admin" && (
-              <div className="px-1.5 py-1 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-md md:rounded-lg flex items-center gap-1 md:gap-3 shadow-inner">
-                 <span className="hidden md:block text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Balance</span>
-                 <span className="md:hidden text-[8px] font-bold text-[#94A3B8] uppercase tracking-widest hidden sm:block">Bal:</span>
-                 <span className="text-xs md:text-lg font-black text-[#10B981] md:text-[#F8FAFC]">৳{balance}</span>
+              <div className="px-2.5 py-1 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-md md:rounded-lg flex items-center md:gap-3 shadow-inner">
+                 <span className="hidden md:block text-[9px] md:text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Balance</span>
+                 {/* Removed "Bal:" for mobile, only kept amount with text-sm for better visibility */}
+                 <span className="text-sm md:text-lg font-black text-[#10B981] md:text-[#F8FAFC]">৳{balance}</span>
               </div>
             )}
             <div className="relative">
               <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-1.5 md:p-2 text-[#94A3B8] hover:text-white transition-colors">
-                 <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                 {headerNotifs.length > 0 && <span className="absolute top-1 md:top-1.5 right-1 md:right-1.5 w-2 h-2 md:w-2.5 md:h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>}
+                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                 {headerNotifs.length > 0 && <span className="absolute top-1 right-1 md:top-1.5 md:right-1.5 w-2.5 h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>}
               </button>
               {isNotifOpen && (
-                <div className="absolute top-12 right-0 w-72 md:w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                <div className="absolute top-12 right-0 w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
                   <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center"><span className="text-white font-bold text-sm">Notifications</span><Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All</Link></div>
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
                     {headerNotifs.length > 0 ? ( headerNotifs.map((notif: any) => ( <Link href="/notifications" key={notif._id} onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors"><p className="text-xs text-[#E2E8F0] leading-relaxed"><span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>{notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}</span>{notif.title || notif.description}</p><span className="text-[9px] text-[#64748B] mt-1 block">{timeAgo(notif.createdAt)}</span></Link> )) ) : (<div className="p-4 text-center text-xs text-[#64748B]">No recent notifications</div>)}
@@ -355,9 +354,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
             <div className="relative">
-              <div onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className="w-8 h-8 md:w-10 md:h-10 rounded-full p-[2px] bg-gradient-to-tr from-[#00C6FF] to-[#3B82F6] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center"><div className="w-full h-full bg-[#1E293B] rounded-full flex items-center justify-center text-xs md:text-sm font-bold text-white tracking-wider">{userInitials}</div></div>
+              <div onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className="w-8 h-8 md:w-10 md:h-10 rounded-full p-[2px] bg-gradient-to-tr from-[#00C6FF] to-[#3B82F6] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center"><div className="w-full h-full bg-[#1E293B] rounded-full flex items-center justify-center text-sm font-bold text-white tracking-wider">{userInitials}</div></div>
               {isProfileMenuOpen && (
-                <div className="absolute top-12 right-0 w-64 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                <div className="absolute top-14 right-0 w-64 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
                   <div className="px-5 py-4 border-b border-[#334155]/50"><h4 className="text-white font-bold text-lg leading-tight truncate">{userName}</h4><p className={`text-[10px] font-bold tracking-widest uppercase mt-1 ${role === 'admin' ? 'text-[#F43F5E]' : role === 'agent' ? 'text-[#A855F7]' : 'text-[#94A3B8]'}`}>{userRoleText}</p></div>
                   <div className="border-t border-[#334155]/50"><button onClick={handleLogout} className="w-full flex items-center gap-3 px-5 py-4 text-sm font-bold text-red-400 hover:bg-red-500/10 transition-colors text-left">Logout</button></div>
                 </div>
