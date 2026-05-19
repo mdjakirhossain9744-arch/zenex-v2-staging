@@ -35,7 +35,6 @@ export default function GetNumber() {
     return storedUser ? JSON.parse(storedUser).email : "";
   };
 
-  // 💥 UPDATE: Load Saved Preferences (Range, National, No +) on Page Load 💥
   useEffect(() => {
     const savedRange = localStorage.getItem("zenex_saved_range");
     if (savedRange) setRangeInput(savedRange);
@@ -53,14 +52,12 @@ export default function GetNumber() {
     localStorage.setItem("zenex_saved_range", val); 
   };
 
-  // 💥 UPDATE: Save National Checkbox State 💥
   const toggleNational = () => {
     const newVal = !isNational;
     setIsNational(newVal);
     localStorage.setItem("zenex_saved_national", newVal.toString());
   };
 
-  // 💥 UPDATE: Save No (+) Checkbox State 💥
   const toggleRemovePlus = () => {
     const newVal = !removePlus;
     setRemovePlus(newVal);
@@ -104,7 +101,6 @@ export default function GetNumber() {
 
   const getDisplayTime = (item: any) => {
       if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
-      
       if (item.status === 'FAIL' || (item.status === 'WAIT' && (currentTime - item.createdAt) >= 20 * 60 * 1000)) {
           if (item.otp === "Timeout") return item.createdAt + (20 * 60 * 1000); 
           return item.updatedAt || item.createdAt;
@@ -174,6 +170,9 @@ export default function GetNumber() {
       
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
+           // 💥 UI GLITCH FIX: Prevent exact instant duplicate 💥
+           if (item.otp === otp) return item; 
+
            if (!isMulti && item.status === "WAIT") {
              setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
              return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
@@ -276,12 +275,27 @@ export default function GetNumber() {
       return item;
   }).filter((item) => {
     if (!isToday && item.status !== "DONE") return false;
-
     if (activeFilter === "ALL") return true;
     return item.status === activeFilter;
   });
 
-  const sortedFilteredNumbers = [...finalFilteredNumbers].sort((a, b) => b.createdAt - a.createdAt);
+  // 💥 THE ULTIMATE UI DUPLICATE BLOCKER 💥
+  const uniqueNumberOtps = new Set();
+  const deduplicatedNumbers = finalFilteredNumbers.filter((item) => {
+      if (item.status === 'DONE' && item.otp) {
+          const cleanOtp = String(item.otp).trim();
+          const codeKey = `${item.searchNumber}_${cleanOtp}`;
+          
+          if (uniqueNumberOtps.has(codeKey)) {
+              return false; // Skip drawing this on screen!
+          }
+          uniqueNumberOtps.add(codeKey);
+      }
+      return true;
+  });
+
+  // Now sort the clean, deduplicated list
+  const sortedFilteredNumbers = [...deduplicatedNumbers].sort((a, b) => b.createdAt - a.createdAt);
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   return (

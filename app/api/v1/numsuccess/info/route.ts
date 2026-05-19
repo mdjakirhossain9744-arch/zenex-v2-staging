@@ -5,32 +5,23 @@ import Order from "../../../../../models/Order";
 
 export const dynamic = "force-dynamic";
 
-// 💥 ANTI-SPAM (Rate Limit): ১ সেকেন্ডে ১ বারের বেশি হিট করতে পারবে না 💥
 const rateLimitMap = new Map<string, number>();
-
-// 💥 ANTI-CRASH (Micro-Cache): M-Net এর ডাটা ৩ সেকেন্ডের জন্য RAM-এ সেভ থাকবে 💥
 let globalMnetCache: any = null;
 let mnetLastFetchTime = 0;
-const MNET_CACHE_TTL = 3000; // 3 seconds
+const MNET_CACHE_TTL = 3000; 
 
 export async function GET(req: Request) {
   try {
     const apiKey = req.headers.get("mapikey");
-    
-    // ১. API Key Validation
     if (!apiKey || apiKey.trim().length < 10) {
       return NextResponse.json({ meta: { status: "error" }, message: "Missing or Invalid mapikey in headers" }, { status: 401 });
     }
     const cleanApiKey = apiKey.trim();
 
-    // ২. DDOS & SPAM PROTECTION
     const now = Date.now();
     const lastRequestTime = rateLimitMap.get(cleanApiKey);
     if (lastRequestTime && (now - lastRequestTime < 1000)) { 
-        return NextResponse.json(
-            { meta: { status: "error", code: 429 }, message: "Too Many Requests. Please wait 1 second between requests." }, 
-            { status: 429 }
-        );
+        return NextResponse.json({ meta: { status: "error", code: 429 }, message: "Too Many Requests. Please wait 1 second." }, { status: 429 });
     }
     rateLimitMap.set(cleanApiKey, now);
 
@@ -41,10 +32,9 @@ export async function GET(req: Request) {
 
     const REAL_API_KEY = "M_7VX25KAJI"; 
     
-    // 💥 ৩. M-NET FETCH WITH MICRO-CACHE & TIMEOUT (বটের জন্য OTP আনা) 💥
     if (!globalMnetCache || (now - mnetLastFetchTime > MNET_CACHE_TTL)) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // ৮ সেকেন্ডে হ্যাং প্রোটেকশন
+        const timeoutId = setTimeout(() => controller.abort(), 8000); 
 
         try {
             const response = await fetch(`https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${now}`, {
@@ -80,8 +70,7 @@ export async function GET(req: Request) {
       const liveOtps = Array.isArray(data.data.otps) ? data.data.otps : [];
       
       if (liveOtps.length > 0) {
-        // ৪. ইউজারের পেন্ডিং অর্ডারগুলো চেক করে M-Net এর ডাটার সাথে মেলানো
-        const pendingOrders = await Order.find({ userEmail: user.email, status: "WAIT" }).lean();
+        const pendingOrders = await Order.find({ userEmail: user.email, status: { $in: ["WAIT", "DONE"] } }).lean();
 
         for (const order of pendingOrders) {
           const cleanSearchNumber = String(order.searchNumber).replace(/\D/g, ""); 
@@ -93,10 +82,31 @@ export async function GET(req: Request) {
           });
 
           if (matchedOtpObj) {
-             const incomingMsg = (matchedOtpObj.otp || "").toLowerCase();
-             const isFreeService = incomingMsg.includes("whatsapp") || incomingMsg.includes("wa.me") || incomingMsg.includes("telegram") || incomingMsg.includes("t.me");
+             const incomingMsg = (matchedOtpObj.otp || "").trim();
+             
+             const currentMsg = order.fullMessage || "";
+             const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
+             const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg; // 💥 STRICT OTP EXTRACTION 💥
 
-             // 💥 ৫. STATIC RATE BUG FIX (টাকার হিসাব লক করা) 💥
+             const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
+             const existingCodes = currentMsgsArray.map((msg: string) => {
+                 const match = msg.match(/\b\d{4,8}\b/);
+                 return match ? match[0] : msg.trim();
+             });
+
+             if (existingCodes.includes(incomingCode)) {
+                 continue; 
+             }
+
+             let regexStr = "";
+             if (/^\d+$/.test(incomingCode)) {
+                  regexStr = `\\b${incomingCode}\\b`;
+             } else {
+                  regexStr = incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+             }
+
+             const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || incomingMsg.toLowerCase().includes("telegram") || incomingMsg.toLowerCase().includes("t.me");
+
              let currentOtpCost = 0;
              let currentOtpCommission = 0;
              let agentToUpdate = null;
@@ -116,14 +126,16 @@ export async function GET(req: Request) {
                 }
              }
 
-             // ডাটাবেস আপডেট এবং ১০ দিনের জন্য সেভ রাখা
              const updatedOrder = await Order.findOneAndUpdate(
-               { _id: order._id, status: "WAIT" },
+               { 
+                  _id: order._id, 
+                  fullMessage: { $not: new RegExp(regexStr) } 
+               },
                { 
                  $set: { 
                    status: "DONE", 
-                   otp: matchedOtpObj.otp, 
-                   fullMessage: matchedOtpObj.otp,
+                   otp: incomingCode, // 💥 BUG FIXED: Now saves only the clean code, not the full message
+                   fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
                    expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) 
                  },
                  $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
@@ -131,7 +143,6 @@ export async function GET(req: Request) {
                { new: true }
              );
 
-             // ইউজার ও এজেন্টের মেইন ব্যালেন্সে টাকা যোগ করা
              if (updatedOrder) {
                 if (currentOtpCost > 0) {
                   await User.updateOne({ _id: user._id }, { $inc: { balance: currentOtpCost } });
@@ -143,7 +154,6 @@ export async function GET(req: Request) {
           }
         }
 
-        // ৬. Data Privacy Logic: অন্য কারো ওটিপি যেন বটের কাছে না যায়
         const userRecentOrders = await Order.find({ 
           userEmail: user.email, 
           status: { $in: ["WAIT", "DONE"] } 
@@ -159,7 +169,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // ৭. সিকিউরড রেসপন্স বটের কাছে পাঠানো হলো
     const secureResponse = {
       meta: data?.meta || { status: "success", code: 200 },
       data: { otps: safeUserOtps }

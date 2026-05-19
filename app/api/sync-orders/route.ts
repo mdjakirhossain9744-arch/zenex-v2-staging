@@ -39,9 +39,23 @@ export async function POST(req: Request) {
 
       if (fetchDate === todayStr) {
           const statQuery = { userEmail: email, dateString: fetchDate };
+          
+          // 💥 BUG FIXED: এখন সে শুধু Row গুনবে না, মাল্টি-ওটিপিগুলো গুনে Success দেখাবে 💥
+          const doneOrders = await Order.find({ ...statQuery, status: "DONE" }).select("fullMessage").lean();
+          let actualOtpCount = 0;
+          doneOrders.forEach((o: any) => {
+               const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+               const uniqueCodes = new Set();
+               msgArray.forEach((msg: string) => {
+                    const match = msg.match(/\b\d{4,8}\b/);
+                    uniqueCodes.add(match ? match[0] : msg.trim());
+               });
+               actualOtpCount += uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+          });
+
           stats = {
               total: await Order.countDocuments(statQuery),
-              success: await Order.countDocuments({ ...statQuery, status: "DONE" }),
+              success: actualOtpCount, // 💥 এখন ৬ দেখাবে! 💥
               wait: await Order.countDocuments({ ...statQuery, status: "WAIT" }),
               fail: await Order.countDocuments({ ...statQuery, status: "FAIL" }),
           };
@@ -143,7 +157,7 @@ export async function POST(req: Request) {
         const currentMsg = freshOrder.fullMessage || "";
 
         const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
-        const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg;
+        const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg; // 💥 STRICT OTP REGEX FIX 💥
 
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
         const existingCodes = currentMsgsArray.map((msg: string) => {
@@ -200,7 +214,7 @@ export async function POST(req: Request) {
           { 
             $set: {
               fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
-              otp: orderData.otp || incomingCode,
+              otp: incomingCode, // 💥 STRICT OTP FIX: Saves the regex parsed code, not full message 💥
               status: "DONE",
               expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
             },
