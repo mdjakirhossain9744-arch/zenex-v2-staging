@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+// 💥 FIXED IMPORT PATHS (Added one more ../ because it's inside v1 folder) 💥
 import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
 import User from "../../../../models/User";
@@ -29,7 +30,7 @@ const extractServiceName = (msg: string) => {
     return "Other";
 };
 
-// 💥 STRICT RAM CACHING: 60 Seconds TTL (Server Protection) 💥
+// 💥 STRICT RAM CACHING: 60 Seconds TTL 💥
 let cachedActiveData: any = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 60 * 1000; 
@@ -48,7 +49,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: false, message: "Unauthorized API Key" }, { status: 401 });
     }
 
-    // Return from RAM Cache instantly (Blocks DDoS/Spam)
+    // Return from RAM Cache instantly
     if (cachedActiveData && (Date.now() - lastFetchTime < CACHE_DURATION)) {
         return NextResponse.json({
             success: true, cached: true, message: "Live ranges fetched", data: cachedActiveData
@@ -71,7 +72,6 @@ export async function GET(req: Request) {
         let num = o.searchNumber || o.number || "";
         num = String(num).replace("+", "");
         
-        // Only provide first 6 digits + XXX (Full secure)
         if (num.length >= 6) {
             const rangeStr = num.substring(0, 6) + "XXX"; 
             
@@ -102,6 +102,7 @@ export async function GET(req: Request) {
     });
 
   } catch (error) {
+    console.error("Active Ranges API Error:", error);
     return NextResponse.json({ success: false, message: "Server Error" }, { status: 500 });
   }
 }
