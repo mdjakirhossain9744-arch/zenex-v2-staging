@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-// 💥 FIXED IMPORT PATHS (Added one more ../ because it's inside v1 folder) 💥
 import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
 import User from "../../../../models/User";
 
 export const dynamic = "force-dynamic";
 
-// 💥 DYNAMIC SERVICE EXTRACTOR 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
@@ -30,7 +28,7 @@ const extractServiceName = (msg: string) => {
     return "Other";
 };
 
-// 💥 STRICT RAM CACHING: 60 Seconds TTL 💥
+// 💥 RAM CACHING: 60 Seconds TTL 💥
 let cachedActiveData: any = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 60 * 1000; 
@@ -42,11 +40,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: "Missing mapikey header" }, { status: 401 });
     }
 
-    await connectToDatabase();
-    
-    const validUser = await User.findOne({ secretKey: mapikey }).select("_id").lean();
-    if (!validUser && mapikey !== "M_7VX25KAJI") { 
-        return NextResponse.json({ success: false, message: "Unauthorized API Key" }, { status: 401 });
+    // 💥 BYPASS FOR ADMIN/MASTER KEY 💥
+    if (mapikey === "M_7VX25KAJI") {
+        // Admin Bypass
+    } else {
+        await connectToDatabase();
+        // 💥 SMART DB CHECK: Checks all possible field names for the API Key 💥
+        const validUser = await User.findOne({ 
+            $or: [
+                { secretKey: mapikey },
+                { apiKey: mapikey },
+                { apikey: mapikey },
+                { api_key: mapikey },
+                { mapikey: mapikey }
+            ]
+        }).select("_id").lean();
+
+        if (!validUser) { 
+            return NextResponse.json({ success: false, message: "Unauthorized API Key" }, { status: 401 });
+        }
     }
 
     // Return from RAM Cache instantly
@@ -55,6 +67,8 @@ export async function GET(req: Request) {
             success: true, cached: true, message: "Live ranges fetched", data: cachedActiveData
         });
     }
+
+    await connectToDatabase();
 
     // Fetch Last 1 Hour Logs
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
