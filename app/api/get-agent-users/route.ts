@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
     const skip = (page - 1) * limit;
     const filteredTotal = await User.countDocuments(query); // পেজিনেশনের জন্য ফিল্টার করা ডাটা
     
+    // 💥 NEWEST FIRST LOGIC (ALREADY PERFECT) 💥
     const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
