@@ -53,7 +53,17 @@ export default function ManagerUsersDirectoryPage() {
     })
       .then(res => res.json())
       .then(data => {
-        if (data?.users && Array.isArray(data.users)) setMyUsers(data.users);
+        if (data?.users && Array.isArray(data.users)) {
+          // 💥 NEWEST FIRST SORT LOGIC ADDED HERE (কোডের আর কোথাও হাত দেওয়া হয়নি) 💥
+          const sortedUsers = [...data.users].sort((a, b) => {
+            const valA = a.createdAt ? new Date(a.createdAt).getTime() : (a._id ? a._id.toString() : "");
+            const valB = b.createdAt ? new Date(b.createdAt).getTime() : (b._id ? b._id.toString() : "");
+            if (valA > valB) return -1;
+            if (valA < valB) return 1;
+            return 0;
+          });
+          setMyUsers(sortedUsers);
+        }
         if (data?.pagination) {
           setTotalPages(data.pagination.totalPages);
           setTotalUsersCount(data.pagination.total);
