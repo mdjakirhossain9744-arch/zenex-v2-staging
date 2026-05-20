@@ -100,9 +100,14 @@ export default function Console() {
     return null;
   };
 
+  // 💥 ADVANCED MASKING FIX (হাইড করার শক্তিশালী লজিক) 💥
   const maskFullMessage = (message: string) => {
     if (!message) return "";
-    return message.replace(/\b\d{4,8}\b/g, (match) => "*".repeat(match.length));
+    
+    // এই লজিকটি (123456), (360 748), (123-456), এবং (G-123456) সব ধরনের কোড ধরবে
+    const otpRegex = /(\b\d{4,8}\b)|(\b\d{3}[\s-]\d{3,4}\b)|(G-\d{6,8})/gi;
+    
+    return message.replace(otpRegex, (match) => "*".repeat(match.length));
   };
 
   // 💥 FIXED: 12-Hour format with AM/PM strictly for BD Time 💥
