@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       userId, newPassword, newPin, newRate, newStatus, newRole, 
       customMail, contactLink, maxLimit, isApiActive,
       newAgentEmail, // For moving a normal user to a new agent
-      handoverToEmail // 💥 For transferring agent ownership to a normal user
+      handoverToEmail // For transferring agent ownership to a normal user
     } = body;
 
     const targetUser = await User.findById(userId);
@@ -169,8 +169,29 @@ export async function POST(req: NextRequest) {
       updateData.isApiActive = isApiActive;
     }
 
+    // 💥 THE NEW SECURE DUPLICATE LOCK FOR CUSTOM AGENT MAIL 💥
     if (isTargetAgent && newRole !== "user") {
-      if (customMail !== undefined) updateData.customAgentMail = customMail;
+      
+      if (customMail !== undefined) {
+        const trimmedMail = customMail.trim();
+        
+        if (trimmedMail !== "") {
+          // Check if this mail exists in the DB but doesn't belong to the current user being updated
+          const isMailTaken = await User.findOne({ 
+             customAgentMail: trimmedMail, 
+             _id: { $ne: targetUser._id } 
+          });
+
+          if (isMailTaken) {
+            return NextResponse.json({ 
+               message: "🔴 ERROR: This Custom Agent Mail is already in use by another Agent!" 
+            }, { status: 400 });
+          }
+        }
+        
+        updateData.customAgentMail = trimmedMail;
+      }
+      
       if (contactLink !== undefined) updateData.telegramLink = contactLink;
       if (maxLimit !== undefined && realRequesterRole === "admin") {
          updateData.agentMaxUsers = parseInt(maxLimit); 
