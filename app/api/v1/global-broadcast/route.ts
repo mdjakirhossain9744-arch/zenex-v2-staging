@@ -7,9 +7,35 @@ import Order from "../../../../models/Order";
 export const dynamic = "force-dynamic";
 
 // 💥 RAM CACHING & DUPLICATE PREVENTION 💥
-// আপনার টেলিগ্রাম গ্রুপে যেন একই OTP দুইবার না যায়, তার জন্য RAM-এ ID সেভ রাখা হবে
 const broadcastedIds = new Set();
 let lastCleanup = Date.now();
+
+// 💥 SMART SERVICE EXTRACTOR (ঠিক ওয়েবসাইটের কনসোলের মতো কাজ করবে) 💥
+const extractServiceName = (msg: string, existingService: string) => {
+    // ডাটাবেসে যদি সঠিক নাম থাকে, সেটাই ব্যবহার করবে
+    if (existingService && existingService.toLowerCase() !== 'other' && existingService.toLowerCase() !== 'unknown' && existingService.trim() !== '') {
+        return existingService;
+    }
+    
+    // ডাটাবেসে না থাকলে SMS-এর টেক্সট পড়ে নাম বের করবে
+    if (!msg) return "Other";
+    const lowerMsg = msg.toLowerCase();
+    
+    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
+    if (lowerMsg.includes('telegram') || lowerMsg.includes(' tg ')) return 'Telegram';
+    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
+    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
+    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
+    if (lowerMsg.includes('tiktok') || lowerMsg.includes(' tt ')) return 'TikTok';
+    if (lowerMsg.includes('apple') || lowerMsg.includes(' ap ')) return 'Apple';
+    if (lowerMsg.includes('paypal')) return 'PayPal';
+    if (lowerMsg.includes('amazon')) return 'Amazon';
+    if (lowerMsg.includes('1xbet')) return '1xBet';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    
+    return "Other";
+};
 
 export async function GET(req: Request) {
   try {
@@ -24,7 +50,6 @@ export async function GET(req: Request) {
     await connectToDatabase();
 
     // 💥 ZERO DB LOAD: Fetch only last 2 minutes of Success Orders 💥
-    // এতে ডাটাবেসের উপর 0% চাপ পড়বে। 
     const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentOrders = await Order.find({
         status: { $in: ["DONE", "Success", "SUCCESS"] },
@@ -36,30 +61,31 @@ export async function GET(req: Request) {
     recentOrders.forEach((order: any) => {
         const orderId = order._id.toString();
 
-        // ১. ডুপ্লিকেট চেকিং: যদি এই OTP আগে পাঠানো না হয়ে থাকে
+        // ডুপ্লিকেট চেকিং
         if (!broadcastedIds.has(orderId)) {
-            broadcastedIds.add(orderId); // মার্ক করা হলো যে এটা পাঠানো হচ্ছে
+            broadcastedIds.add(orderId);
 
             // 💥 THE 50% MAGIC RULE 💥
-            // Math.random() 0.0 থেকে 1.0 এর মধ্যে নাম্বার দেয়। > 0.5 মানে ঠিক ~50% চান্স!
             if (Math.random() > 0.5) {
                 
-                // নাম্বার মাস্কিং (ঐচ্ছিক): চাইলে নাম্বারের শেষের ২-৩ টা ডিজিট X করে দিতে পারেন
-                // যাতে পাবলিক ইউজাররা প্রাইভেসি নিয়ে কমপ্লেইন না করে।
                 let safeNumber = String(order.searchNumber || order.number || "").replace("+", "");
+                
+                // 💥 প্ল্যাটফর্মের আসল নাম বের করার লজিক 💥
+                const rawMsg = order.fullMessage || order.otp || "";
+                const finalServiceName = extractServiceName(rawMsg, order.service);
                 
                 selectedOtps.push({
                     id: orderId,
                     number: safeNumber,
                     otp: order.otp || order.fullMessage,
-                    service: order.service || "Global Service",
+                    service: finalServiceName, // এখন আসল নাম যাবে
                     time: order.updatedAt
                 });
             }
         }
     });
 
-    // 💥 Memory Leak Prevention: প্রতি ১০ মিনিট পর পর RAM Clean হবে 💥
+    // Memory Leak Prevention
     if (Date.now() - lastCleanup > 10 * 60 * 1000) {
         broadcastedIds.clear();
         lastCleanup = Date.now();
