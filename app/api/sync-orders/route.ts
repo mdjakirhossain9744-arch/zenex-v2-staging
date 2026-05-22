@@ -21,7 +21,9 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
-    const { action, email, orderData, page = 1, limit = 20, targetDate } = body; 
+    
+    // 💥 filterStatus রিসিভ করা হলো এবং limit ডিফল্ট 30 করা হলো 💥
+    const { action, email, orderData, page = 1, limit = 30, targetDate, filterStatus } = body; 
 
     if (!email) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
@@ -31,35 +33,45 @@ export async function POST(req: Request) {
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
 
+      // Timeout Logic
       const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
       await Order.updateMany(
         { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
         { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } }
       );
 
-      const skip = (page - 1) * limit;
-      const totalItems = await Order.countDocuments({ userEmail: email, dateString: fetchDate });
+      // 💥 ENTERPRISE SERVER-SIDE FILTERING QUERY 💥
+      const query: any = { userEmail: email, dateString: fetchDate };
       
-      // 💥 FIXED INFINITE SCROLL MATH BUG 💥
-      let rawOrders = await Order.find({ userEmail: email, dateString: fetchDate })
-        .sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      // ফ্রন্টএন্ড থেকে যদি নির্দিষ্ট ট্যাবে (DONE, WAIT, FAIL) ক্লিক করে, তাহলে কুয়েরিতে সেটা অ্যাড হবে
+      if (filterStatus && filterStatus !== "ALL") {
+          query.status = filterStatus;
+      }
+
+      const skip = (page - 1) * limit;
+      
+      // 💥 শুধুমাত্র ফিল্টার করা ডাটার পরিমাণ কাউন্ট করবে 💥
+      const totalItems = await Order.countDocuments(query);
+      
+      // 💥 গুনে গুনে ঠিক 30 টি ডাটা আনবে 💥
+      let rawOrders = await Order.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
       
       let orders = [...rawOrders];
 
-      // পেজ ১-এ আমরা সব DONE ডেটা টেনে আনবো, যেন কোনোটা মিস না হয়।
-      if (page === 1) {
-          const allDoneOrders = await Order.find({ userEmail: email, dateString: fetchDate, status: "DONE" }).lean();
-          const existingIds = new Set(orders.map((o: any) => o._id.toString()));
-          const extraDones = allDoneOrders.filter((o: any) => !existingIds.has(o._id.toString()));
-          orders = [...orders, ...extraDones]; 
-      }
-      
+      // 🛑 MAJOR FIX: Page 1 এ "সব DONE ডাটা একসাথে" আনার ভয়ংকর লজিকটি রিমুভ করা হয়েছে। 
+      // এখন সার্ভার সাইড পেজিনেশন থাকায় কোনো প্যানেল হ্যাং বা ক্র্যাশ হবে না! 🛑
+
       const finalOrders: any[] = [];
       let stats = { total: 0, success: 0, wait: 0, fail: 0 };
 
+      // 💥 STATS QUERY: স্ট্যাটাস সবসময় ALL ডাটার উপর ভিত্তি করে হিসাব হবে, যাতে টপ বারের সংখ্যা ঠিক থাকে 💥
+      const statQuery = { userEmail: email, dateString: fetchDate };
+
       if (fetchDate === todayStr) {
-          const statQuery = { userEmail: email, dateString: fetchDate };
-          
           const doneOrders = await Order.find({ ...statQuery, status: "DONE" }).select("fullMessage").lean();
           let actualOtpCount = 0;
           doneOrders.forEach((o: any) => {
@@ -88,7 +100,6 @@ export async function POST(req: Request) {
                   fail: dailyStat.failedNumbers || dailyStat.failed || 0,
               };
           } else {
-              const statQuery = { userEmail: email, dateString: fetchDate };
               stats = {
                   total: await Order.countDocuments(statQuery),
                   success: await Order.countDocuments({ ...statQuery, status: "DONE" }),
@@ -124,7 +135,7 @@ export async function POST(req: Request) {
 
       finalOrders.sort((a, b) => b.createdAt - a.createdAt);
 
-      // 💥 FIXED PAGINATION LOGIC: based on rawOrders.length 💥
+      // 💥 FIXED PAGINATION LOGIC 💥
       const hasMoreData = rawOrders.length === limit;
 
       return NextResponse.json({ 

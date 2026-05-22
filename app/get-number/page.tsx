@@ -7,8 +7,6 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
 
-// 💥 SMART OTP EXTRACTOR (Frontend Fallback) 💥
-// ডাটাবেস থেকে ভুল করে পুরো মেসেজ আসলেও এটি শুধু কোডটুকু কেটে বক্সে দেখাবে
 const cleanOTPDisplay = (rawOtp: string) => {
   if (!rawOtp || rawOtp === "Waiting..." || rawOtp === "Timeout") return rawOtp;
   const strOtp = String(rawOtp).trim();
@@ -79,7 +77,11 @@ export default function GetNumber() {
     const newDateStr = current.toISOString().split('T')[0];
     if (newDateStr <= getUTCDateString()) {
        setSelectedDate(newDateStr);
+       // 💥 Date চেঞ্জ করলে লিস্ট ক্লিয়ার করে পেজ ১ থেকে কল হবে 💥
+       setNumbersList([]);
+       setIsInitialLoad(true);
        setPage(1); 
+       setHasMore(true);
     }
   };
 
@@ -117,14 +119,21 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
+  // 💥 SERVER-SIDE FILTERING LOGIC ADDED HERE 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
     try {
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        // 💥 limit 20 থেকে 30 করা হয়েছে যাতে বক্সে সুন্দর করে ফিট হয় 💥
-        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 30, targetDate: selectedDate })
+        body: JSON.stringify({ 
+            action: "FETCH", 
+            email, 
+            page: pageNum, 
+            limit: 30, 
+            targetDate: selectedDate,
+            filterStatus: activeFilter !== "ALL" ? activeFilter : undefined // 💥 Server কে বলা হচ্ছে কোন ফিল্টারের ডাটা লাগবে 💥
+        })
       });
       const data = await res.json();
       
@@ -160,7 +169,17 @@ export default function GetNumber() {
     finally {
       setIsInitialLoad(false); 
     }
-  }, [selectedDate]);
+  }, [selectedDate, activeFilter]); // 💥 activeFilter added to dependency 💥
+
+  // 💥 TAB CLICK CORRECTION (Clears Old Data & Starts Fresh) 💥
+  const handleFilterClick = (filterName: string) => {
+    if (activeFilter === filterName) return;
+    setActiveFilter(filterName);
+    setNumbersList([]);     // Clear array
+    setIsInitialLoad(true); // Show skeleton loader
+    setPage(1);             // Reset Page
+    setHasMore(true);       // Reset Observer
+  };
 
   const checkOtps = async () => {
     setIsRefreshing(true);
@@ -255,7 +274,11 @@ export default function GetNumber() {
           createdAt: Date.now(), receivedAt: null 
         };
         
-        setNumbersList((prev) => [newEntry, ...prev]);
+        // 💥 ALL বা WAIT ট্যাবে থাকলে বক্সে দেখাবে, DONE এ থাকলে হাইড থাকবে 💥
+        if (activeFilter === "ALL" || activeFilter === "WAIT") {
+           setNumbersList((prev) => [newEntry, ...prev]);
+        }
+        
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
 
@@ -277,6 +300,7 @@ export default function GetNumber() {
   const isToday = selectedDate === getUTCDateString();
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
+  // 💥 Local filter is now just a safety net, real filtering happens in backend 💥
   const finalFilteredNumbers = dateFilteredNumbers.map((item) => {
       if (item.status === "WAIT" && (currentTime - item.createdAt) >= 20 * 60 * 1000) {
           return { ...item, status: "FAIL", otp: "Timeout" };
@@ -312,7 +336,6 @@ export default function GetNumber() {
           </div>
         )}
 
-        {/* STATS GRID */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
            <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">
               <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Total</span>
@@ -332,7 +355,6 @@ export default function GetNumber() {
            </div>
         </div>
 
-        {/* SUCCESS RATE BAR */}
         <div className="mb-4 md:mb-6 bg-[#1E293B]/50 border border-[#334155] rounded-xl p-4 flex flex-col gap-2 shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-center relative z-10">
             <span className="text-[10px] md:text-xs font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
@@ -350,7 +372,6 @@ export default function GetNumber() {
           </div>
         </div>
 
-        {/* GET NUMBER CARD */}
         <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
            {!isToday && (
              <div className="absolute inset-0 bg-[#0F172A]/50 z-20 flex items-center justify-center">
@@ -389,7 +410,6 @@ export default function GetNumber() {
            </div>
         </div>
 
-        {/* FEED CARD WITH FIXED HEIGHT */}
         <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 flex flex-col h-[75vh] md:h-[900px] min-h-[500px]">
            <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155] flex-shrink-0">
              <div className="flex items-center gap-2">
@@ -404,8 +424,9 @@ export default function GetNumber() {
                )}
              </div>
              <div className="flex gap-1 bg-[#0B0F19] p-0.5 rounded border border-[#334155]">
+               {/* 💥 NEW handleFilterClick Function Added Here 💥 */}
                {["ALL", "DONE", "WAIT", "FAIL"].map((filterName) => (
-                 <button key={filterName} onClick={() => setActiveFilter(filterName)}
+                 <button key={filterName} onClick={() => handleFilterClick(filterName)}
                    className={`px-2 py-1 text-[9px] font-black rounded uppercase transition-colors ${activeFilter === filterName ? "bg-[#3B82F6] text-white" : "text-[#64748B] hover:text-[#E2E8F0]"}`}>
                    {filterName}
                  </button>
@@ -413,7 +434,6 @@ export default function GetNumber() {
              </div>
            </div>
 
-           {/* INTERNAL SCROLL CONTAINER */}
            <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar w-full">
               {isInitialLoad ? (
                  Array(5).fill(0).map((_, i) => (
@@ -467,13 +487,11 @@ export default function GetNumber() {
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
                                    
-                                   {/* 💥 SLIM AND MINIMAL PREMIUM OTP BOX 💥 */}
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp)); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-2 py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
                                    >
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                                      {/* 💥 cleanOTPDisplay ফাংশনের ব্যবহার 💥 */}
                                       <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
                                       <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
                                          <svg className="w-3 h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
@@ -501,14 +519,12 @@ export default function GetNumber() {
                         <svg className="w-5 h-5 animate-spin text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                      </div>
                    )}
-                   {/* THE TRIGGER FOR INFINITE SCROLL */}
                    <div ref={observerRef} className="h-4 w-full bg-transparent flex-shrink-0"></div>
                  </>
               )}
            </div>
         </div>
 
-        {/* DATE NAVIGATOR RESTORED TO BOTTOM */}
         <div className="flex flex-col items-center justify-center pb-2 flex-shrink-0">
            <div className="flex items-center gap-3 bg-[#1E293B]/80 border border-[#334155] rounded-full px-4 py-1.5 shadow-md">
              <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full transition-colors"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
