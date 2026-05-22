@@ -10,6 +10,13 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
 
+// 💥 THE ULTIMATE SMART OTP EXTRACTOR (Solves Instagram/WhatsApp Space Bugs) 💥
+const extractStrictOTP = (msg: string) => {
+    if (!msg) return "";
+    const match = msg.match(/(?:\b\d{4,8}\b)|(?:\b\d{3}[\s-]\d{3,4}\b)|(?:G-\d{6,8})/i);
+    return match ? match[0] : msg.trim();
+};
+
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
@@ -40,22 +47,21 @@ export async function POST(req: Request) {
       if (fetchDate === todayStr) {
           const statQuery = { userEmail: email, dateString: fetchDate };
           
-          // 💥 BUG FIXED: এখন সে শুধু Row গুনবে না, মাল্টি-ওটিপিগুলো গুনে Success দেখাবে 💥
           const doneOrders = await Order.find({ ...statQuery, status: "DONE" }).select("fullMessage").lean();
           let actualOtpCount = 0;
           doneOrders.forEach((o: any) => {
                const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
                const uniqueCodes = new Set();
                msgArray.forEach((msg: string) => {
-                    const match = msg.match(/\b\d{4,8}\b/);
-                    uniqueCodes.add(match ? match[0] : msg.trim());
+                    const matchOTP = extractStrictOTP(msg); // 💥 BUG FIXED HERE 💥
+                    uniqueCodes.add(matchOTP);
                });
                actualOtpCount += uniqueCodes.size > 0 ? uniqueCodes.size : 1;
           });
 
           stats = {
               total: await Order.countDocuments(statQuery),
-              success: actualOtpCount, // 💥 এখন ৬ দেখাবে! 💥
+              success: actualOtpCount, 
               wait: await Order.countDocuments({ ...statQuery, status: "WAIT" }),
               fail: await Order.countDocuments({ ...statQuery, status: "FAIL" }),
           };
@@ -83,8 +89,7 @@ export async function POST(req: Request) {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         if (o.status === "DONE" && msgArray.length > 1) {
           msgArray.forEach((msg: string, index: number) => {
-            const codeMatch = msg.match(/\b\d{4,8}\b/);
-            const extractedOtp = codeMatch ? codeMatch[0] : msg;
+            const extractedOtp = extractStrictOTP(msg); // 💥 BUG FIXED HERE 💥
             
             finalOrders.push({
               id: `${o._id.toString()}_${index}`,
@@ -156,14 +161,10 @@ export async function POST(req: Request) {
 
         const currentMsg = freshOrder.fullMessage || "";
 
-        const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
-        const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg; // 💥 STRICT OTP REGEX FIX 💥
+        const incomingCode = extractStrictOTP(incomingMsg); // 💥 REGEX FIX 💥
 
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
-        const existingCodes = currentMsgsArray.map((msg: string) => {
-            const match = msg.match(/\b\d{4,8}\b/);
-            return match ? match[0] : msg.trim();
-        });
+        const existingCodes = currentMsgsArray.map((msg: string) => extractStrictOTP(msg));
 
         if (existingCodes.includes(incomingCode)) {
           return NextResponse.json({ success: true, message: "Duplicate Exact OTP code detected. Ignored." });
@@ -214,7 +215,7 @@ export async function POST(req: Request) {
           { 
             $set: {
               fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
-              otp: incomingCode, // 💥 STRICT OTP FIX: Saves the regex parsed code, not full message 💥
+              otp: incomingCode, 
               status: "DONE",
               expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
             },

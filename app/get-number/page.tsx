@@ -112,7 +112,8 @@ export default function GetNumber() {
     const email = getUserEmail();
     if(!email) return;
     try {
-      const res = await fetch("/api/sync-orders", {
+      // 💥 BUG FIXED: Added Cache-Busting (?t=Date.now()) for Mobile Browsers 💥
+      const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 50, targetDate: selectedDate })
       });
@@ -170,7 +171,6 @@ export default function GetNumber() {
       
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
-           // 💥 UI GLITCH FIX: Prevent exact instant duplicate 💥
            if (item.otp === otp) return item; 
 
            if (!isMulti && item.status === "WAIT") {
@@ -250,7 +250,7 @@ export default function GetNumber() {
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
 
-        fetch("/api/sync-orders", {
+        fetch(`/api/sync-orders?t=${Date.now()}`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "CREATE", email: getUserEmail(), orderData: newEntry })
         });
@@ -279,22 +279,17 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
-  // 💥 THE ULTIMATE UI DUPLICATE BLOCKER 💥
   const uniqueNumberOtps = new Set();
   const deduplicatedNumbers = finalFilteredNumbers.filter((item) => {
       if (item.status === 'DONE' && item.otp) {
           const cleanOtp = String(item.otp).trim();
           const codeKey = `${item.searchNumber}_${cleanOtp}`;
-          
-          if (uniqueNumberOtps.has(codeKey)) {
-              return false; // Skip drawing this on screen!
-          }
+          if (uniqueNumberOtps.has(codeKey)) return false;
           uniqueNumberOtps.add(codeKey);
       }
       return true;
   });
 
-  // Now sort the clean, deduplicated list
   const sortedFilteredNumbers = [...deduplicatedNumbers].sort((a, b) => b.createdAt - a.createdAt);
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
@@ -456,10 +451,20 @@ export default function GetNumber() {
                                ) : item.status === "FAIL" ? (
                                  <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
-                                 <div className="flex flex-col">
-                                   <div onClick={() => { navigator.clipboard.writeText(item.otp); showToast("OTP Copied!"); }} className="inline-flex items-center bg-[#0F172A] border border-[#10B981]/30 px-2 py-0.5 rounded cursor-pointer hover:border-[#10B981] w-max">
-                                     <span className="text-sm font-mono font-black text-[#10B981] tracking-widest">{item.otp}</span>
-                                   </div>
+                                 <div className="flex flex-col items-start gap-1">
+                                   
+                                   {/* 💥 PREMIUM COPY BUTTON UI ADDED HERE 💥 */}
+                                   <button 
+                                      onClick={() => { navigator.clipboard.writeText(item.otp); showToast("OTP Copied!"); }} 
+                                      className="group relative inline-flex items-center gap-2 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
+                                   >
+                                      <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                                      <span className="text-sm md:text-base font-mono font-black text-[#10B981] tracking-widest relative z-10">{item.otp}</span>
+                                      <div className="bg-[#10B981]/10 p-1 rounded-md group-hover:bg-[#10B981] transition-colors relative z-10">
+                                         <svg className="w-3.5 h-3.5 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                      </div>
+                                   </button>
+                                   
                                    {item.fullMessage && <span className="text-[9px] text-[#64748B] mt-0.5 line-clamp-1">{item.fullMessage}</span>}
                                  </div>
                                )}
