@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
-    const { action, email, orderData, page = 1, limit = 20, targetDate } = body; // 💥 DEFAULT LIMIT 20 💥
+    const { action, email, orderData, page = 1, limit = 20, targetDate } = body; 
 
     if (!email) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
@@ -40,10 +40,13 @@ export async function POST(req: Request) {
       const skip = (page - 1) * limit;
       const totalItems = await Order.countDocuments({ userEmail: email, dateString: fetchDate });
       
-      let orders = await Order.find({ userEmail: email, dateString: fetchDate })
+      // 💥 FIXED INFINITE SCROLL MATH BUG 💥
+      let rawOrders = await Order.find({ userEmail: email, dateString: fetchDate })
         .sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
       
-      // 💥 FETCH ALL "DONE" ON PAGE 1 SO NO SUCCESS IS MISSED 💥
+      let orders = [...rawOrders];
+
+      // পেজ ১-এ আমরা সব DONE ডেটা টেনে আনবো, যেন কোনোটা মিস না হয়।
       if (page === 1) {
           const allDoneOrders = await Order.find({ userEmail: email, dateString: fetchDate, status: "DONE" }).lean();
           const existingIds = new Set(orders.map((o: any) => o._id.toString()));
@@ -121,10 +124,13 @@ export async function POST(req: Request) {
 
       finalOrders.sort((a, b) => b.createdAt - a.createdAt);
 
+      // 💥 FIXED PAGINATION LOGIC: based on rawOrders.length 💥
+      const hasMoreData = rawOrders.length === limit;
+
       return NextResponse.json({ 
         success: true, 
         orders: finalOrders,
-        pagination: { total: totalItems, page, limit, hasMore: (skip + orders.length) < totalItems },
+        pagination: { total: totalItems, page, limit, hasMore: hasMoreData },
         stats 
       });
     }
