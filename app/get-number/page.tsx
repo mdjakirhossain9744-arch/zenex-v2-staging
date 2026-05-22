@@ -293,7 +293,7 @@ export default function GetNumber() {
 
   return (
     <DashboardLayout>
-      <div className="p-3 md:p-10 w-full relative z-10 font-sans flex flex-col h-[100vh] overflow-hidden">
+      <div className="p-3 md:p-10 w-full relative z-10 font-sans">
         {toastMessage && (
           <div className="fixed top-24 right-5 md:right-10 z-[100] bg-[#10B981] text-white px-4 py-2 rounded-lg shadow-lg font-bold text-sm flex items-center gap-2 animate-bounce-in">
              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -301,84 +301,85 @@ export default function GetNumber() {
           </div>
         )}
 
-        <div className="flex-shrink-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
-               <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">
-                  <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Total</span>
-                  <span className="text-lg font-black text-white">{stats.total}</span>
-               </div>
-               <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#10B981]/10 border border-[#10B981]/30 p-3 flex justify-between items-center transition-all hover:border-[#10B981]">
-                  <span className="text-[10px] font-black text-[#10B981] uppercase tracking-widest">Success</span>
-                  <span className="text-lg font-black text-[#10B981]">{stats.success}</span>
-               </div>
-               <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#EAB308]/10 border border-[#EAB308]/30 p-3 flex justify-between items-center transition-all hover:border-[#EAB308]">
-                  <span className="text-[10px] font-black text-[#EAB308] uppercase tracking-widest">Wait</span>
-                  <span className="text-lg font-black text-[#EAB308]">{stats.wait}</span>
-               </div>
-               <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#F43F5E]/10 border border-[#F43F5E]/30 p-3 flex justify-between items-center transition-all hover:border-[#F43F5E]">
-                  <span className="text-[10px] font-black text-[#F43F5E] uppercase tracking-widest">Failed</span>
-                  <span className="text-lg font-black text-[#F43F5E]">{stats.fail}</span>
-               </div>
-            </div>
-
-            <div className="mb-4 md:mb-6 bg-[#1E293B]/50 border border-[#334155] rounded-xl p-4 flex flex-col gap-2 shadow-sm relative overflow-hidden">
-              <div className="flex justify-between items-center relative z-10">
-                <span className="text-[10px] md:text-xs font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                  Success Rate
-                </span>
-                <span className="text-sm md:text-base font-black text-[#10B981]">{successRate}%</span>
-              </div>
-              <div className="w-full bg-[#0F172A] rounded-full h-2 md:h-2.5 border border-[#334155] overflow-hidden relative z-10 shadow-inner">
-                <div 
-                  className="bg-gradient-to-r from-[#3B82F6] via-[#10B981] to-[#34D399] h-full rounded-full transition-all duration-1000 ease-out relative" 
-                  style={{ width: `${successRate}%` }}>
-                    <div className="absolute top-0 right-0 bottom-0 left-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-20"></div>
-                </div>
-              </div>
-            </div>
-
-            <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
-               {!isToday && (
-                 <div className="absolute inset-0 bg-[#0F172A]/50 z-20 flex items-center justify-center">
-                   <span className="bg-[#EAB308] text-black font-black px-4 py-1.5 rounded-lg text-xs uppercase tracking-widest shadow-md">History Mode Locked (Only Success)</span>
-                 </div>
-               )}
-               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF]"></div>
-               <div className="flex flex-col md:flex-row gap-3 md:items-end">
-                  <div className="flex-1 w-full">
-                     <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Target Range / Code</label>
-                     <input 
-                        type="text" value={rangeInput} onChange={handleRangeChange} placeholder="e.g. 23276345XXX" 
-                        className="w-full bg-[#0F172A] border border-[#334155] rounded-lg px-4 py-2.5 text-white font-mono text-base focus:outline-none focus:border-[#3B82F6] transition-all" 
-                     />
-                  </div>
-                  <div className="flex gap-4 pb-2 md:pb-0">
-                     <label className="flex items-center gap-2 cursor-pointer group" onClick={toggleNational}>
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isNational ? "bg-[#3B82F6] border-[#3B82F6]" : "bg-[#0F172A] border-[#334155]"}`}>
-                           {isNational && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                        </div>
-                        <span className="text-xs font-bold text-[#94A3B8] group-hover:text-white transition-colors">National</span>
-                     </label>
-                     <label className="flex items-center gap-2 cursor-pointer group" onClick={toggleRemovePlus}>
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${removePlus ? "bg-[#3B82F6] border-[#3B82F6]" : "bg-[#0F172A] border-[#334155]"}`}>
-                           {removePlus && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                        </div>
-                        <span className="text-xs font-bold text-[#94A3B8] group-hover:text-white transition-colors">No (+)</span>
-                     </label>
-                  </div>
-                  <button 
-                     onClick={fetchNewNumber} disabled={isLoading || !isToday}
-                     className={`bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] hover:from-[#2563EB] hover:to-[#00B4E6] text-white font-black text-sm px-6 py-2.5 rounded-lg transition-all flex items-center gap-2 w-full md:w-auto justify-center tracking-wider ${isLoading || !isToday ? "opacity-50 cursor-not-allowed" : "shadow-md hover:shadow-lg hover:-translate-y-0.5"}`}>
-                     {isLoading ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>}
-                     {isLoading ? "FETCHING..." : "GET NUMBER"}
-                  </button>
-               </div>
-            </div>
+        {/* 💥 STATS GRID 💥 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
+           <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">
+              <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Total</span>
+              <span className="text-lg font-black text-white">{stats.total}</span>
+           </div>
+           <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#10B981]/10 border border-[#10B981]/30 p-3 flex justify-between items-center transition-all hover:border-[#10B981]">
+              <span className="text-[10px] font-black text-[#10B981] uppercase tracking-widest">Success</span>
+              <span className="text-lg font-black text-[#10B981]">{stats.success}</span>
+           </div>
+           <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#EAB308]/10 border border-[#EAB308]/30 p-3 flex justify-between items-center transition-all hover:border-[#EAB308]">
+              <span className="text-[10px] font-black text-[#EAB308] uppercase tracking-widest">Wait</span>
+              <span className="text-lg font-black text-[#EAB308]">{stats.wait}</span>
+           </div>
+           <div className="rounded-xl bg-gradient-to-br from-[#1E293B]/50 to-[#F43F5E]/10 border border-[#F43F5E]/30 p-3 flex justify-between items-center transition-all hover:border-[#F43F5E]">
+              <span className="text-[10px] font-black text-[#F43F5E] uppercase tracking-widest">Failed</span>
+              <span className="text-lg font-black text-[#F43F5E]">{stats.fail}</span>
+           </div>
         </div>
 
-        {/* FEED BOX */}
-        <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 flex flex-col h-[55vh] min-h-[350px]">
+        {/* 💥 SUCCESS RATE BAR 💥 */}
+        <div className="mb-4 md:mb-6 bg-[#1E293B]/50 border border-[#334155] rounded-xl p-4 flex flex-col gap-2 shadow-sm relative overflow-hidden">
+          <div className="flex justify-between items-center relative z-10">
+            <span className="text-[10px] md:text-xs font-black text-[#94A3B8] uppercase tracking-widest flex items-center gap-2">
+              <svg className="w-4 h-4 text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+              Success Rate
+            </span>
+            <span className="text-sm md:text-base font-black text-[#10B981]">{successRate}%</span>
+          </div>
+          <div className="w-full bg-[#0F172A] rounded-full h-2 md:h-2.5 border border-[#334155] overflow-hidden relative z-10 shadow-inner">
+            <div 
+              className="bg-gradient-to-r from-[#3B82F6] via-[#10B981] to-[#34D399] h-full rounded-full transition-all duration-1000 ease-out relative" 
+              style={{ width: `${successRate}%` }}>
+                <div className="absolute top-0 right-0 bottom-0 left-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-20"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* 💥 GET NUMBER CARD 💥 */}
+        <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
+           {!isToday && (
+             <div className="absolute inset-0 bg-[#0F172A]/50 z-20 flex items-center justify-center">
+               <span className="bg-[#EAB308] text-black font-black px-4 py-1.5 rounded-lg text-xs uppercase tracking-widest shadow-md">History Mode Locked (Only Success)</span>
+             </div>
+           )}
+           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF]"></div>
+           <div className="flex flex-col md:flex-row gap-3 md:items-end">
+              <div className="flex-1 w-full">
+                 <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Target Range / Code</label>
+                 <input 
+                    type="text" value={rangeInput} onChange={handleRangeChange} placeholder="e.g. 23276345XXX" 
+                    className="w-full bg-[#0F172A] border border-[#334155] rounded-lg px-4 py-2.5 text-white font-mono text-base focus:outline-none focus:border-[#3B82F6] transition-all" 
+                 />
+              </div>
+              <div className="flex gap-4 pb-2 md:pb-0">
+                 <label className="flex items-center gap-2 cursor-pointer group" onClick={toggleNational}>
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isNational ? "bg-[#3B82F6] border-[#3B82F6]" : "bg-[#0F172A] border-[#334155]"}`}>
+                       {isNational && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                    </div>
+                    <span className="text-xs font-bold text-[#94A3B8] group-hover:text-white transition-colors">National</span>
+                 </label>
+                 <label className="flex items-center gap-2 cursor-pointer group" onClick={toggleRemovePlus}>
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${removePlus ? "bg-[#3B82F6] border-[#3B82F6]" : "bg-[#0F172A] border-[#334155]"}`}>
+                       {removePlus && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                    </div>
+                    <span className="text-xs font-bold text-[#94A3B8] group-hover:text-white transition-colors">No (+)</span>
+                 </label>
+              </div>
+              <button 
+                 onClick={fetchNewNumber} disabled={isLoading || !isToday}
+                 className={`bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] hover:from-[#2563EB] hover:to-[#00B4E6] text-white font-black text-sm px-6 py-2.5 rounded-lg transition-all flex items-center gap-2 w-full md:w-auto justify-center tracking-wider ${isLoading || !isToday ? "opacity-50 cursor-not-allowed" : "shadow-md hover:shadow-lg hover:-translate-y-0.5"}`}>
+                 {isLoading ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>}
+                 {isLoading ? "FETCHING..." : "GET NUMBER"}
+              </button>
+           </div>
+        </div>
+
+        {/* 💥 FEED CARD WITH FIXED HEIGHT (h-[75vh] md:h-[900px] min-h-[500px]) 💥 */}
+        <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 flex flex-col h-[75vh] md:h-[900px] min-h-[500px]">
            <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155] flex-shrink-0">
              <div className="flex items-center gap-2">
                <h3 className="text-[10px] md:text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
@@ -386,7 +387,7 @@ export default function GetNumber() {
                  Feed
                </h3>
                {isToday && (
-                 <button onClick={checkOtps} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20">
+                 <button onClick={checkOtps} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20 transition-colors">
                    <svg className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                  </button>
                )}
@@ -401,6 +402,7 @@ export default function GetNumber() {
              </div>
            </div>
 
+           {/* 💥 INTERNAL SCROLL CONTAINER 💥 */}
            <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar w-full">
               {isInitialLoad ? (
                  Array(5).fill(0).map((_, i) => (
@@ -487,17 +489,19 @@ export default function GetNumber() {
                         <svg className="w-5 h-5 animate-spin text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                      </div>
                    )}
+                   {/* 💥 THE TRIGGER FOR INFINITE SCROLL 💥 */}
                    <div ref={observerRef} className="h-4 w-full bg-transparent flex-shrink-0"></div>
                  </>
               )}
            </div>
         </div>
 
+        {/* 💥 DATE NAVIGATOR RESTORED TO BOTTOM (Doesn't get pushed away anymore) 💥 */}
         <div className="flex flex-col items-center justify-center pb-2 flex-shrink-0">
            <div className="flex items-center gap-3 bg-[#1E293B]/80 border border-[#334155] rounded-full px-4 py-1.5 shadow-md">
-             <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
+             <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full transition-colors"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
              <span className="text-xs font-black text-white min-w-[120px] text-center">{getFormattedDate()}</span>
-             <button onClick={() => changeDate(1)} disabled={isToday} className={`p-1 rounded-full ${isToday ? 'text-[#334155] cursor-not-allowed' : 'text-[#94A3B8] hover:text-[#3B82F6]'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg></button>
+             <button onClick={() => changeDate(1)} disabled={isToday} className={`p-1 rounded-full transition-colors ${isToday ? 'text-[#334155] cursor-not-allowed' : 'text-[#94A3B8] hover:text-[#3B82F6]'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg></button>
            </div>
         </div>
 
