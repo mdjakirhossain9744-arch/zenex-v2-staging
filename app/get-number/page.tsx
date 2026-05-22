@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-// 💥 PURE UTC TIMEZONE FUNCTION 💥
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
@@ -112,10 +111,9 @@ export default function GetNumber() {
     const email = getUserEmail();
     if(!email) return;
     try {
-      // 💥 BUG FIXED: Added Cache-Busting (?t=Date.now()) for Mobile Browsers 💥
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 50, targetDate: selectedDate })
+        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 20, targetDate: selectedDate })
       });
       const data = await res.json();
       
@@ -339,6 +337,7 @@ export default function GetNumber() {
           </div>
         </div>
 
+        {/* 💥 GET NUMBER CARD 💥 */}
         <div className={`rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-md mb-4 relative overflow-hidden transition-all ${!isToday ? 'opacity-60 pointer-events-none' : ''}`}>
            {!isToday && (
              <div className="absolute inset-0 bg-[#0F172A]/50 z-20 flex items-center justify-center">
@@ -377,15 +376,17 @@ export default function GetNumber() {
            </div>
         </div>
 
-        <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 min-h-[300px] flex flex-col">
-           <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155]">
+        {/* 💥 FEED CARD WITH INCREASED HEIGHT (h-[80vh] md:h-[900px]) 💥 */}
+        <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 flex flex-col h-[75vh] md:h-[900px] min-h-[500px]">
+           
+           <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155] flex-shrink-0">
              <div className="flex items-center gap-2">
                <h3 className="text-[10px] md:text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
                  {isToday ? <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></span> : <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]"></span>}
                  Feed
                </h3>
                {isToday && (
-                 <button onClick={checkOtps} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20">
+                 <button onClick={checkOtps} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20 transition-colors">
                    <svg className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                  </button>
                )}
@@ -415,7 +416,7 @@ export default function GetNumber() {
                    </div>
                  ))
               ) : sortedFilteredNumbers.length === 0 ? (
-                 <div className="h-full flex flex-col items-center justify-center text-center my-auto p-10">
+                 <div className="h-full flex flex-col items-center justify-center text-center my-auto p-10 min-h-[200px]">
                     <svg className="w-10 h-10 text-[#334155] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                     <h3 className="text-sm font-black text-[#64748B] tracking-wide">Empty List</h3>
                  </div>
@@ -453,7 +454,6 @@ export default function GetNumber() {
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
                                    
-                                   {/* 💥 PREMIUM COPY BUTTON UI ADDED HERE 💥 */}
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(item.otp); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-2 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
@@ -482,21 +482,22 @@ export default function GetNumber() {
                    ))}
                    
                    {isFetchingMore && (
-                     <div className="py-4 flex justify-center">
+                     <div className="py-4 flex justify-center flex-shrink-0">
                         <svg className="w-5 h-5 animate-spin text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                      </div>
                    )}
-                   <div ref={observerRef} className="h-4 w-full bg-transparent"></div>
+                   <div ref={observerRef} className="h-4 w-full bg-transparent flex-shrink-0"></div>
                  </>
               )}
            </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center pb-2">
+        {/* 💥 DATE NAVIGATOR AT THE BOTTOM (Doesn't get pushed away anymore) 💥 */}
+        <div className="flex flex-col items-center justify-center pb-2 flex-shrink-0">
            <div className="flex items-center gap-3 bg-[#1E293B]/80 border border-[#334155] rounded-full px-4 py-1.5 shadow-md">
-             <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
+             <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full transition-colors"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
              <span className="text-xs font-black text-white min-w-[120px] text-center">{getFormattedDate()}</span>
-             <button onClick={() => changeDate(1)} disabled={isToday} className={`p-1 rounded-full ${isToday ? 'text-[#334155] cursor-not-allowed' : 'text-[#94A3B8] hover:text-[#3B82F6]'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg></button>
+             <button onClick={() => changeDate(1)} disabled={isToday} className={`p-1 rounded-full transition-colors ${isToday ? 'text-[#334155] cursor-not-allowed' : 'text-[#94A3B8] hover:text-[#3B82F6]'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg></button>
            </div>
         </div>
 

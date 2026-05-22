@@ -10,7 +10,7 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
 
-// 💥 THE ULTIMATE SMART OTP EXTRACTOR (Solves Instagram/WhatsApp Space Bugs) 💥
+// 💥 THE ULTIMATE SMART OTP EXTRACTOR 💥
 const extractStrictOTP = (msg: string) => {
     if (!msg) return "";
     const match = msg.match(/(?:\b\d{4,8}\b)|(?:\b\d{3}[\s-]\d{3,4}\b)|(?:G-\d{6,8})/i);
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
-    const { action, email, orderData, page = 1, limit = 50, targetDate } = body; 
+    const { action, email, orderData, page = 1, limit = 20, targetDate } = body; // 💥 DEFAULT LIMIT 20 💥
 
     if (!email) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
@@ -39,7 +39,17 @@ export async function POST(req: Request) {
 
       const skip = (page - 1) * limit;
       const totalItems = await Order.countDocuments({ userEmail: email, dateString: fetchDate });
-      const orders = await Order.find({ userEmail: email, dateString: fetchDate }).sort({ createdAt: -1 }).skip(skip).limit(limit);
+      
+      let orders = await Order.find({ userEmail: email, dateString: fetchDate })
+        .sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      
+      // 💥 FETCH ALL "DONE" ON PAGE 1 SO NO SUCCESS IS MISSED 💥
+      if (page === 1) {
+          const allDoneOrders = await Order.find({ userEmail: email, dateString: fetchDate, status: "DONE" }).lean();
+          const existingIds = new Set(orders.map((o: any) => o._id.toString()));
+          const extraDones = allDoneOrders.filter((o: any) => !existingIds.has(o._id.toString()));
+          orders = [...orders, ...extraDones]; 
+      }
       
       const finalOrders: any[] = [];
       let stats = { total: 0, success: 0, wait: 0, fail: 0 };
@@ -53,7 +63,7 @@ export async function POST(req: Request) {
                const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
                const uniqueCodes = new Set();
                msgArray.forEach((msg: string) => {
-                    const matchOTP = extractStrictOTP(msg); // 💥 BUG FIXED HERE 💥
+                    const matchOTP = extractStrictOTP(msg); 
                     uniqueCodes.add(matchOTP);
                });
                actualOtpCount += uniqueCodes.size > 0 ? uniqueCodes.size : 1;
@@ -89,7 +99,7 @@ export async function POST(req: Request) {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         if (o.status === "DONE" && msgArray.length > 1) {
           msgArray.forEach((msg: string, index: number) => {
-            const extractedOtp = extractStrictOTP(msg); // 💥 BUG FIXED HERE 💥
+            const extractedOtp = extractStrictOTP(msg); 
             
             finalOrders.push({
               id: `${o._id.toString()}_${index}`,
@@ -160,8 +170,7 @@ export async function POST(req: Request) {
         if (!incomingMsg) return NextResponse.json({ success: false, message: "Empty message" });
 
         const currentMsg = freshOrder.fullMessage || "";
-
-        const incomingCode = extractStrictOTP(incomingMsg); // 💥 REGEX FIX 💥
+        const incomingCode = extractStrictOTP(incomingMsg); 
 
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
         const existingCodes = currentMsgsArray.map((msg: string) => extractStrictOTP(msg));
