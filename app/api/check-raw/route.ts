@@ -11,17 +11,23 @@ export async function GET(req: Request) {
     const num = searchParams.get("number");
 
     // ডাটাবেস থেকে শুধু কাঁচা লগগুলো তুলে আনবে
-    let query = {};
+    let query: any = {};
     if (num) {
       // যদি নাম্বার দিয়ে সার্চ করেন, তবে শুধু ওই নাম্বারের কাঁচা ডাটা আনবে
       query = { "rawPayload.orderData.searchNumber": num };
     }
 
-    const rawLogs = await mongoose.connection.db.collection('mnit_raw_logs')
-      .find(query)
+    // 💥 TS Error Fix: Dynamic Model (No Red Lines, 100% Safe) 💥
+    const RawLog = mongoose.models.mnit_raw_logs || mongoose.model("mnit_raw_logs", new mongoose.Schema({
+        timestamp: { type: Date, default: Date.now },
+        rawPayload: { type: Object }
+    }, { strict: false }));
+
+    // শেষের ১০টা কাঁচা হিট দেখাবে
+    const rawLogs = await RawLog.find(query)
       .sort({ timestamp: -1 })
-      .limit(10) // শেষের ১০টা কাঁচা হিট দেখাবে
-      .toArray();
+      .limit(10) 
+      .lean();
 
     return NextResponse.json({
       success: true,
@@ -29,7 +35,7 @@ export async function GET(req: Request) {
       message: "This is the EXACT RAW DATA sent by your Provider BEFORE any processing!",
       logs: rawLogs
     });
-  } catch (error) {
-    return NextResponse.json({ error: "Database Error" });
+  } catch (error: any) {
+    return NextResponse.json({ error: "Database Error", details: error.message });
   }
 }
