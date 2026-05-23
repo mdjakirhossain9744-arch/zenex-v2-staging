@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose"; // 💥 NEW: Interceptor-এর জন্য mongoose ইম্পোর্ট করা হলো 💥
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
@@ -22,6 +23,19 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
     
+    // 💥 THE INTERCEPTOR (কাঁচা ডাটা চোর) 💥
+    // প্রোভাইডার সার্ভারে যা পাঠাবে, তার হুবহু অরিজিনাল কপি ডাটাবেস প্রসেসিংয়ের আগেই এখানে সেভ হবে!
+    try {
+      if (mongoose.connection.db) {
+        await mongoose.connection.db.collection('mnit_raw_logs').insertOne({
+            timestamp: new Date(),
+            rawPayload: body
+        });
+      }
+    } catch (logErr) {
+      console.error("Failed to save raw log:", logErr);
+    }
+
     // 💥 filterStatus রিসিভ করা হলো এবং limit ডিফল্ট 30 করা হলো 💥
     const { action, email, orderData, page = 1, limit = 30, targetDate, filterStatus } = body; 
 
@@ -43,7 +57,7 @@ export async function POST(req: Request) {
       // 💥 ENTERPRISE SERVER-SIDE FILTERING QUERY 💥
       const query: any = { userEmail: email, dateString: fetchDate };
       
-      // ফ্রন্টএন্ড থেকে যদি নির্দিষ্ট ট্যাবে (DONE, WAIT, FAIL) ক্লিক করে, তাহলে কুয়েরিতে সেটা অ্যাড হবে
+      // ফ্রন্টএন্ড থেকে যদি নির্দিষ্ট ট্যাবে (DONE, WAIT, FAIL) ক্লিক করে, তাহলে কুয়েরিতে সেটা অ্যাড হবে
       if (filterStatus && filterStatus !== "ALL") {
           query.status = filterStatus;
       }
@@ -62,13 +76,13 @@ export async function POST(req: Request) {
       
       let orders = [...rawOrders];
 
-      // 🛑 MAJOR FIX: Page 1 এ "সব DONE ডাটা একসাথে" আনার ভয়ংকর লজিকটি রিমুভ করা হয়েছে। 
-      // এখন সার্ভার সাইড পেজিনেশন থাকায় কোনো প্যানেল হ্যাং বা ক্র্যাশ হবে্বর না! 🛑
+      // 🛑 MAJOR FIX: Page 1 এ "সব DONE ডাটা একসাথে" আনার ভয়ংকর লজিকটি রিমুভ করা হয়েছে। 
+      // এখন সার্ভার সাইড পেজিনেশন থাকায় কোনো প্যানেল হ্যাং বা ক্র্যাশ হবে্বর না! 🛑
 
       const finalOrders: any[] = [];
       let stats = { total: 0, success: 0, wait: 0, fail: 0 };
 
-      // 💥 STATS QUERY: স্ট্যাটাস সবসময় ALL ডাটার উপর ভিত্তি করে হিসাব হবে, যাতে টপ বারের সংখ্যা ঠিক থাকে 💥
+      // 💥 STATS QUERY: স্ট্যাটাস সবসময় ALL ডাটার উপর ভিত্তি করে হিসাব হবে, যাতে টপ বারের সংখ্যা ঠিক থাকে 💥
       const statQuery = { userEmail: email, dateString: fetchDate };
 
       if (fetchDate === todayStr) {
@@ -76,7 +90,7 @@ export async function POST(req: Request) {
           let actualOtpCount = 0;
           doneOrders.forEach((o: any) => {
                const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-               // 💥 FIX: Set() রিমুভ করে দিয়েছি যাতে একই কোড ২বার আসলে টপ বারে ২বারই সাকসেস কাউন্ট হয় 💥
+               // 💥 FIX: Set() রিমুভ করে দিয়েছি যাতে একই কোড ২বার আসলে টপ বারে ২বারই সাকসেস কাউন্ট হয় 💥
                actualOtpCount += msgArray.length > 0 ? msgArray.length : 1;
           });
 
@@ -112,7 +126,7 @@ export async function POST(req: Request) {
             const extractedOtp = extractStrictOTP(msg); 
             
             finalOrders.push({
-              // 💥 UNIQUE ID: _0, _1 যুক্ত করা হলো যাতে একই ওটিপি হলেও হাইড না হয় 💥
+              // 💥 UNIQUE ID: _0, _1 যুক্ত করা হলো যাতে একই ওটিপি হলেও হাইড না হয় 💥
               id: `${o._id.toString()}_${index}`,
               dateString: o.dateString, displayNumber: o.displayNumber, searchNumber: o.searchNumber,
               country: o.country, operator: o.operator, status: o.status, otp: extractedOtp,
@@ -251,7 +265,7 @@ export async function POST(req: Request) {
 
         const updatedOrder = await Order.findOneAndUpdate(updateQuery, updateData, { new: true });
 
-        // 💥 গ্লিচ ডিটেক্ট হলে এখান থেকে ব্লক হয়ে যাবে, কোনো ব্যালেন্স এড হবে না! 💥
+        // 💥 গ্লিচ ডিটেক্ট হলে এখান থেকে ব্লক হয়ে যাবে, কোনো ব্যালেন্স এড হবে না! 💥
         if (!updatedOrder) {
           return NextResponse.json({ success: true, message: "Race condition locked. Glitch / Duplicate NID safely ignored!" });
         }
