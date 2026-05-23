@@ -199,7 +199,6 @@ export default function GetNumber() {
       
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
-           if (item.otp === otp) return item; 
 
            if (!isMulti && item.status === "WAIT") {
              setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
@@ -312,14 +311,12 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
-  const uniqueNumberOtps = new Set();
+  // 💥 MAJOR FIX: ডুপ্লিকেট হাইড করার লজিক (Text এর বদলে ID দিয়ে ফিল্টার) 💥
+  const uniqueItemIds = new Set();
   const deduplicatedNumbers = finalFilteredNumbers.filter((item) => {
-      if (item.status === 'DONE' && item.otp) {
-          const cleanOtp = String(item.otp).trim();
-          const codeKey = `${item.searchNumber}_${cleanOtp}`;
-          if (uniqueNumberOtps.has(codeKey)) return false;
-          uniqueNumberOtps.add(codeKey);
-      }
+      // এটি ডাবল অবজেক্ট রেন্ডার হতে দিবে, যা রিয়েল মাল্টি-ওটিপি শো করানোর জন্য পারফেক্ট।
+      if (uniqueItemIds.has(item.id)) return false;
+      uniqueItemIds.add(item.id);
       return true;
   });
 

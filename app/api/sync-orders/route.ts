@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       let orders = [...rawOrders];
 
       // 🛑 MAJOR FIX: Page 1 এ "সব DONE ডাটা একসাথে" আনার ভয়ংকর লজিকটি রিমুভ করা হয়েছে। 
-      // এখন সার্ভার সাইড পেজিনেশন থাকায় কোনো প্যানেল হ্যাং বা ক্র্যাশ হবে না! 🛑
+      // এখন সার্ভার সাইড পেজিনেশন থাকায় কোনো প্যানেল হ্যাং বা ক্র্যাশ হবে্বর না! 🛑
 
       const finalOrders: any[] = [];
       let stats = { total: 0, success: 0, wait: 0, fail: 0 };
@@ -76,12 +76,8 @@ export async function POST(req: Request) {
           let actualOtpCount = 0;
           doneOrders.forEach((o: any) => {
                const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-               const uniqueCodes = new Set();
-               msgArray.forEach((msg: string) => {
-                    const matchOTP = extractStrictOTP(msg); 
-                    uniqueCodes.add(matchOTP);
-               });
-               actualOtpCount += uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+               // 💥 FIX: Set() রিমুভ করে দিয়েছি যাতে একই কোড ২বার আসলে টপ বারে ২বারই সাকসেস কাউন্ট হয় 💥
+               actualOtpCount += msgArray.length > 0 ? msgArray.length : 1;
           });
 
           stats = {
@@ -116,6 +112,7 @@ export async function POST(req: Request) {
             const extractedOtp = extractStrictOTP(msg); 
             
             finalOrders.push({
+              // 💥 UNIQUE ID: _0, _1 যুক্ত করা হলো যাতে একই ওটিপি হলেও হাইড না হয় 💥
               id: `${o._id.toString()}_${index}`,
               dateString: o.dateString, displayNumber: o.displayNumber, searchNumber: o.searchNumber,
               country: o.country, operator: o.operator, status: o.status, otp: extractedOtp,
@@ -186,25 +183,23 @@ export async function POST(req: Request) {
         const incomingMsg = (orderData.fullMessage || "").trim();
         if (!incomingMsg) return NextResponse.json({ success: false, message: "Empty message" });
 
+        // 💥 THE MAGIC KEY (NID) - API Glitch Preventer 💥
+        const incomingNid = orderData.nid || null;
+
+        // যদি NID থাকে এবং সেটি আগেই ঢুকে থাকে, সাথে সাথে গ্লিচ হিসেবে ব্লক!
+        if (incomingNid && freshOrder.receivedNids?.includes(incomingNid)) {
+            return NextResponse.json({ success: true, message: "API Glitch Blocked! NID already processed." });
+        }
+
         const currentMsg = freshOrder.fullMessage || "";
         const incomingCode = extractStrictOTP(incomingMsg); 
 
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
-        const existingCodes = currentMsgsArray.map((msg: string) => extractStrictOTP(msg));
-
-        if (existingCodes.includes(incomingCode)) {
-          return NextResponse.json({ success: true, message: "Duplicate Exact OTP code detected. Ignored." });
-        }
+        
+        // 💥 RegExp এবং existingCodes.includes রিমুভ করা হলো যাতে Real Exact OTP ঢুকতে পারে 💥
 
         if (currentMsgsArray.length >= 50) { 
           return NextResponse.json({ success: true, message: "Max safety limit reached." });
-        }
-
-        let regexStr = "";
-        if (/^\d+$/.test(incomingCode)) {
-             regexStr = `\\b${incomingCode}\\b`;
-        } else {
-             regexStr = incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
         const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
@@ -233,12 +228,13 @@ export async function POST(req: Request) {
           }
         }
 
-        const updatedOrder = await Order.findOneAndUpdate(
-          { 
-             _id: existingOrder._id, 
-             fullMessage: { $not: new RegExp(regexStr) } 
-          }, 
-          { 
+        // 💥 ULTIMATE DB-LEVEL ATOMIC LOCK 💥
+        // মঙ্গোডিবি চেক করবে এই NID টা ডাটাবেসে আছে কিনা, না থাকলে তবেই আপডেট করবে (Race Condition 100% Locked)
+        const updateQuery = incomingNid 
+              ? { _id: existingOrder._id, receivedNids: { $ne: incomingNid } } 
+              : { _id: existingOrder._id, fullMessage: currentMsg };
+
+        const updateData: any = {
             $set: {
               fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
               otp: incomingCode, 
@@ -246,12 +242,18 @@ export async function POST(req: Request) {
               expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
             },
             $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
-          },
-          { new: true }
-        );
+        };
 
+        // যদি NID থাকে, তাহলে সেটা ডাটাবেসে পুশ করে রাখো
+        if (incomingNid) {
+            updateData.$push = { receivedNids: incomingNid };
+        }
+
+        const updatedOrder = await Order.findOneAndUpdate(updateQuery, updateData, { new: true });
+
+        // 💥 গ্লিচ ডিটেক্ট হলে এখান থেকে ব্লক হয়ে যাবে, কোনো ব্যালেন্স এড হবে না! 💥
         if (!updatedOrder) {
-          return NextResponse.json({ success: true, message: "Race condition locked. Duplicate ignored safely!" });
+          return NextResponse.json({ success: true, message: "Race condition locked. Glitch / Duplicate NID safely ignored!" });
         }
 
         if (currentOtpCost > 0) {
@@ -264,7 +266,7 @@ export async function POST(req: Request) {
           );
         }
 
-        return NextResponse.json({ success: true, message: "Different OTP Processed successfully!" });
+        return NextResponse.json({ success: true, message: "Real OTP Processed successfully!" });
       }
     }
     return NextResponse.json({ success: false, message: "Invalid action" });

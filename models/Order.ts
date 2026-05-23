@@ -16,6 +16,9 @@ const orderSchema = new Schema(
     orderCost: { type: Number, default: 0 }, 
     orderCommission: { type: Number, default: 0 }, 
 
+    // 💥 ENTERPRISE NID LOCK (The Ultimate Glitch Preventer) 💥
+    receivedNids: { type: [String], default: [] },
+
     // 💥 ২ দিন (৪৮ ঘণ্টা) গ্যারান্টি 💥
     expireAt: { type: Date, required: true, default: () => new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } 
   },

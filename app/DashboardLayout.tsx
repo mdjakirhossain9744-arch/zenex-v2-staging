@@ -131,6 +131,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              const matches = result.otps.filter((o:any) => String(o.number).replace(/\D/g, "").endsWith(last6));
 
              if (matches.length > 0) {
+
+                // 💥 1. Page Load হওয়ার পর আগের NID গুলো মেমরিতে সেট করা 💥
+                if (item.status === "DONE" && !item.seenNids) {
+                   item.seenNids = [];
+                   if (item.seenMessages) {
+                       item.seenMessages.forEach((msg: string) => {
+                           const found = matches.find((m: any) => (m.otp || m.msg || m.sms || "").trim() === msg.trim() && !item.seenNids.includes(m.nid));
+                           if (found && found.nid) item.seenNids.push(found.nid);
+                       });
+                   }
+                }
+
                 if (item.status === "WAIT") {
                    const matchedObj = matches[0];
                    const firstMsg = matchedObj.otp || matchedObj.msg || matchedObj.sms || "";
@@ -142,18 +154,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                    else if (matchedObj.date) realApiTime = new Date(matchedObj.date).getTime() || Date.now();
                    else if (matchedObj.timestamp) { const ts = Number(matchedObj.timestamp); realApiTime = ts < 10000000000 ? ts * 1000 : ts; }
 
-                   window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: firstMsg, isMulti: false } }));
+                   // 💥 2. NID পাঠানো হলো (Event & Backend এ) 💥
+                   window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: firstMsg, isMulti: false, nid: matchedObj.nid } }));
                    showGlobalToast(`${finalCode} (New OTP)`);
 
-                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: realApiTime } }) });
+                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: realApiTime, nid: matchedObj.nid } }) });
 
-                   item.status = "DONE"; item.fullMessage = firstMsg; item.seenMessages = [firstMsg]; hasUpdates = true;
+                   item.status = "DONE"; 
+                   item.fullMessage = firstMsg; 
+                   item.seenMessages = [firstMsg]; 
+                   item.seenNids = [matchedObj.nid]; // Save NID
+                   hasUpdates = true;
                 } 
                 else if (item.status === "DONE") {
-                   const alreadySeen = item.seenMessages || [item.fullMessage];
-                   const alreadySeenCodes = alreadySeen.map((msg: string) => { const m = msg.match(/\b\d{4,8}\b/); return m ? m[0] : msg.trim(); });
+                   const alreadySeenNids = item.seenNids || [];
 
-                   const newMatches = matches.filter((mObj: any) => { const msg = mObj.otp || mObj.msg || mObj.sms || ""; const codeMatch = msg.match(/\b\d{4,8}\b/); const extractedCode = codeMatch ? codeMatch[0] : msg.trim(); return !alreadySeenCodes.includes(extractedCode); });
+                   // 💥 3. DEDUPLICATION FIX: এখন আর Text দিয়ে ফিল্টার হবে না, NID দিয়ে ফিল্টার হবে! 💥
+                   const newMatches = matches.filter((mObj: any) => mObj.nid && !alreadySeenNids.includes(mObj.nid));
 
                    if (newMatches.length > 0) {
                       for (const newMatch of newMatches) {
@@ -166,13 +183,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                          else if (newMatch.date) realApiTime = new Date(newMatch.date).getTime() || Date.now();
                          else if (newMatch.timestamp) { const ts = Number(newMatch.timestamp); realApiTime = ts < 10000000000 ? ts * 1000 : ts; }
 
-                         window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: newMsg, isMulti: true } }));
+                         // 💥 4. Multi-OTP NID পাঠানো হলো 💥
+                         window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: newMsg, isMulti: true, nid: newMatch.nid } }));
                          showGlobalToast(`${finalCode} (Multi OTP)`);
 
-                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: realApiTime } }) });
-                         alreadySeen.push(newMsg);
+                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: realApiTime, nid: newMatch.nid } }) });
+                         
+                         item.seenMessages.push(newMsg);
+                         item.seenNids.push(newMatch.nid); // Save new NID
                       }
-                      item.seenMessages = alreadySeen; hasUpdates = true;
+                      hasUpdates = true;
                    }
                 }
              }
@@ -330,12 +350,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              </span>
           </div>
           
-          {/* Changed gap-4 to gap-2.5 for mobile here */}
           <div className="flex items-center gap-2.5 md:gap-6 relative">
             {role !== "admin" && (
               <div className="px-2.5 py-1 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-md md:rounded-lg flex items-center md:gap-3 shadow-inner">
                  <span className="hidden md:block text-[9px] md:text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Balance</span>
-                 {/* Removed "Bal:" for mobile, only kept amount with text-sm for better visibility */}
                  <span className="text-sm md:text-lg font-black text-[#10B981] md:text-[#F8FAFC]">৳{balance}</span>
               </div>
             )}
@@ -371,7 +389,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      {/* Floating System Core Badge */}
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-end md:items-center justify-end group">
         <div className={`absolute bottom-full mb-3 right-0 md:bottom-auto md:mb-0 md:right-full md:mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl md:rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 origin-bottom-right md:origin-right ${isBadgeOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'} md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}>
            <div className="flex flex-col md:flex-row items-center md:gap-4 px-4 py-3 md:py-2.5 whitespace-nowrap">
