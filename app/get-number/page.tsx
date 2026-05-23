@@ -77,7 +77,6 @@ export default function GetNumber() {
     const newDateStr = current.toISOString().split('T')[0];
     if (newDateStr <= getUTCDateString()) {
        setSelectedDate(newDateStr);
-       // 💥 Date চেঞ্জ করলে লিস্ট ক্লিয়ার করে পেজ ১ থেকে কল হবে 💥
        setNumbersList([]);
        setIsInitialLoad(true);
        setPage(1); 
@@ -119,7 +118,6 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
-  // 💥 SERVER-SIDE FILTERING LOGIC ADDED HERE 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
@@ -132,7 +130,7 @@ export default function GetNumber() {
             page: pageNum, 
             limit: 30, 
             targetDate: selectedDate,
-            filterStatus: activeFilter !== "ALL" ? activeFilter : undefined // 💥 Server কে বলা হচ্ছে কোন ফিল্টারের ডাটা লাগবে 💥
+            filterStatus: activeFilter !== "ALL" ? activeFilter : undefined 
         })
       });
       const data = await res.json();
@@ -169,16 +167,15 @@ export default function GetNumber() {
     finally {
       setIsInitialLoad(false); 
     }
-  }, [selectedDate, activeFilter]); // 💥 activeFilter added to dependency 💥
+  }, [selectedDate, activeFilter]); 
 
-  // 💥 TAB CLICK CORRECTION (Clears Old Data & Starts Fresh) 💥
   const handleFilterClick = (filterName: string) => {
     if (activeFilter === filterName) return;
     setActiveFilter(filterName);
-    setNumbersList([]);     // Clear array
-    setIsInitialLoad(true); // Show skeleton loader
-    setPage(1);             // Reset Page
-    setHasMore(true);       // Reset Observer
+    setNumbersList([]);     
+    setIsInitialLoad(true); 
+    setPage(1);             
+    setHasMore(true);       
   };
 
   const checkOtps = async () => {
@@ -199,13 +196,12 @@ export default function GetNumber() {
       
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
-
            if (!isMulti && item.status === "WAIT") {
              setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
              return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
            } else if (isMulti) {
-             const newSeen = item.seenMessages ? [...item.seenMessages, fullMessage] : [item.fullMessage, fullMessage];
-             return { ...item, status: "DONE", otp, fullMessage, seenMessages: newSeen, receivedAt: Date.now(), isMulti: true };
+             const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
+             return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now(), isMulti: true };
            }
         }
         return item;
@@ -273,7 +269,6 @@ export default function GetNumber() {
           createdAt: Date.now(), receivedAt: null 
         };
         
-        // 💥 ALL বা WAIT ট্যাবে থাকলে বক্সে দেখাবে, DONE এ থাকলে হাইড থাকবে 💥
         if (activeFilter === "ALL" || activeFilter === "WAIT") {
            setNumbersList((prev) => [newEntry, ...prev]);
         }
@@ -299,7 +294,6 @@ export default function GetNumber() {
   const isToday = selectedDate === getUTCDateString();
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
-  // 💥 Local filter is now just a safety net, real filtering happens in backend 💥
   const finalFilteredNumbers = dateFilteredNumbers.map((item) => {
       if (item.status === "WAIT" && (currentTime - item.createdAt) >= 20 * 60 * 1000) {
           return { ...item, status: "FAIL", otp: "Timeout" };
@@ -311,16 +305,36 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
-  // 💥 MAJOR FIX: ডুপ্লিকেট হাইড করার লজিক (Text এর বদলে ID দিয়ে ফিল্টার) 💥
   const uniqueItemIds = new Set();
   const deduplicatedNumbers = finalFilteredNumbers.filter((item) => {
-      // এটি ডাবল অবজেক্ট রেন্ডার হতে দিবে, যা রিয়েল মাল্টি-ওটিপি শো করানোর জন্য পারফেক্ট।
       if (uniqueItemIds.has(item.id)) return false;
       uniqueItemIds.add(item.id);
       return true;
   });
 
-  const sortedFilteredNumbers = [...deduplicatedNumbers].sort((a, b) => b.createdAt - a.createdAt);
+  // 💥 THE ARCHITECT'S SPLIT ENGINE 💥
+  const expandedNumbers: any[] = [];
+  deduplicatedNumbers.forEach((item: any) => {
+      if (item.status === "DONE" && item.fullMessage && item.fullMessage.includes("_||_")) {
+          const msgsArray = item.fullMessage.split("_||_").map((m: string) => m.trim()).filter(Boolean);
+          // 💥 TS Error Fix: msg: string, idx: number 💥
+          msgsArray.forEach((msg: string, idx: number) => {
+              const extracted = cleanOTPDisplay(msg);
+              expandedNumbers.push({
+                  ...item,
+                  id: `${item.id}_${idx}`, 
+                  otp: extracted !== "Waiting..." ? extracted : item.otp,
+                  fullMessage: msg,
+                  isMulti: true 
+              });
+          });
+      } else {
+          expandedNumbers.push(item);
+      }
+  });
+
+  const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => b.createdAt - a.createdAt);
+  
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   return (
@@ -421,7 +435,6 @@ export default function GetNumber() {
                )}
              </div>
              <div className="flex gap-1 bg-[#0B0F19] p-0.5 rounded border border-[#334155]">
-               {/* 💥 NEW handleFilterClick Function Added Here 💥 */}
                {["ALL", "DONE", "WAIT", "FAIL"].map((filterName) => (
                  <button key={filterName} onClick={() => handleFilterClick(filterName)}
                    className={`px-2 py-1 text-[9px] font-black rounded uppercase transition-colors ${activeFilter === filterName ? "bg-[#3B82F6] text-white" : "text-[#64748B] hover:text-[#E2E8F0]"}`}>
@@ -452,7 +465,10 @@ export default function GetNumber() {
                  </div>
               ) : (
                  <>
-                   {sortedFilteredNumbers.map((item) => (
+                   {sortedFilteredNumbers.map((item) => {
+                      const isMultiTag = item.isMulti || item.isDup;
+
+                      return (
                       <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
                             <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
@@ -460,7 +476,7 @@ export default function GetNumber() {
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
-                              {(item.isMulti || item.isDup) && (
+                              {isMultiTag && (
                                  <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
                                    MULTI
                                  </span>
@@ -483,7 +499,6 @@ export default function GetNumber() {
                                  <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
-                                   
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp)); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-2 py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
@@ -509,7 +524,8 @@ export default function GetNumber() {
                             </div>
                          </div>
                       </div>
-                   ))}
+                      )
+                   })}
                    
                    {isFetchingMore && (
                      <div className="py-4 flex justify-center flex-shrink-0">
