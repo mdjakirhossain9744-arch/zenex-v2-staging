@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
-import User from "../../../models/User"; // 💥 ইউজারের নাম এবং আইডি আনার জন্য User মডেল ইম্পোর্ট করা হলো
+import User from "../../../models/User"; 
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,6 @@ export async function POST(req: Request) {
     
     // 💥 যদি রিকোয়েস্টটি কোনো এজেন্টের হয় 💥
     if (role === "agent") {
-      // ১. এজেন্টের প্রোফাইল খুঁজে তার মেইন এবং কাস্টম ইমেইল বের করা
       const agentUser = await User.findOne({ email: email.toLowerCase() }).lean();
       
       if (!agentUser) {
@@ -33,49 +32,62 @@ export async function POST(req: Request) {
          emailsToMatch.push(agentUser.customAgentMail);
       }
 
-      // ২. এই এজেন্টের আন্ডারে থাকা সব ইউজারদের খুঁজে বের করা
       const networkUsers = await User.find({
         agentEmail: { $in: emailsToMatch }
       }).select("email").lean();
 
-      const targetEmails = networkUsers.map((u: any) => u.email);
+      const targetEmails = networkUsers.map((u: any) => u.email.toLowerCase());
 
-      // যদি এজেন্টের কোনো ইউজার না থাকে, তবে ফাঁকা ডাটা রিটার্ন করবে
       if (targetEmails.length === 0) {
          return NextResponse.json({ success: true, data: [] });
       }
 
-      // ৩. এখন ওই ইউজারদের ইমেইল দিয়ে Order ডাটাবেসে ফিল্টার করা
-      query = { userEmail: { $in: targetEmails } };
+      // Order ডাটাবেস থেকে খোঁজ করার সময় case-insensitive (ছোট-বড় সব হাতের ইমেইল) করা হলো
+      query = { userEmail: { $in: targetEmails.map(e => new RegExp(`^${e}$`, "i")) } };
     }
-    // Admin হলে query ফাঁকা থাকবে, মানে সবার ডাটা দেখাবে!
 
-    // 💥 Zero-Load Query: .lean() দিয়ে ডাটা আনা হচ্ছে 💥
+    // 💥 Zero-Load Query: লেটেস্ট ৫০টি অর্ডার আনা হচ্ছে 💥
     const liveOrders = await Order.find(query)
       .sort({ createdAt: -1 })
-      .limit(50) // সর্বোচ্চ ৫০টি লেটেস্ট অর্ডার দেখাবে
+      .limit(50) 
       .lean(); 
 
     if (liveOrders.length === 0) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    // 💥 অর্ডারের সাথে ইউজারের Name এবং UID যুক্ত করা (যাতে ফ্রন্টএন্ড টেবিলে ইউজারের নাম শো করে) 💥
-    const uniqueUserEmails = [...new Set(liveOrders.map((o: any) => o.userEmail))];
-    const usersInfo = await User.find({ email: { $in: uniqueUserEmails } })
-      .select("email name uid")
-      .lean();
+    // 💥 Bulletproof User Info Mapping (নাম এবং আইডি ফিক্স) 💥
+    // ইমেইলগুলোকে ছোট হাতের অক্ষরে কনভার্ট করে ইউনিক করা হলো
+    const uniqueUserEmails = [...new Set(liveOrders.map((o: any) => o.userEmail?.toLowerCase()).filter(Boolean))];
+    
+    // Case-insensitive ইমেইল দিয়ে User ডাটাবেস থেকে নাম এবং আইডি আনা
+    const usersInfo = await User.find({ 
+        email: { $in: uniqueUserEmails.map(e => new RegExp(`^${e}$`, "i")) } 
+    }).select("email name uid _id").lean();
 
     const userMap = usersInfo.reduce((acc: any, user: any) => {
-      acc[user.email] = { name: user.name, uid: user.uid };
+      if(user.email) {
+         acc[user.email.toLowerCase()] = { 
+           // যদি নাম না থাকে, তবে ইমেইলের @ এর আগের অংশটুকু নাম হিসেবে দেখাবে
+           name: user.name || user.email.split('@')[0], 
+           // যদি uid না থাকে, তবে ডাটাবেসের _id এর শেষ ৬ ডিজিট দেখাবে
+           uid: user.uid || user._id.toString().substring(18, 24).toUpperCase() 
+         };
+      }
       return acc;
     }, {});
 
-    const formattedData = liveOrders.map((order: any) => ({
-      ...order,
-      userName: userMap[order.userEmail]?.name || "User",
-      userUid: userMap[order.userEmail]?.uid || "N/A"
-    }));
+    const formattedData = liveOrders.map((order: any) => {
+      const emailKey = order.userEmail?.toLowerCase();
+      // ইউজারের ইমেইলের প্রথম অংশ (ফলব্যাক হিসেবে)
+      const fallbackName = emailKey ? emailKey.split('@')[0] : "User";
+      
+      return {
+        ...order,
+        userName: userMap[emailKey]?.name || fallbackName,
+        userUid: userMap[emailKey]?.uid || "SYS-001"
+      };
+    });
 
     return NextResponse.json({ success: true, data: formattedData });
   } catch (error) {
