@@ -5,15 +5,27 @@ import DashboardLayout from "../../DashboardLayout";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 
-// SWR Fetcher Function
+// 💥 ADVANCED SWR FETCHER (With Error Tracker) 💥
 const fetcher = async (url: string, payload: any) => {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const json = await res.json();
-  return json.data || [];
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!res.ok) {
+      console.error("💥 API Error! Status Code:", res.status); 
+      return [];
+    }
+
+    const json = await res.json();
+    console.log("✅ Agent API Response:", json); // ব্রাউজার কনসোলে ডাটা দেখাবে
+    return json.data || [];
+  } catch (error) {
+    console.error("💥 Fetch Catch Error:", error);
+    return [];
+  }
 };
 
 export default function AgentRealtimeConsole() {
@@ -24,13 +36,12 @@ export default function AgentRealtimeConsole() {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       const parsed = JSON.parse(storedUser);
-      // শুধু এডমিন বা এজেন্টরাই এই পেজে আসতে পারবে
-      if (parsed.role !== "admin" && parsed.role !== "agent") return router.push("/"); 
+      if (parsed.role !== "agent") return router.push("/"); 
       setUserStore({ role: parsed.role, email: parsed.email });
     }
   }, [router]);
 
-  // 💥 SWR Magic: প্রতি ৩ সেকেন্ডে অটো রিফ্রেশ 💥
+  // 💥 SWR Polling (Zero Load) 💥
   const { data: liveData = [], isValidating } = useSWR(
     userStore ? ["/api/monitoring", userStore] : null,
     ([url, payload]: [string, any]) => fetcher(url, payload),
@@ -46,7 +57,7 @@ export default function AgentRealtimeConsole() {
           <div className="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
             <div>
               <h2 className="text-2xl md:text-3xl font-black text-[#A855F7] tracking-tight">
-                Network Realtime Console
+                Network Realtime
               </h2>
               <div className="flex items-center gap-2 mt-1">
                 <span className="relative flex h-3 w-3">
@@ -60,7 +71,6 @@ export default function AgentRealtimeConsole() {
             </div>
           </div>
 
-          {/* 💥 UPDATE: Added max-h-[75vh] and custom-scrollbar to keep 50 rows neatly scrolable inside the card! 💥 */}
           <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-auto max-h-[75vh] min-h-[300px] custom-scrollbar relative">
             <table className="w-full text-left whitespace-nowrap">
               <thead className="bg-[#0F172A]/90 backdrop-blur-md text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155] sticky top-0 z-20">
@@ -90,9 +100,9 @@ export default function AgentRealtimeConsole() {
                           <span className="text-xs font-mono font-black text-[#94A3B8]">{timeString}</span>
                         </td>
                         <td className="p-4">
-                          <p className="font-bold text-[#E2E8F0]">{req.userName}</p>
+                          <p className="font-bold text-[#E2E8F0]">{req.userName || "User"}</p>
                           <p className="text-[10px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-1">
-                            {req.userUid}
+                            {req.userUid || "N/A"}
                           </p>
                         </td>
                         <td className="p-4">

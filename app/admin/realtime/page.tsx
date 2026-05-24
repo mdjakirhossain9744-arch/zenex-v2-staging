@@ -5,18 +5,30 @@ import DashboardLayout from "../../DashboardLayout";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 
-// SWR Fetcher Function
+// 💥 ADVANCED SWR FETCHER (With Error Tracker) 💥
 const fetcher = async (url: string, payload: any) => {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const json = await res.json();
-  return json.data || [];
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!res.ok) {
+      console.error("💥 API Error! Status Code:", res.status); 
+      return [];
+    }
+
+    const json = await res.json();
+    console.log("✅ Admin API Response:", json); // ব্রাউজার কনসোলে ডাটা দেখাবে
+    return json.data || [];
+  } catch (error) {
+    console.error("💥 Fetch Catch Error:", error);
+    return [];
+  }
 };
 
-export default function LiveConsole() {
+export default function AdminRealtimeConsole() {
   const router = useRouter();
   const [userStore, setUserStore] = useState<{ role: string; email: string } | null>(null);
 
@@ -24,16 +36,15 @@ export default function LiveConsole() {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       const parsed = JSON.parse(storedUser);
-      // এখানে admin বা agent কিনা চেক করে নিন
-      if (parsed.role !== "admin" && parsed.role !== "agent") return router.push("/"); 
+      if (parsed.role !== "admin") return router.push("/"); 
       setUserStore({ role: parsed.role, email: parsed.email });
     }
   }, [router]);
 
-  // 💥 SWR Magic: প্রতি ৩ সেকেন্ডে অটো রিফ্রেশ হবে (Zero DB Load) 💥
+  // 💥 SWR Polling (Zero Load) 💥
   const { data: liveData = [], isValidating } = useSWR(
-    userStore ? ["/api/live-console", userStore] : null,
-    ([url, payload]) => fetcher(url, payload),
+    userStore ? ["/api/monitoring", userStore] : null,
+    ([url, payload]: [string, any]) => fetcher(url, payload),
     { refreshInterval: 3000, revalidateOnFocus: true }
   );
 
@@ -46,7 +57,7 @@ export default function LiveConsole() {
           <div className="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
             <div>
               <h2 className="text-2xl md:text-3xl font-black text-[#3B82F6] tracking-tight">
-                {userStore.role === "admin" ? "Global Live Console" : "Agent Live Console"}
+                Global Realtime Console
               </h2>
               <div className="flex items-center gap-2 mt-1">
                 <span className="relative flex h-3 w-3">
@@ -54,15 +65,15 @@ export default function LiveConsole() {
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-[#10B981]"></span>
                 </span>
                 <p className="text-[#94A3B8] text-sm font-medium tracking-widest uppercase">
-                  Monitoring user activity • 50 Rows
+                  Monitoring Global User Activity • 50 Rows
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-x-auto min-h-[300px]">
+          <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-auto max-h-[75vh] min-h-[300px] custom-scrollbar relative">
             <table className="w-full text-left whitespace-nowrap">
-              <thead className="bg-[#0F172A]/50 text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155]">
+              <thead className="bg-[#0F172A]/90 backdrop-blur-md text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155] sticky top-0 z-20">
                 <tr>
                   <th className="p-4 pl-6 font-black">Time</th>
                   <th className="p-4 font-black">User (ID)</th>
@@ -74,7 +85,7 @@ export default function LiveConsole() {
                 {liveData.length === 0 && !isValidating ? (
                   <tr>
                     <td colSpan={4} className="p-8 text-center text-[#64748B] font-bold">
-                      No live activity found.
+                      No live activity found. (Check browser console if expected)
                     </td>
                   </tr>
                 ) : (
@@ -89,9 +100,9 @@ export default function LiveConsole() {
                           <span className="text-xs font-mono font-black text-[#94A3B8]">{timeString}</span>
                         </td>
                         <td className="p-4">
-                          <p className="font-bold text-[#E2E8F0]">{req.userName}</p>
+                          <p className="font-bold text-[#E2E8F0]">{req.userName || "User"}</p>
                           <p className="text-[10px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-1">
-                            {req.userUid}
+                            {req.userUid || "N/A"}
                           </p>
                         </td>
                         <td className="p-4">
