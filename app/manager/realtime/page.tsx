@@ -46,7 +46,6 @@ const maskOTPInMessage = (msg: string) => {
   return msg.replace(regex, (match) => match.replace(/\d/g, '*'));
 };
 
-// 💥 Fixed the spacing error here 💥
 export default function AgentRealtimeConsole() {
   const router = useRouter();
   const [userStore, setUserStore] = useState<{ role: string; email: string } | null>(null);
@@ -55,7 +54,6 @@ export default function AgentRealtimeConsole() {
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [limit, setLimit] = useState(50);
   
-  // 💥 100% BULLETPROOF FREEZE STATES 💥
   const [isLive, setIsLive] = useState(true);
   const [displayData, setDisplayData] = useState<any[]>([]);
 
@@ -105,42 +103,53 @@ export default function AgentRealtimeConsole() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-10 w-full relative z-10 pb-20 font-sans">
+      <div className="p-3 md:p-10 w-full relative z-10 pb-20 font-sans">
         <div className="w-full">
           
-          <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
+          {/* 💥 Header & Mobile Clock Fixed 💥 */}
+          <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+            <div className="w-full md:w-auto">
               <h2 className="text-2xl md:text-3xl font-black text-[#A855F7] tracking-tight">Network Realtime</h2>
               <div className="flex items-center gap-2 mt-1">
                 <span className="relative flex h-3 w-3">
                   {isLive && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>}
                   <span className={`relative inline-flex rounded-full h-3 w-3 ${isLive ? 'bg-[#10B981]' : 'bg-[#F43F5E]'}`}></span>
                 </span>
-                <p className="text-[#94A3B8] text-sm font-medium tracking-widest uppercase">
-                  {isLive ? `Monitoring Agent Network • ${limit} Rows` : "SYSTEM FROZEN (PAUSED)"}
+                <p className="text-[#94A3B8] text-xs md:text-sm font-medium tracking-widest uppercase">
+                  {isLive ? `Monitoring Network • ${limit} Rows` : "SYSTEM FROZEN (PAUSED)"}
                 </p>
               </div>
+
+              {/* 📱 Mobile Live Clock Bar */}
+              <div className="md:hidden mt-3 w-full bg-[#0F172A] border border-[#334155] px-3 py-2 rounded-lg shadow-inner flex justify-between items-center">
+                <span className="text-[10px] text-[#64748B] font-bold uppercase tracking-widest">System Time</span>
+                <span className="text-[#A855F7] font-mono font-black text-xs tracking-wider">{liveTime}</span>
+              </div>
             </div>
+
+            {/* 💻 Desktop Live Clock */}
             <div className="hidden md:block bg-[#0F172A] border border-[#334155] px-5 py-2.5 rounded-lg shadow-inner">
                <span className="text-[#A855F7] font-mono font-black text-lg tracking-wider">{liveTime}</span>
             </div>
           </div>
 
-          <div className="mb-6 flex flex-wrap items-center gap-3 bg-[#1E293B]/80 border border-[#334155] p-3 rounded-xl shadow-lg backdrop-blur-md">
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} disabled={!isLive} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
+          {/* 💥 Control Panel Grid Fixed for Mobile 💥 */}
+          <div className="mb-6 grid grid-cols-2 md:flex md:flex-row items-center gap-3 bg-[#1E293B]/80 border border-[#334155] p-3 rounded-xl shadow-lg backdrop-blur-md">
+            
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} disabled={!isLive} className="col-span-1 w-full bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-3 md:px-4 py-2.5 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
               <option value="ALL">🟣 ALL STATUS</option>
-              <option value="SUCCESS">🟢 SUCCESS (DONE)</option>
-              <option value="PENDING">🟡 PENDING (WAIT)</option>
-              <option value="FAILED">🔴 FAILED (CANCEL)</option>
+              <option value="SUCCESS">🟢 SUCCESS</option>
+              <option value="PENDING">🟡 PENDING</option>
+              <option value="FAILED">🔴 FAILED</option>
             </select>
 
-            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} disabled={!isLive} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
-              <option value={25}>Show 25 Rows</option>
-              <option value={50}>Show 50 Rows</option>
-              <option value={100}>Show 100 Rows</option>
+            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} disabled={!isLive} className="col-span-1 w-full bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-3 md:px-4 py-2.5 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
+              <option value={25}>25 Rows</option>
+              <option value={50}>50 Rows</option>
+              <option value={100}>100 Rows</option>
             </select>
 
-            <button onClick={handleToggleLive} className={`ml-auto md:ml-4 text-[10px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
+            <button onClick={handleToggleLive} className={`col-span-2 w-full md:w-auto md:ml-auto text-[11px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
               {isLive ? '🟢 Live Auto-Sync' : '⏸ SYSTEM FROZEN'}
             </button>
           </div>
