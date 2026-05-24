@@ -28,8 +28,9 @@ const getLiveUTCString = () => {
   return `${hours}:${minutes}:${seconds} UTC - ${day} ${month}`;
 };
 
-// 💥 টেবিলের জন্য শর্ট টাইম (শুধু ঘন্টা:মিনিট:সেকেন্ড) 💥
+// 💥 টেবিলের জন্য শর্ট টাইম (বক্স ছাড়া একদম ক্লিন ডিজাইন) 💥
 const formatSimpleTime = (dateString: string) => {
+  if (!dateString) return "N/A";
   const d = new Date(dateString);
   const hours = String(d.getUTCHours()).padStart(2, '0');
   const minutes = String(d.getUTCMinutes()).padStart(2, '0');
@@ -113,8 +114,10 @@ export default function AdminRealtimeConsole() {
                     const isDone = req.status === "DONE";
                     return (
                       <tr key={req._id} className="hover:bg-[#334155]/20 transition-colors animate-fade-in">
-                        {/* 💥 Short Time Show 💥 */}
-                        <td className="px-4 py-2.5 pl-6"><span className="text-[12px] font-mono font-black text-[#94A3B8] bg-[#0F172A] px-2 py-1 rounded border border-[#334155]">{formatSimpleTime(req.createdAt)}</span></td>
+                        {/* 💥 কালো বক্স রিমুভ করে ক্লিন টেক্সট ডিজাইন করা হলো 💥 */}
+                        <td className="px-4 py-2.5 pl-6">
+                           <span className="text-xs font-mono font-black text-[#64748B]">{formatSimpleTime(req.createdAt)}</span>
+                        </td>
                         <td className="px-4 py-2.5"><p className="font-bold text-sm text-[#E2E8F0]">{req.userName || "User"}</p><p className="text-[9px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-0.5">{req.userUid || "N/A"}</p></td>
                         <td className="px-4 py-2.5"><p className="font-black text-[#3B82F6] tracking-wider text-sm">{req.searchNumber || "N/A"}</p><p className="text-[9px] text-[#64748B] mt-0.5 font-bold uppercase">{req.country} • {req.operator}</p></td>
                         <td className="px-4 py-2.5 pr-6 text-right"><span className={`text-[9px] font-black uppercase px-2.5 py-1.5 rounded-lg border ${isPending ? 'bg-[#EAB308]/10 text-[#EAB308] border-[#EAB308]/20 animate-pulse' : isDone ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20'}`}>{isPending ? "Pending" : req.status}</span></td>

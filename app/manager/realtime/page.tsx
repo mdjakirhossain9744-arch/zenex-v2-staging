@@ -7,7 +7,11 @@ import useSWR from "swr";
 
 const fetcher = async (url: string, payload: any) => {
   try {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await fetch(url, { 
+      method: "POST", 
+      headers: { "Content-Type": "application/json" }, 
+      body: JSON.stringify(payload) 
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || [];
@@ -16,7 +20,7 @@ const fetcher = async (url: string, payload: any) => {
   }
 };
 
-// 💥 লাইভ ঘড়ির জন্য ফুল টাইম 💥
+// 💥 লাইভ ঘড়ির জন্য ফুল টাইম (UTC) 💥
 const getLiveUTCString = () => {
   const d = new Date();
   const hours = String(d.getUTCHours()).padStart(2, '0');
@@ -28,8 +32,9 @@ const getLiveUTCString = () => {
   return `${hours}:${minutes}:${seconds} UTC - ${day} ${month}`;
 };
 
-// 💥 টেবিলের জন্য শর্ট টাইম 💥
+// 💥 টেবিলের জন্য শর্ট টাইম (বক্স ছাড়া একদম ক্লিন ডিজাইন) 💥
 const formatSimpleTime = (dateString: string) => {
+  if (!dateString) return "N/A";
   const d = new Date(dateString);
   const hours = String(d.getUTCHours()).padStart(2, '0');
   const minutes = String(d.getUTCMinutes()).padStart(2, '0');
@@ -43,7 +48,6 @@ export default function AgentRealtimeConsole() {
   const [liveTime, setLiveTime] = useState<string>("");
 
   useEffect(() => {
-    // ক্লায়েন্ট সাইডে লাইভ ঘড়ি চালু
     setLiveTime(getLiveUTCString());
     const timer = setInterval(() => {
       setLiveTime(getLiveUTCString());
@@ -73,7 +77,7 @@ export default function AgentRealtimeConsole() {
       <div className="p-4 md:p-10 w-full relative z-10 pb-20 font-sans">
         <div className="w-full">
           
-          {/* 💥 Header Section with Live Clock 💥 */}
+          {/* Header Section with Live Clock */}
           <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h2 className="text-2xl md:text-3xl font-black text-[#A855F7] tracking-tight">Network Realtime</h2>
@@ -82,13 +86,13 @@ export default function AgentRealtimeConsole() {
                 <p className="text-[#94A3B8] text-sm font-medium tracking-widest uppercase">Monitoring Agent Network • 50 Rows</p>
               </div>
 
-              {/* 📱 Mobile Live Clock */}
+              {/* Mobile Live Clock */}
               <div className="md:hidden mt-3 inline-block bg-[#0F172A] border border-[#334155] px-3 py-1.5 rounded-md shadow-inner">
                 <span className="text-[#A855F7] font-mono font-black text-sm tracking-wider">{liveTime}</span>
               </div>
             </div>
 
-            {/* 💻 Desktop Live Clock */}
+            {/* Desktop Live Clock */}
             <div className="hidden md:block bg-[#0F172A] border border-[#334155] px-5 py-2.5 rounded-lg shadow-inner">
                <span className="text-[#A855F7] font-mono font-black text-lg tracking-wider">{liveTime}</span>
             </div>
@@ -113,8 +117,10 @@ export default function AgentRealtimeConsole() {
                     const isDone = req.status === "DONE";
                     return (
                       <tr key={req._id} className="hover:bg-[#334155]/20 transition-colors animate-fade-in">
-                        {/* 💥 Short Time Show 💥 */}
-                        <td className="px-4 py-2.5 pl-6"><span className="text-[12px] font-mono font-black text-[#94A3B8] bg-[#0F172A] px-2 py-1 rounded border border-[#334155]">{formatSimpleTime(req.createdAt)}</span></td>
+                        {/* 💥 টাইমের কালো বক্স রিমুভ করে ক্লিন টেক্সট করা হয়েছে 💥 */}
+                        <td className="px-4 py-2.5 pl-6">
+                           <span className="text-xs font-mono font-black text-[#64748B]">{formatSimpleTime(req.createdAt)}</span>
+                        </td>
                         <td className="px-4 py-2.5"><p className="font-bold text-sm text-[#E2E8F0]">{req.userName || "User"}</p><p className="text-[9px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-0.5">{req.userUid || "N/A"}</p></td>
                         <td className="px-4 py-2.5"><p className="font-black text-[#3B82F6] tracking-wider text-sm">{req.searchNumber || "N/A"}</p><p className="text-[9px] text-[#64748B] mt-0.5 font-bold uppercase">{req.country} • {req.operator}</p></td>
                         <td className="px-4 py-2.5 pr-6 text-right"><span className={`text-[9px] font-black uppercase px-2.5 py-1.5 rounded-lg border ${isPending ? 'bg-[#EAB308]/10 text-[#EAB308] border-[#EAB308]/20 animate-pulse' : isDone ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20'}`}>{isPending ? "Pending" : req.status}</span></td>
