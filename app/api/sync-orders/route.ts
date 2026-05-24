@@ -131,15 +131,17 @@ export async function POST(req: Request) {
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
       
-      // 💥 ID FIX: ডাটাবেসে যে নামেই আইডি থাকুক, সে খুঁজে নেবে 💥
-      const user = await User.findOne({ email }).select("name zxId customId uid agentEmail customAgentMail").lean();
+      // 💥 ID FIX: ডাটাবেস থেকে User এর সব ডাটা আনা হচ্ছে 💥
+      const user = await User.findOne({ email }).lean();
       
-      const matchedUid = user?.zxId || user?.customId || user?.uid || "N/A";
+      // 💥 নাম এবং আজীবনের জন্য ফিক্সড ZX-ID জেনারেট লজিক 💥
+      const matchedName = user?.fullName || email.split("@")[0];
+      const matchedUid = user?.uid || user?.zxId || (user?._id ? `ZX-${user._id.toString().slice(-6).toUpperCase()}` : "ZX-UNKNOWN");
       const matchedAgent = (user?.agentEmail || user?.customAgentMail || "admin").toLowerCase(); // Case-insensitive fix
 
       const newOrder = new Order({
         userEmail: email, 
-        userName: user?.name || email.split("@")[0], 
+        userName: matchedName, 
         userUid: matchedUid,            
         agentEmail: matchedAgent,     
         searchNumber: orderData.searchNumber, 

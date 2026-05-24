@@ -48,14 +48,14 @@ export async function POST(req: Request) {
         { agentEmail: validAgent.customAgentMail }
       ],
       role: "user",
-      status: "active" // 💥 এই লাইনটি যোগ করা হয়েছে
+      status: "active" 
     });
 
     const maxLimit = validAgent.agentMaxUsers || 100;
     
     if (totalAgentUsers >= maxLimit) {
       return NextResponse.json({ 
-        message: `দুঃখিত! এই এজেন্টের সিট ফুল হয়ে গেছে (${maxLimit}/${maxLimit})। নতুন কেউ জয়েন করতে পারবে না।` 
+        message: `দুঃখিত! এই এজেন্টের সিট ফুল হয়ে গেছে (${maxLimit}/${maxLimit})। নতুন কেউ জয়েন করতে পারবেবিধা নেই।` 
       }, { status: 400 });
     }
 
@@ -73,14 +73,17 @@ export async function POST(req: Request) {
       country, 
       agentEmail: agentEmail, 
       password: hashedPassword,
-      withdrawPin: finalPin, // 💥 পিন সেভ করা হলো
+      withdrawPin: finalPin, 
       role: "user", 
       status: "pending", 
       balance: 0, 
-      otpRate: 0, // 💥 মাস্টার রুলস: নতুন ইউজারের রেট 0 থাকবে 💥
+      otpRate: 0, 
       apiKey: newApiKey,       
       isApiActive: false,      
     });
+
+    // 💥 ম্যাজিক: মঙ্গোডিবির অরিজিনাল আইডি থেকেই ZX-ID বানিয়ে ডাটাবেসে সেভ করে দেওয়া হচ্ছে 💥
+    newUser.zxId = `ZX-${newUser._id.toString().slice(-6).toUpperCase()}`;
 
     await newUser.save();
 

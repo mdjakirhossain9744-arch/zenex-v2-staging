@@ -13,6 +13,9 @@ const userSchema = new Schema(
     // 💥 ম্যাজিক: উইথড্র সিকিউরিটি পিন (ডিফল্ট 1234) 💥
     withdrawPin: { type: String, default: "1234" },
     
+    // 💥 ইউজার আইডি (ZX-ID) 💥
+    zxId: { type: String, default: "" },
+    
     role: { type: String, default: "user" }, 
     status: { type: String, default: "pending" }, 
     
