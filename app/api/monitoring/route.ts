@@ -51,13 +51,13 @@ export async function POST(req: Request) {
 
     if (liveOrders.length === 0) return NextResponse.json({ success: true, data: [] });
 
-    // 💥 TRIM ADDED: ইমেইলের স্পেস বাগ ফিক্স 💥
     const rawEmails = liveOrders.map((o: any) => o.userEmail?.trim()).filter(Boolean);
     const uniqueEmails = [...new Set(rawEmails)];
     
+    // 💥 MULTI-FIELD NAME FETCH: ডাটাবেসে নাম যে নামেই থাকুক, বের করে আনবে 💥
     const usersInfo = await User.find({ 
         email: { $in: uniqueEmails.map(e => new RegExp(`^${e}$`, "i")) } 
-    }).select("email name uid _id").lean();
+    }).select("email name fullName userName username uid _id").lean();
 
     const userMap: Record<string, any> = {};
     usersInfo.forEach((u: any) => {
@@ -67,9 +67,11 @@ export async function POST(req: Request) {
                 ? u.uid 
                 : `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`;
 
-            // 💥 NAME FIX: স্পেস রিমুভ করে অরিজিনাল নাম আনা হয়েছে 💥
+            // 💥 BULLETPROOF NAME LOGIC: সব রকম ফিল্ড চেক করবে 💥
+            const realName = u.name || u.fullName || u.userName || u.username || "";
+
             userMap[mailKey] = {
-                name: (u.name && u.name.trim() !== "") ? u.name.trim() : mailKey.split('@')[0], 
+                name: (realName && realName.trim() !== "") ? realName.trim() : mailKey.split('@')[0], 
                 uid: userUID
             };
         }
