@@ -3,6 +3,13 @@ import mongoose, { Schema, models } from "mongoose";
 const orderSchema = new Schema(
   {
     userEmail: { type: String, required: true },
+    
+    // 💥 ZERO-LOAD CONSOLE TRACKERS 💥
+    userName: { type: String, default: "User" },
+    userUid: { type: String, default: "N/A" },
+    agentEmail: { type: String, default: "admin" },
+    // 💥 END TRACKERS 💥
+
     searchNumber: { type: String, required: true },
     displayNumber: { type: String, required: true },
     country: { type: String, default: "Unknown" },
@@ -17,8 +24,9 @@ const orderSchema = new Schema(
     orderCommission: { type: Number, default: 0 }, 
 
     // 💥 ENTERPRISE GLITCH LOCK (The Ultimate Glitch Preventer) 💥
-    // আগে receivedNids ছিল, এখন processedKeys ব্যবহার করা হচ্ছে যাতে NID এবং Timestamp দুটোই ট্র্যাক করা যায়
+    // আগে receivedNids ছিল, এখন processedKeys ব্যবহার করা হচ্ছে যাতে NID এবং Timestamp দুটোই ট্র্যাক করা যায়
     processedKeys: { type: [String], default: [] },
+    receivedNids: { type: [String], default: [] }, // আগের লকের জন্য এটা রেখে দিলাম যাতে কোনো এরর না আসে
 
     // 💥 ২ দিন (৪৮ ঘণ্টা) গ্যারান্টি 💥
     expireAt: { type: Date, required: true, default: () => new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } 

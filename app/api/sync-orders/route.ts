@@ -96,7 +96,7 @@ export async function POST(req: Request) {
           }
       }
 
-      // 💥 FIX: ব্যাকএন্ড এখন আর ডাটা ভাঙবে না, জাস্ট ফ্রন্টএন্ডে পাঠিয়ে দেবে 💥
+      // 💥 FIX: ব্যাকএন্ড এখন আর ডাটা ভাঙবে না, জাস্ট ফ্রন্টএন্ডে পাঠিয়ে দেবে 💥
       orders.forEach((o: any) => {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         finalOrders.push({
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
           fullMessage: o.fullMessage, // পুরা _||_ যুক্ত মেসেজটাই পাঠাবে
           seenMessages: msgArray, 
           isDup: false, 
-          isMulti: msgArray.length > 1, // ফ্রন্টএন্ডকে জানিয়ে দেবে এটা মাল্টি
+          isMulti: msgArray.length > 1, // ফ্রন্টএন্ডকে জানিয়ে দেবে এটা মাল্টি
           createdAt: new Date(o.createdAt).getTime(), 
           receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
         });
@@ -130,10 +130,22 @@ export async function POST(req: Request) {
 
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
+      
+      // 💥 ZERO-LOAD TRICK: ইউজারের তথ্য অর্ডার তৈরির সময়ই এনে সেভ করে রাখা হচ্ছে 💥
+      const user = await User.findOne({ email }).select("name customId agentEmail").lean();
+
       const newOrder = new Order({
-        userEmail: email, searchNumber: orderData.searchNumber, displayNumber: orderData.displayNumber,
-        country: orderData.country, operator: orderData.operator, status: orderData.status,
-        otp: orderData.otp, fullMessage: orderData.fullMessage, 
+        userEmail: email, 
+        userName: user?.name || email.split("@")[0], // নাম না থাকলে ইমেইলের প্রথম অংশ
+        userUid: user?.customId || "N/A",            // ইউজারের কাস্টম আইডি (ZX-...)
+        agentEmail: user?.agentEmail || "admin",     // কোন এজেন্টের আন্ডারে আছে
+        searchNumber: orderData.searchNumber, 
+        displayNumber: orderData.displayNumber,
+        country: orderData.country, 
+        operator: orderData.operator, 
+        status: orderData.status,
+        otp: orderData.otp, 
+        fullMessage: orderData.fullMessage, 
         dateString: todayStr, 
         expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
       });
