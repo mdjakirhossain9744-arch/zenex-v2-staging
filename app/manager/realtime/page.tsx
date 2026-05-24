@@ -5,7 +5,6 @@ import DashboardLayout from "../../DashboardLayout";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 
-// 💥 Updated Fetcher to handle Payload properly 💥
 const fetcher = async (url: string, payload: any) => {
   try {
     const res = await fetch(url, { 
@@ -41,14 +40,10 @@ const formatSimpleTime = (dateString: string) => {
   return `${hours}:${minutes}:${seconds}`;
 };
 
-// 💥 SMART OTP MASKING FUNCTION 💥
 const maskOTPInMessage = (msg: string) => {
   if (!msg) return "";
   const regex = /(?:\b\d{3}[\s-]\d{3,4}\b)|(?:\b\d{4,10}\b)|(?:G-\d{6,8})/g;
-  
-  return msg.replace(regex, (match) => {
-    return match.replace(/\d/g, '*');
-  });
+  return msg.replace(regex, (match) => match.replace(/\d/g, '*'));
 };
 
 export default function AgentRealtimeConsole() {
@@ -56,16 +51,13 @@ export default function AgentRealtimeConsole() {
   const [userStore, setUserStore] = useState<{ role: string; email: string } | null>(null);
   const [liveTime, setLiveTime] = useState<string>("");
 
-  // 💥 NEW: UI Control States 💥
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [limit, setLimit] = useState(50);
   const [isLive, setIsLive] = useState(true);
 
   useEffect(() => {
     setLiveTime(getLiveUTCString());
-    const timer = setInterval(() => {
-      setLiveTime(getLiveUTCString());
-    }, 1000);
+    const timer = setInterval(() => setLiveTime(getLiveUTCString()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -73,17 +65,20 @@ export default function AgentRealtimeConsole() {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       const parsed = JSON.parse(storedUser);
-      // এখানে role "agent" চেক হচ্ছে
       if (parsed.role !== "agent") return router.push("/"); 
       setUserStore({ role: parsed.role, email: parsed.email });
     }
   }, [router]);
 
-  // 💥 NEW: Advanced SWR Logic with Dynamic Key & Zero-Load Pause 💥
   const { data: liveData = [], isValidating } = useSWR(
     userStore ? ["/api/monitoring", userStore.role, userStore.email, filterStatus, limit] : null,
     ([url, role, email, status, rowLimit]: any) => fetcher(url, { role, email, filterStatus: status, limit: rowLimit }),
-    { refreshInterval: isLive ? 3000 : 0, revalidateOnFocus: true }
+    { 
+      refreshInterval: isLive ? 3000 : 0, 
+      revalidateOnFocus: isLive, 
+      revalidateOnReconnect: isLive,
+      revalidateIfStale: isLive
+    }
   );
 
   if (!userStore) return null;
@@ -93,7 +88,6 @@ export default function AgentRealtimeConsole() {
       <div className="p-4 md:p-10 w-full relative z-10 pb-20 font-sans">
         <div className="w-full">
           
-          {/* Header Section with Live Clock */}
           <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h2 className="text-2xl md:text-3xl font-black text-[#A855F7] tracking-tight">Network Realtime</h2>
@@ -106,22 +100,13 @@ export default function AgentRealtimeConsole() {
                   Monitoring Agent Network • {limit} Rows
                 </p>
               </div>
-
-              {/* Mobile Live Clock */}
-              <div className="md:hidden mt-3 inline-block bg-[#0F172A] border border-[#334155] px-3 py-1.5 rounded-md shadow-inner">
-                <span className="text-[#A855F7] font-mono font-black text-sm tracking-wider">{liveTime}</span>
-              </div>
             </div>
-
-            {/* Desktop Live Clock */}
             <div className="hidden md:block bg-[#0F172A] border border-[#334155] px-5 py-2.5 rounded-lg shadow-inner">
                <span className="text-[#A855F7] font-mono font-black text-lg tracking-wider">{liveTime}</span>
             </div>
           </div>
 
-          {/* 💥 NEW: CONTROL PANEL UI 💥 */}
           <div className="mb-6 flex flex-wrap items-center gap-3 bg-[#1E293B]/80 border border-[#334155] p-3 rounded-xl shadow-lg backdrop-blur-md">
-            
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer">
               <option value="ALL">🟣 ALL STATUS</option>
               <option value="SUCCESS">🟢 SUCCESS (DONE)</option>
@@ -136,11 +121,10 @@ export default function AgentRealtimeConsole() {
             </select>
 
             <button onClick={() => setIsLive(!isLive)} className={`ml-auto md:ml-4 text-[10px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
-              {isLive ? '🟢 Live Auto-Sync' : '⏸ Paused'}
+              {isLive ? '🟢 Live Auto-Sync' : '⏸ Paused (Freezed)'}
             </button>
           </div>
 
-          {/* Table Section */}
           <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-auto max-h-[75vh] min-h-[300px] custom-scrollbar relative">
             <table className="w-full text-left whitespace-nowrap">
               <thead className="bg-[#0F172A]/90 backdrop-blur-md text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155] sticky top-0 z-20">
@@ -148,20 +132,20 @@ export default function AgentRealtimeConsole() {
                   <th className="px-4 py-3 pl-6 font-black">Time (UTC)</th>
                   <th className="px-4 py-3 font-black">User (ID)</th>
                   <th className="px-4 py-3 font-black">Number Info</th>
-                  {/* 💥 New Message Header 💥 */}
-                  <th className="px-4 py-3 font-black min-w-[250px]">Full Message (Secured)</th>
+                  <th className="px-4 py-3 font-black min-w-[200px] max-w-[300px]">Full Message (Secured)</th>
                   <th className="px-4 py-3 pr-6 font-black text-right">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#334155]/50">
                 {liveData.length === 0 && !isValidating ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-[#64748B] font-bold">No live activity found in your network for this filter.</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-[#64748B] font-bold">No data found for this filter.</td></tr>
                 ) : (
                   liveData.map((req: any) => {
                     const isPending = req.status === "WAIT";
                     const isDone = req.status === "DONE";
-                    // ডাটাবেসে ফুল মেসেজ যে ফিল্ডে সেভ হয় 
+                    // 💥 MULTI রিমুভ করে শুধুমাত্র প্রথম মেসেজটা নেওয়া হচ্ছে 💥
                     const rawMessage = req.fullMessage || req.sms || req.message || ""; 
+                    const displayMessage = rawMessage.split("_||_")[0]; 
 
                     return (
                       <tr key={req._id} className="hover:bg-[#334155]/20 transition-colors animate-fade-in">
@@ -170,7 +154,6 @@ export default function AgentRealtimeConsole() {
                         </td>
                         <td className="px-4 py-2.5">
                           <p className="font-bold text-sm text-[#E2E8F0]">{req.userName || "User"}</p>
-                          {/* 💥 NID Update 💥 */}
                           <p className="text-[9px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-0.5 border border-[#A855F7]/20">
                             {req.userUid || "ZX-N/A"}
                           </p>
@@ -180,14 +163,17 @@ export default function AgentRealtimeConsole() {
                           <p className="text-[9px] text-[#64748B] mt-0.5 font-bold uppercase">{req.country} • {req.operator}</p>
                         </td>
                         
-                        {/* 💥 New Message Body Column 💥 */}
-                        <td className="px-4 py-2.5 whitespace-normal break-words max-w-sm">
-                          {isDone && rawMessage ? (
-                            <div className="bg-[#0F172A] border border-[#334155] rounded px-3 py-2 text-xs text-[#E2E8F0] leading-relaxed font-medium shadow-inner">
-                              {maskOTPInMessage(rawMessage)}
+                        {/* 💥 MESSAGE COLUMN (Pure Clean Single Line) 💥 */}
+                        <td className="px-4 py-2.5 max-w-[200px] md:max-w-[300px]">
+                          {isDone && displayMessage ? (
+                            <div className="relative overflow-hidden bg-[#0F172A] border border-[#334155] rounded px-3 py-1.5 shadow-inner group">
+                              <span className="whitespace-nowrap text-xs text-[#E2E8F0] font-medium pr-10 inline-block w-full">
+                                {maskOTPInMessage(displayMessage.trim())}
+                              </span>
+                              <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-[#0F172A] to-transparent pointer-events-none rounded-r"></div>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-[#64748B] text-xs font-bold bg-[#1E293B] border border-[#334155]/50 rounded px-3 py-2 w-max">
+                            <div className="flex items-center gap-2 text-[#64748B] text-xs font-bold bg-[#1E293B] border border-[#334155]/50 rounded px-3 py-1.5 w-max">
                               {isPending ? (
                                 <>
                                   <span className="relative flex h-2 w-2">
@@ -196,9 +182,7 @@ export default function AgentRealtimeConsole() {
                                   </span>
                                   Awaiting SMS...
                                 </>
-                              ) : (
-                                "No SMS Received"
-                              )}
+                              ) : "No SMS Received"}
                             </div>
                           )}
                         </td>

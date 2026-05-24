@@ -40,16 +40,10 @@ const formatSimpleTime = (dateString: string) => {
   return `${hours}:${minutes}:${seconds}`;
 };
 
-// 💥 SMART OTP MASKING FUNCTION 💥
 const maskOTPInMessage = (msg: string) => {
   if (!msg) return "";
-  // এই Regex ৪-১০ ডিজিটের কোড, স্পেস/হাইফেন যুক্ত কোড এবং G-কোড (Google) ডিটেক্ট করতে পারে
   const regex = /(?:\b\d{3}[\s-]\d{3,4}\b)|(?:\b\d{4,10}\b)|(?:G-\d{6,8})/g;
-  
-  return msg.replace(regex, (match) => {
-    // শুধুমাত্র নাম্বারগুলোকে '*' দিয়ে রিপ্লেস করবে, স্পেস বা হাইফেন ঠিক থাকবে
-    return match.replace(/\d/g, '*');
-  });
+  return msg.replace(regex, (match) => match.replace(/\d/g, '*'));
 };
 
 export default function AdminRealtimeConsole() {
@@ -63,9 +57,7 @@ export default function AdminRealtimeConsole() {
 
   useEffect(() => {
     setLiveTime(getLiveUTCString());
-    const timer = setInterval(() => {
-      setLiveTime(getLiveUTCString());
-    }, 1000);
+    const timer = setInterval(() => setLiveTime(getLiveUTCString()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -81,7 +73,12 @@ export default function AdminRealtimeConsole() {
   const { data: liveData = [], isValidating } = useSWR(
     userStore ? ["/api/monitoring", userStore.role, userStore.email, filterStatus, limit] : null,
     ([url, role, email, status, rowLimit]: any) => fetcher(url, { role, email, filterStatus: status, limit: rowLimit }),
-    { refreshInterval: isLive ? 3000 : 0, revalidateOnFocus: true }
+    { 
+      refreshInterval: isLive ? 3000 : 0, 
+      revalidateOnFocus: isLive, 
+      revalidateOnReconnect: isLive,
+      revalidateIfStale: isLive
+    }
   );
 
   if (!userStore) return null;
@@ -104,7 +101,6 @@ export default function AdminRealtimeConsole() {
                 </p>
               </div>
             </div>
-
             <div className="hidden md:block bg-[#0F172A] border border-[#334155] px-5 py-2.5 rounded-lg shadow-inner">
                <span className="text-[#3B82F6] font-mono font-black text-lg tracking-wider">{liveTime}</span>
             </div>
@@ -125,7 +121,7 @@ export default function AdminRealtimeConsole() {
             </select>
 
             <button onClick={() => setIsLive(!isLive)} className={`ml-auto md:ml-4 text-[10px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
-              {isLive ? '🟢 Live Auto-Sync' : '⏸ Paused'}
+              {isLive ? '🟢 Live Auto-Sync' : '⏸ Paused (Freezed)'}
             </button>
           </div>
 
@@ -136,8 +132,7 @@ export default function AdminRealtimeConsole() {
                   <th className="px-4 py-3 pl-6 font-black">Time (UTC)</th>
                   <th className="px-4 py-3 font-black">User (ID)</th>
                   <th className="px-4 py-3 font-black">Number Info</th>
-                  {/* 💥 New Message Header 💥 */}
-                  <th className="px-4 py-3 font-black min-w-[250px]">Full Message (Secured)</th>
+                  <th className="px-4 py-3 font-black min-w-[200px] max-w-[300px]">Full Message (Secured)</th>
                   <th className="px-4 py-3 pr-6 font-black text-right">Status</th>
                 </tr>
               </thead>
@@ -148,8 +143,9 @@ export default function AdminRealtimeConsole() {
                   liveData.map((req: any) => {
                     const isPending = req.status === "WAIT";
                     const isDone = req.status === "DONE";
-                    // ডাটাবেসে ফুল মেসেজ যে ফিল্ডে সেভ হয় (fullMessage বা sms)
+                    // 💥 MULTI রিমুভ করে শুধুমাত্র প্রথম মেসেজটা নেওয়া হচ্ছে 💥
                     const rawMessage = req.fullMessage || req.sms || req.message || ""; 
+                    const displayMessage = rawMessage.split("_||_")[0]; 
 
                     return (
                       <tr key={req._id} className="hover:bg-[#334155]/20 transition-colors animate-fade-in">
@@ -167,14 +163,17 @@ export default function AdminRealtimeConsole() {
                           <p className="text-[9px] text-[#64748B] mt-0.5 font-bold uppercase">{req.country} • {req.operator}</p>
                         </td>
                         
-                        {/* 💥 New Message Body Column 💥 */}
-                        <td className="px-4 py-2.5 whitespace-normal break-words max-w-sm">
-                          {isDone && rawMessage ? (
-                            <div className="bg-[#0F172A] border border-[#334155] rounded px-3 py-2 text-xs text-[#E2E8F0] leading-relaxed font-medium shadow-inner">
-                              {maskOTPInMessage(rawMessage)}
+                        {/* 💥 MESSAGE COLUMN (Pure Clean Single Line) 💥 */}
+                        <td className="px-4 py-2.5 max-w-[200px] md:max-w-[300px]">
+                          {isDone && displayMessage ? (
+                            <div className="relative overflow-hidden bg-[#0F172A] border border-[#334155] rounded px-3 py-1.5 shadow-inner group">
+                              <span className="whitespace-nowrap text-xs text-[#E2E8F0] font-medium pr-10 inline-block w-full">
+                                {maskOTPInMessage(displayMessage.trim())}
+                              </span>
+                              <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-[#0F172A] to-transparent pointer-events-none rounded-r"></div>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-[#64748B] text-xs font-bold bg-[#1E293B] border border-[#334155]/50 rounded px-3 py-2 w-max">
+                            <div className="flex items-center gap-2 text-[#64748B] text-xs font-bold bg-[#1E293B] border border-[#334155]/50 rounded px-3 py-1.5 w-max">
                               {isPending ? (
                                 <>
                                   <span className="relative flex h-2 w-2">
@@ -183,9 +182,7 @@ export default function AdminRealtimeConsole() {
                                   </span>
                                   Awaiting SMS...
                                 </>
-                              ) : (
-                                "No SMS Received"
-                              )}
+                              ) : "No SMS Received"}
                             </div>
                           )}
                         </td>
