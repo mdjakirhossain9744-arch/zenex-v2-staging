@@ -106,7 +106,6 @@ export default function AdminRealtimeConsole() {
       <div className="p-3 md:p-10 w-full relative z-10 pb-20 font-sans">
         <div className="w-full">
           
-          {/* 💥 Header & Mobile Clock Fixed 💥 */}
           <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <div className="w-full md:w-auto">
               <h2 className="text-2xl md:text-3xl font-black text-[#3B82F6] tracking-tight">Global Realtime</h2>
@@ -120,22 +119,18 @@ export default function AdminRealtimeConsole() {
                 </p>
               </div>
               
-              {/* 📱 Mobile Live Clock Bar */}
               <div className="md:hidden mt-3 w-full bg-[#0F172A] border border-[#334155] px-3 py-2 rounded-lg shadow-inner flex justify-between items-center">
                 <span className="text-[10px] text-[#64748B] font-bold uppercase tracking-widest">System Time</span>
                 <span className="text-[#3B82F6] font-mono font-black text-xs tracking-wider">{liveTime}</span>
               </div>
             </div>
 
-            {/* 💻 Desktop Live Clock */}
             <div className="hidden md:block bg-[#0F172A] border border-[#334155] px-5 py-2.5 rounded-lg shadow-inner">
                <span className="text-[#3B82F6] font-mono font-black text-lg tracking-wider">{liveTime}</span>
             </div>
           </div>
 
-          {/* 💥 Control Panel Grid Fixed for Mobile 💥 */}
           <div className="mb-6 grid grid-cols-2 md:flex md:flex-row items-center gap-3 bg-[#1E293B]/80 border border-[#334155] p-3 rounded-xl shadow-lg backdrop-blur-md">
-            
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} disabled={!isLive} className="col-span-1 w-full bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-3 md:px-4 py-2.5 rounded-lg border border-[#334155] focus:border-[#3B82F6] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
               <option value="ALL">🟣 ALL STATUS</option>
               <option value="SUCCESS">🟢 SUCCESS</option>
@@ -149,7 +144,8 @@ export default function AdminRealtimeConsole() {
               <option value={100}>100 Rows</option>
             </select>
 
-            <button onClick={handleToggleLive} className={`col-span-2 w-full md:w-auto md:ml-auto text-[11px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
+            {/* 💥 PC Button Text Wrap Fixed (whitespace-nowrap flex-shrink-0) 💥 */}
+            <button onClick={handleToggleLive} className={`col-span-2 w-full md:w-auto md:ml-auto flex-shrink-0 whitespace-nowrap text-[11px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
               {isLive ? '🟢 Live Auto-Sync' : '⏸ SYSTEM FROZEN'}
             </button>
           </div>
