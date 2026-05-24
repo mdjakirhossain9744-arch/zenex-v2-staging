@@ -131,46 +131,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              const matches = result.otps.filter((o:any) => String(o.number).replace(/\D/g, "").endsWith(last6));
 
              if (matches.length > 0) {
+                // 💥 NEW: Process Matches with Timestamp Keys (Replacing NID) 💥
+                const processedMatches = matches.map((m: any) => {
+                   let rTime = Date.now();
+                   let uKey = (m.otp || m.msg || m.sms || "").trim(); // Fallback key if no time provided
 
-                // 💥 1. Page Load হওয়ার পর আগের NID গুলো মেমরিতে সেট করা 💥
-                if (item.status === "DONE" && !item.seenNids) {
-                   item.seenNids = [];
+                   if (m.time) { rTime = new Date(m.time).getTime() || Date.now(); uKey = String(m.time); }
+                   else if (m.date) { rTime = new Date(m.date).getTime() || Date.now(); uKey = String(m.date); }
+                   else if (m.timestamp) { 
+                       const ts = Number(m.timestamp); 
+                       rTime = ts < 10000000000 ? ts * 1000 : ts; 
+                       uKey = String(rTime); 
+                   }
+                   return { ...m, realApiTime: rTime, uniqueKey: uKey };
+                });
+
+                // 💥 1. Page Load হওয়ার পর আগের Key গুলো মেমরিতে সেট করা 💥
+                if (item.status === "DONE" && !item.seenKeys) {
+                   item.seenKeys = [];
                    if (item.seenMessages) {
                        item.seenMessages.forEach((msg: string) => {
-                           const found = matches.find((m: any) => (m.otp || m.msg || m.sms || "").trim() === msg.trim() && !item.seenNids.includes(m.nid));
-                           if (found && found.nid) item.seenNids.push(found.nid);
+                           const found = processedMatches.find((m: any) => (m.otp || m.msg || m.sms || "").trim() === msg.trim() && !item.seenKeys.includes(m.uniqueKey));
+                           if (found) item.seenKeys.push(found.uniqueKey);
                        });
                    }
                 }
 
                 if (item.status === "WAIT") {
-                   const matchedObj = matches[0];
+                   const matchedObj = processedMatches[0];
                    const firstMsg = matchedObj.otp || matchedObj.msg || matchedObj.sms || "";
                    const codeMatch = firstMsg.match(/\b\d{4,8}\b/);
                    const finalCode = codeMatch ? codeMatch[0] : firstMsg;
 
-                   let realApiTime = Date.now();
-                   if (matchedObj.time) realApiTime = new Date(matchedObj.time).getTime() || Date.now();
-                   else if (matchedObj.date) realApiTime = new Date(matchedObj.date).getTime() || Date.now();
-                   else if (matchedObj.timestamp) { const ts = Number(matchedObj.timestamp); realApiTime = ts < 10000000000 ? ts * 1000 : ts; }
-
-                   // 💥 2. NID পাঠানো হলো (Event & Backend এ) 💥
-                   window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: firstMsg, isMulti: false, nid: matchedObj.nid } }));
+                   window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: firstMsg, isMulti: false } }));
                    showGlobalToast(`${finalCode} (New OTP)`);
 
-                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: realApiTime, nid: matchedObj.nid } }) });
+                   await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: matchedObj.realApiTime } }) });
 
                    item.status = "DONE"; 
                    item.fullMessage = firstMsg; 
                    item.seenMessages = [firstMsg]; 
-                   item.seenNids = [matchedObj.nid]; // Save NID
+                   item.seenKeys = [matchedObj.uniqueKey]; // Save Key instead of NID
                    hasUpdates = true;
                 } 
                 else if (item.status === "DONE") {
-                   const alreadySeenNids = item.seenNids || [];
+                   const alreadySeenKeys = item.seenKeys || [];
 
-                   // 💥 3. DEDUPLICATION FIX: এখন আর Text দিয়ে ফিল্টার হবে না, NID দিয়ে ফিল্টার হবে! 💥
-                   const newMatches = matches.filter((mObj: any) => mObj.nid && !alreadySeenNids.includes(mObj.nid));
+                   // 💥 3. DEDUPLICATION FIX: এখন আর NID দিয়ে নয়, Timestamp/Unique Key দিয়ে ফিল্টার হবে! 💥
+                   const newMatches = processedMatches.filter((mObj: any) => !alreadySeenKeys.includes(mObj.uniqueKey));
 
                    if (newMatches.length > 0) {
                       for (const newMatch of newMatches) {
@@ -178,19 +186,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                          const codeMatch = newMsg.match(/\b\d{4,8}\b/); 
                          const finalCode = codeMatch ? codeMatch[0] : newMsg;
 
-                         let realApiTime = Date.now();
-                         if (newMatch.time) realApiTime = new Date(newMatch.time).getTime() || Date.now();
-                         else if (newMatch.date) realApiTime = new Date(newMatch.date).getTime() || Date.now();
-                         else if (newMatch.timestamp) { const ts = Number(newMatch.timestamp); realApiTime = ts < 10000000000 ? ts * 1000 : ts; }
-
-                         // 💥 4. Multi-OTP NID পাঠানো হলো 💥
-                         window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: newMsg, isMulti: true, nid: newMatch.nid } }));
+                         window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: newMsg, isMulti: true } }));
                          showGlobalToast(`${finalCode} (Multi OTP)`);
 
-                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: realApiTime, nid: newMatch.nid } }) });
+                         await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: newMatch.realApiTime } }) });
                          
                          item.seenMessages.push(newMsg);
-                         item.seenNids.push(newMatch.nid); // Save new NID
+                         item.seenKeys.push(newMatch.uniqueKey); // Save new Key
                       }
                       hasUpdates = true;
                    }
@@ -403,5 +405,5 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     </div>
-  );
+  )
 }
