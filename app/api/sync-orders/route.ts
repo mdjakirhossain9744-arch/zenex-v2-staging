@@ -22,7 +22,6 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const body = await req.json().catch(() => ({}));
     
-    // 💥 THE INTERCEPTOR (Raw Data Tracker) 💥
     try {
       const RawLog = mongoose.models.mnit_raw_logs || mongoose.model("mnit_raw_logs", new mongoose.Schema({
           timestamp: { type: Date, default: Date.now },
@@ -97,28 +96,25 @@ export async function POST(req: Request) {
           }
       }
 
+      // 💥 FIX: ব্যাকএন্ড এখন আর ডাটা ভাঙবে না, জাস্ট ফ্রন্টএন্ডে পাঠিয়ে দেবে 💥
       orders.forEach((o: any) => {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-        if (o.status === "DONE" && msgArray.length > 1) {
-          msgArray.forEach((msg: string, index: number) => {
-            const extractedOtp = extractStrictOTP(msg); 
-            
-            finalOrders.push({
-              id: `${o._id.toString()}_${index}`,
-              dateString: o.dateString, displayNumber: o.displayNumber, searchNumber: o.searchNumber,
-              country: o.country, operator: o.operator, status: o.status, otp: extractedOtp,
-              fullMessage: msg, seenMessages: msgArray, isDup: index > 0, isMulti: true, 
-              createdAt: new Date(o.createdAt).getTime(), receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
-            });
-          });
-        } else {
-          finalOrders.push({
-            id: o._id.toString(), dateString: o.dateString, displayNumber: o.displayNumber,
-            searchNumber: o.searchNumber, country: o.country, operator: o.operator, status: o.status,
-            otp: o.otp, fullMessage: o.fullMessage, seenMessages: msgArray, isDup: false, isMulti: false,
-            createdAt: new Date(o.createdAt).getTime(), receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
-          });
-        }
+        finalOrders.push({
+          id: o._id.toString(), 
+          dateString: o.dateString, 
+          displayNumber: o.displayNumber,
+          searchNumber: o.searchNumber, 
+          country: o.country, 
+          operator: o.operator, 
+          status: o.status,
+          otp: o.otp, 
+          fullMessage: o.fullMessage, // পুরা _||_ যুক্ত মেসেজটাই পাঠাবে
+          seenMessages: msgArray, 
+          isDup: false, 
+          isMulti: msgArray.length > 1, // ফ্রন্টএন্ডকে জানিয়ে দেবে এটা মাল্টি
+          createdAt: new Date(o.createdAt).getTime(), 
+          receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
+        });
       });
 
       finalOrders.sort((a, b) => b.createdAt - a.createdAt);
@@ -176,13 +172,11 @@ export async function POST(req: Request) {
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
 
         // 💥 ১. FINANCIAL LOSS PREVENTER (Strict Text Lock) 💥
-        // টাইমস্ট্যাম্প যাই হোক না কেন, হুবহু একই মেসেজ ডাটাবেসে থাকলে ব্লক! 
         if (currentMsgsArray.includes(incomingMsg)) {
             return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
         }
 
         // 💥 ২. FRONTEND GLITCH PREVENTER (Timestamp Lock) 💥
-        // ফ্রন্টএন্ড যদি ভুল করে একই রিকোয়েস্ট ২ বার পাঠায়, সেটা ব্লক করবে।
         const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
         if (incomingTimestamp && freshOrder.receivedNids?.includes(incomingTimestamp)) {
             return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
@@ -220,7 +214,6 @@ export async function POST(req: Request) {
           }
         }
 
-        // 💥 DB Update Query 💥
         const updateQuery = incomingTimestamp 
               ? { _id: existingOrder._id, receivedNids: { $ne: incomingTimestamp } } 
               : { _id: existingOrder._id };
