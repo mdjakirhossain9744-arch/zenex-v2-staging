@@ -5,27 +5,27 @@ import DashboardLayout from "../../DashboardLayout";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 
-// 💥 ADVANCED SWR FETCHER (With Error Tracker) 💥
 const fetcher = async (url: string, payload: any) => {
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    
-    if (!res.ok) {
-      console.error("💥 API Error! Status Code:", res.status); 
-      return [];
-    }
-
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) return [];
     const json = await res.json();
-    console.log("✅ Admin API Response:", json); // ব্রাউজার কনসোলে ডাটা দেখাবে
     return json.data || [];
   } catch (error) {
-    console.error("💥 Fetch Catch Error:", error);
     return [];
   }
+};
+
+// 💥 TIME FIX: হুবহু ড্যাশবোর্ডের মতো UTC ফরম্যাট 💥
+const formatUTC = (dateString: string) => {
+  const d = new Date(dateString);
+  const hours = String(d.getUTCHours()).padStart(2, '0');
+  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(d.getUTCSeconds()).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = monthNames[d.getUTCMonth()];
+  return `${hours}:${minutes}:${seconds} UTC - ${day} ${month}`;
 };
 
 export default function AdminRealtimeConsole() {
@@ -41,7 +41,6 @@ export default function AdminRealtimeConsole() {
     }
   }, [router]);
 
-  // 💥 SWR Polling (Zero Load) 💥
   const { data: liveData = [], isValidating } = useSWR(
     userStore ? ["/api/monitoring", userStore] : null,
     ([url, payload]: [string, any]) => fetcher(url, payload),
@@ -56,17 +55,10 @@ export default function AdminRealtimeConsole() {
         <div className="w-full">
           <div className="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
             <div>
-              <h2 className="text-2xl md:text-3xl font-black text-[#3B82F6] tracking-tight">
-                Global Realtime Console
-              </h2>
+              <h2 className="text-2xl md:text-3xl font-black text-[#3B82F6] tracking-tight">Global Realtime Console</h2>
               <div className="flex items-center gap-2 mt-1">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#10B981]"></span>
-                </span>
-                <p className="text-[#94A3B8] text-sm font-medium tracking-widest uppercase">
-                  Monitoring Global User Activity • 50 Rows
-                </p>
+                <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-[#10B981]"></span></span>
+                <p className="text-[#94A3B8] text-sm font-medium tracking-widest uppercase">Monitoring Global User Activity • 50 Rows</p>
               </div>
             </div>
           </div>
@@ -75,55 +67,27 @@ export default function AdminRealtimeConsole() {
             <table className="w-full text-left whitespace-nowrap">
               <thead className="bg-[#0F172A]/90 backdrop-blur-md text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155] sticky top-0 z-20">
                 <tr>
-                  <th className="p-4 pl-6 font-black">Time</th>
-                  <th className="p-4 font-black">User (ID)</th>
-                  <th className="p-4 font-black">Number Info</th>
-                  <th className="p-4 pr-6 font-black text-right">Status</th>
+                  {/* 💥 SLIMMER BOX FIX: px-4 py-3 ব্যবহার করা হয়েছে 💥 */}
+                  <th className="px-4 py-3 pl-6 font-black">Time (UTC)</th>
+                  <th className="px-4 py-3 font-black">User (ID)</th>
+                  <th className="px-4 py-3 font-black">Number Info</th>
+                  <th className="px-4 py-3 pr-6 font-black text-right">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#334155]/50">
                 {liveData.length === 0 && !isValidating ? (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center text-[#64748B] font-bold">
-                      No live activity found. (Check browser console if expected)
-                    </td>
-                  </tr>
+                  <tr><td colSpan={4} className="p-8 text-center text-[#64748B] font-bold">No live activity found.</td></tr>
                 ) : (
                   liveData.map((req: any) => {
-                    const timeString = new Date(req.createdAt).toLocaleTimeString('en-US', { hour12: false });
                     const isPending = req.status === "WAIT";
                     const isDone = req.status === "DONE";
-
                     return (
                       <tr key={req._id} className="hover:bg-[#334155]/20 transition-colors animate-fade-in">
-                        <td className="p-4 pl-6">
-                          <span className="text-xs font-mono font-black text-[#94A3B8]">{timeString}</span>
-                        </td>
-                        <td className="p-4">
-                          <p className="font-bold text-[#E2E8F0]">{req.userName || "User"}</p>
-                          <p className="text-[10px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-1">
-                            {req.userUid || "N/A"}
-                          </p>
-                        </td>
-                        <td className="p-4">
-                          <p className="font-black text-[#3B82F6] tracking-wider text-sm">
-                            {req.searchNumber || "N/A"}
-                          </p>
-                          <p className="text-[10px] text-[#64748B] mt-1 font-bold uppercase">
-                            {req.country} • {req.operator}
-                          </p>
-                        </td>
-                        <td className="p-4 pr-6 text-right">
-                          <span className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border ${
-                            isPending 
-                              ? 'bg-[#EAB308]/10 text-[#EAB308] border-[#EAB308]/20 animate-pulse' 
-                              : isDone 
-                              ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'
-                              : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20'
-                          }`}>
-                            {isPending ? "Pending" : req.status}
-                          </span>
-                        </td>
+                        {/* 💥 SLIMMER BOX FIX: py-2.5 💥 */}
+                        <td className="px-4 py-2.5 pl-6"><span className="text-[11px] font-mono font-black text-[#94A3B8]">{formatUTC(req.createdAt)}</span></td>
+                        <td className="px-4 py-2.5"><p className="font-bold text-sm text-[#E2E8F0]">{req.userName || "User"}</p><p className="text-[9px] text-[#A855F7] font-mono bg-[#A855F7]/10 px-1.5 py-0.5 rounded inline-block mt-0.5">{req.userUid || "N/A"}</p></td>
+                        <td className="px-4 py-2.5"><p className="font-black text-[#3B82F6] tracking-wider text-sm">{req.searchNumber || "N/A"}</p><p className="text-[9px] text-[#64748B] mt-0.5 font-bold uppercase">{req.country} • {req.operator}</p></td>
+                        <td className="px-4 py-2.5 pr-6 text-right"><span className={`text-[9px] font-black uppercase px-2.5 py-1.5 rounded-lg border ${isPending ? 'bg-[#EAB308]/10 text-[#EAB308] border-[#EAB308]/20 animate-pulse' : isDone ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20'}`}>{isPending ? "Pending" : req.status}</span></td>
                       </tr>
                     );
                   })

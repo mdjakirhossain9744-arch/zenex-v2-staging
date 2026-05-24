@@ -96,7 +96,7 @@ export async function POST(req: Request) {
           }
       }
 
-      // 💥 FIX: ব্যাকএন্ড এখন আর ডাটা ভাঙবে না, জাস্ট ফ্রন্টএন্ডে পাঠিয়ে দেবে 💥
+      // 💥 4-BOX FIX: ব্যাকএন্ড ডাটা আর ভাঙবে না, সরাসরি পাঠিয়ে দেবে 💥
       orders.forEach((o: any) => {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         finalOrders.push({
@@ -108,10 +108,10 @@ export async function POST(req: Request) {
           operator: o.operator, 
           status: o.status,
           otp: o.otp, 
-          fullMessage: o.fullMessage, // পুরা _||_ যুক্ত মেসেজটাই পাঠাবে
+          fullMessage: o.fullMessage, 
           seenMessages: msgArray, 
           isDup: false, 
-          isMulti: msgArray.length > 1, // ফ্রন্টএন্ডকে জানিয়ে দেবে এটা মাল্টি
+          isMulti: msgArray.length > 1, 
           createdAt: new Date(o.createdAt).getTime(), 
           receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
         });
@@ -131,14 +131,17 @@ export async function POST(req: Request) {
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
       
-      // 💥 ZERO-LOAD TRICK: ইউজারের তথ্য অর্ডার তৈরির সময়ই এনে সেভ করে রাখা হচ্ছে 💥
-      const user = await User.findOne({ email }).select("name customId agentEmail").lean();
+      // 💥 ID FIX: ডাটাবেসে যে নামেই আইডি থাকুক, সে খুঁজে নেবে 💥
+      const user = await User.findOne({ email }).select("name zxId customId uid agentEmail customAgentMail").lean();
+      
+      const matchedUid = user?.zxId || user?.customId || user?.uid || "N/A";
+      const matchedAgent = (user?.agentEmail || user?.customAgentMail || "admin").toLowerCase(); // Case-insensitive fix
 
       const newOrder = new Order({
         userEmail: email, 
-        userName: user?.name || email.split("@")[0], // নাম না থাকলে ইমেইলের প্রথম অংশ
-        userUid: user?.customId || "N/A",            // ইউজারের কাস্টম আইডি (ZX-...)
-        agentEmail: user?.agentEmail || "admin",     // কোন এজেন্টের আন্ডারে আছে
+        userName: user?.name || email.split("@")[0], 
+        userUid: matchedUid,            
+        agentEmail: matchedAgent,     
         searchNumber: orderData.searchNumber, 
         displayNumber: orderData.displayNumber,
         country: orderData.country, 
@@ -183,12 +186,10 @@ export async function POST(req: Request) {
         const currentMsg = freshOrder.fullMessage || "";
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
 
-        // 💥 ১. FINANCIAL LOSS PREVENTER (Strict Text Lock) 💥
         if (currentMsgsArray.includes(incomingMsg)) {
             return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
         }
 
-        // 💥 ২. FRONTEND GLITCH PREVENTER (Timestamp Lock) 💥
         const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
         if (incomingTimestamp && freshOrder.receivedNids?.includes(incomingTimestamp)) {
             return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
