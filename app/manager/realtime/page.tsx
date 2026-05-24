@@ -46,6 +46,7 @@ const maskOTPInMessage = (msg: string) => {
   return msg.replace(regex, (match) => match.replace(/\d/g, '*'));
 };
 
+// 💥 Fixed the spacing error here 💥
 export default function AgentRealtimeConsole() {
   const router = useRouter();
   const [userStore, setUserStore] = useState<{ role: string; email: string } | null>(null);
@@ -53,7 +54,10 @@ export default function AgentRealtimeConsole() {
 
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [limit, setLimit] = useState(50);
+  
+  // 💥 100% BULLETPROOF FREEZE STATES 💥
   const [isLive, setIsLive] = useState(true);
+  const [displayData, setDisplayData] = useState<any[]>([]);
 
   useEffect(() => {
     setLiveTime(getLiveUTCString());
@@ -68,18 +72,34 @@ export default function AgentRealtimeConsole() {
       if (parsed.role !== "agent") return router.push("/"); 
       setUserStore({ role: parsed.role, email: parsed.email });
     }
+
+    const storedLiveStatus = sessionStorage.getItem("agent_isLive");
+    if (storedLiveStatus !== null) setIsLive(storedLiveStatus === "true");
+
+    const frozenData = sessionStorage.getItem("agent_frozenData");
+    if (frozenData) {
+      try { setDisplayData(JSON.parse(frozenData)); } catch (e) {}
+    }
   }, [router]);
 
-  const { data: liveData = [], isValidating } = useSWR(
-    userStore ? ["/api/monitoring", userStore.role, userStore.email, filterStatus, limit] : null,
+  const handleToggleLive = () => {
+    const newVal = !isLive;
+    setIsLive(newVal);
+    sessionStorage.setItem("agent_isLive", String(newVal));
+  };
+
+  const { data: swrData } = useSWR(
+    userStore && isLive ? ["/api/monitoring", userStore.role, userStore.email, filterStatus, limit] : null,
     ([url, role, email, status, rowLimit]: any) => fetcher(url, { role, email, filterStatus: status, limit: rowLimit }),
-    { 
-      refreshInterval: isLive ? 3000 : 0, 
-      revalidateOnFocus: isLive, 
-      revalidateOnReconnect: isLive,
-      revalidateIfStale: isLive
-    }
+    { refreshInterval: 3000 }
   );
+
+  useEffect(() => {
+    if (isLive && swrData) {
+      setDisplayData(swrData);
+      sessionStorage.setItem("agent_frozenData", JSON.stringify(swrData));
+    }
+  }, [swrData, isLive]);
 
   if (!userStore) return null;
 
@@ -97,7 +117,7 @@ export default function AgentRealtimeConsole() {
                   <span className={`relative inline-flex rounded-full h-3 w-3 ${isLive ? 'bg-[#10B981]' : 'bg-[#F43F5E]'}`}></span>
                 </span>
                 <p className="text-[#94A3B8] text-sm font-medium tracking-widest uppercase">
-                  Monitoring Agent Network • {limit} Rows
+                  {isLive ? `Monitoring Agent Network • ${limit} Rows` : "SYSTEM FROZEN (PAUSED)"}
                 </p>
               </div>
             </div>
@@ -107,25 +127,25 @@ export default function AgentRealtimeConsole() {
           </div>
 
           <div className="mb-6 flex flex-wrap items-center gap-3 bg-[#1E293B]/80 border border-[#334155] p-3 rounded-xl shadow-lg backdrop-blur-md">
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} disabled={!isLive} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
               <option value="ALL">🟣 ALL STATUS</option>
               <option value="SUCCESS">🟢 SUCCESS (DONE)</option>
               <option value="PENDING">🟡 PENDING (WAIT)</option>
               <option value="FAILED">🔴 FAILED (CANCEL)</option>
             </select>
 
-            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer">
+            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} disabled={!isLive} className="bg-[#0F172A] text-xs md:text-sm font-bold text-[#94A3B8] px-4 py-2 rounded-lg border border-[#334155] focus:border-[#A855F7] focus:text-[#E2E8F0] outline-none transition-all cursor-pointer disabled:opacity-50">
               <option value={25}>Show 25 Rows</option>
               <option value={50}>Show 50 Rows</option>
               <option value={100}>Show 100 Rows</option>
             </select>
 
-            <button onClick={() => setIsLive(!isLive)} className={`ml-auto md:ml-4 text-[10px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
-              {isLive ? '🟢 Live Auto-Sync' : '⏸ Paused (Freezed)'}
+            <button onClick={handleToggleLive} className={`ml-auto md:ml-4 text-[10px] md:text-xs px-5 py-2.5 rounded-lg font-black tracking-widest uppercase transition-all duration-300 border ${isLive ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30 hover:bg-[#F43F5E]/20 shadow-[0_0_15px_rgba(244,63,94,0.2)]'}`}>
+              {isLive ? '🟢 Live Auto-Sync' : '⏸ SYSTEM FROZEN'}
             </button>
           </div>
 
-          <div className="bg-[#1E293B]/80 border border-[#334155] rounded-2xl shadow-lg overflow-auto max-h-[75vh] min-h-[300px] custom-scrollbar relative">
+          <div className={`bg-[#1E293B]/80 border ${isLive ? 'border-[#334155]' : 'border-[#F43F5E]/50'} rounded-2xl shadow-lg overflow-auto max-h-[75vh] min-h-[300px] custom-scrollbar relative transition-all duration-300`}>
             <table className="w-full text-left whitespace-nowrap">
               <thead className="bg-[#0F172A]/90 backdrop-blur-md text-[#94A3B8] uppercase text-[10px] tracking-widest border-b border-[#334155] sticky top-0 z-20">
                 <tr>
@@ -137,13 +157,12 @@ export default function AgentRealtimeConsole() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#334155]/50">
-                {liveData.length === 0 && !isValidating ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-[#64748B] font-bold">No data found for this filter.</td></tr>
+                {displayData.length === 0 ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-[#64748B] font-bold">{isLive ? 'Waiting for data...' : 'No frozen data available.'}</td></tr>
                 ) : (
-                  liveData.map((req: any) => {
+                  displayData.map((req: any) => {
                     const isPending = req.status === "WAIT";
                     const isDone = req.status === "DONE";
-                    // 💥 MULTI রিমুভ করে শুধুমাত্র প্রথম মেসেজটা নেওয়া হচ্ছে 💥
                     const rawMessage = req.fullMessage || req.sms || req.message || ""; 
                     const displayMessage = rawMessage.split("_||_")[0]; 
 
@@ -163,7 +182,6 @@ export default function AgentRealtimeConsole() {
                           <p className="text-[9px] text-[#64748B] mt-0.5 font-bold uppercase">{req.country} • {req.operator}</p>
                         </td>
                         
-                        {/* 💥 MESSAGE COLUMN (Pure Clean Single Line) 💥 */}
                         <td className="px-4 py-2.5 max-w-[200px] md:max-w-[300px]">
                           {isDone && displayMessage ? (
                             <div className="relative overflow-hidden bg-[#0F172A] border border-[#334155] rounded px-3 py-1.5 shadow-inner group">
