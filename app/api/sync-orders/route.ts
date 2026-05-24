@@ -172,23 +172,20 @@ export async function POST(req: Request) {
         const incomingMsg = (orderData.fullMessage || "").trim();
         if (!incomingMsg) return NextResponse.json({ success: false, message: "Empty message" });
 
-        // 💥 ENTERPRISE ANTI-GLITCH LOCK (Timestamp & Time-Gap Based) 💥
-        const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
-        
-        // লক ১: হুবহু একই টাইমস্ট্যাম্প পেলে সাথে সাথে গ্লিচ হিসেবে ব্লক! 
-        if (incomingTimestamp && freshOrder.receivedNids?.includes(incomingTimestamp)) {
-            return NextResponse.json({ success: true, message: "API Glitch Blocked! Exact same SMS timestamp already processed." });
-        }
-
         const currentMsg = freshOrder.fullMessage || "";
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
-        const lastStoredMsg = currentMsgsArray[currentMsgsArray.length - 1];
 
-        // লক ২: ৫ সেকেন্ডের টাইম-গ্যাপ লক (ফলব্যাক)
-        // যদি ফ্রন্টএন্ড কোনো কারণে টাইমস্ট্যাম্প ছাড়াই ডাবল কল মারে, তাহলে ৫ সেকেন্ডের আগে আসা সেম মেসেজকে ব্লক করবে।
-        const timeSinceLastUpdate = Date.now() - new Date(freshOrder.updatedAt).getTime();
-        if (incomingMsg === lastStoredMsg && timeSinceLastUpdate < 5000) {
-            return NextResponse.json({ success: true, message: "Network Glitch Blocked! Same message arrived too fast (< 5s)." });
+        // 💥 ১. FINANCIAL LOSS PREVENTER (Strict Text Lock) 💥
+        // টাইমস্ট্যাম্প যাই হোক না কেন, হুবহু একই মেসেজ ডাটাবেসে থাকলে ব্লক! 
+        if (currentMsgsArray.includes(incomingMsg)) {
+            return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
+        }
+
+        // 💥 ২. FRONTEND GLITCH PREVENTER (Timestamp Lock) 💥
+        // ফ্রন্টএন্ড যদি ভুল করে একই রিকোয়েস্ট ২ বার পাঠায়, সেটা ব্লক করবে।
+        const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
+        if (incomingTimestamp && freshOrder.receivedNids?.includes(incomingTimestamp)) {
+            return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
         }
 
         const incomingCode = extractStrictOTP(incomingMsg); 
