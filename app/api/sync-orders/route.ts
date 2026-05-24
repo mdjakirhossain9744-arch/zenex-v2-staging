@@ -172,10 +172,10 @@ export async function POST(req: Request) {
         const incomingMsg = (orderData.fullMessage || "").trim();
         if (!incomingMsg) return NextResponse.json({ success: false, message: "Empty message" });
 
-        // 💥 ENTERPRISE ANTI-GLITCH LOCK (Timestamp Based) 💥
+        // 💥 ENTERPRISE ANTI-GLITCH LOCK (Timestamp & Time-Gap Based) 💥
         const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
         
-        // লক ১: হুবহু একই টাইমস্ট্যাম্প পেলে সাথে সাথে গ্লিচ হিসেবে ব্লক! (রিয়েল ওটিপি কখনোই মিলি-সেকেন্ডে সেম হয় না)
+        // লক ১: হুবহু একই টাইমস্ট্যাম্প পেলে সাথে সাথে গ্লিচ হিসেবে ব্লক! 
         if (incomingTimestamp && freshOrder.receivedNids?.includes(incomingTimestamp)) {
             return NextResponse.json({ success: true, message: "API Glitch Blocked! Exact same SMS timestamp already processed." });
         }
@@ -184,10 +184,11 @@ export async function POST(req: Request) {
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
         const lastStoredMsg = currentMsgsArray[currentMsgsArray.length - 1];
 
-        // লক ২: টাইমস্ট্যাম্প না থাকলে ফলব্যাক লক (২ সেকেন্ডের ডিবাইউন্স)
+        // লক ২: ৫ সেকেন্ডের টাইম-গ্যাপ লক (ফলব্যাক)
+        // যদি ফ্রন্টএন্ড কোনো কারণে টাইমস্ট্যাম্প ছাড়াই ডাবল কল মারে, তাহলে ৫ সেকেন্ডের আগে আসা সেম মেসেজকে ব্লক করবে।
         const timeSinceLastUpdate = Date.now() - new Date(freshOrder.updatedAt).getTime();
-        if (!incomingTimestamp && incomingMsg === lastStoredMsg && timeSinceLastUpdate < 2000) {
-            return NextResponse.json({ success: true, message: "Network Glitch Blocked! Same message without timestamp arrived too fast (< 2s)." });
+        if (incomingMsg === lastStoredMsg && timeSinceLastUpdate < 5000) {
+            return NextResponse.json({ success: true, message: "Network Glitch Blocked! Same message arrived too fast (< 5s)." });
         }
 
         const incomingCode = extractStrictOTP(incomingMsg); 
@@ -223,7 +224,6 @@ export async function POST(req: Request) {
         }
 
         // 💥 DB Update Query 💥
-        // receivedNids ফিল্ডে এখন থেকে timestamp সেভ হবে গ্লিচ ট্র্যাক করার জন্য
         const updateQuery = incomingTimestamp 
               ? { _id: existingOrder._id, receivedNids: { $ne: incomingTimestamp } } 
               : { _id: existingOrder._id };
