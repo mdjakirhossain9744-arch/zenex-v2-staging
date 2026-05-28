@@ -50,25 +50,26 @@ export async function POST(req: Request) {
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     let targetEmail = role === "admin" ? "" : safeEmail;
 
-    const todayStrUTC = getUTCDateString(new Date());
+    const now = new Date();
+    const todayStrUTC = getUTCDateString(now);
+    
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setUTCDate(now.getUTCDate() - 1);
+    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
+
     const isAllTime = limitDays === "all";
 
-    // 💥 THE MIDNIGHT CROSSOVER FIX (Smart Live Boundary) 💥
     let liveQueryDateStr = todayStrUTC;
     let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
 
-    const currentUTCHour = new Date().getUTCHours();
-    const currentUTCMin = new Date().getUTCMinutes();
+    const currentUTCHour = now.getUTCHours();
+    const currentUTCMin = now.getUTCMinutes();
     
-    // রাত ০০:০০ থেকে ০০:৩৫ পর্যন্ত লাইভ কুয়েরি গতকাল থেকে শুরু হবে (কারণ ক্রন তখনো ডায়েরি লিখেনি)
     if (currentUTCHour === 0 && currentUTCMin <= 35) {
-        const yesterdayDate = new Date();
-        yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
-        liveQueryDateStr = getUTCDateString(yesterdayDate);
+        liveQueryDateStr = yesterdayStrUTC;
         liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
     }
     
-    // ডায়েরি শুধু লাইভ সীমানার আগের ডাটা আনবে (ডাবল কাউন্ট রোধ করার জন্য)
     const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
     
     if (!isAllTime) {
@@ -104,8 +105,7 @@ export async function POST(req: Request) {
         }
     });
 
-    // 💥 LIVE ORDERS FETCH 💥
-    const orderQuery: any = { createdAt: { $gte: liveQueryStart } }; 
+    const orderQuery: any = { createdAt: { $gte: new Date(yesterdayStrUTC + "T00:00:00.000Z") } }; 
     
     if (role !== "admin") {
         orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
@@ -113,13 +113,14 @@ export async function POST(req: Request) {
 
     const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost orderCommission").lean();
 
+    groupedRawData[todayStrUTC] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+    groupedRawData[yesterdayStrUTC] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
-
-       // 💥 DATE CONSISTENCY FIX: ওটিপি পরে আসলেও অর্ডারের মূল দিনের ঘরেই কাউন্ট হবে 💥
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       if (finalDateStr < liveQueryDateStr) return; // সিকিউরিটি (ডাবল কাউন্ট রোধ)
+       if (finalDateStr < liveQueryDateStr && finalDateStr !== yesterdayStrUTC) return; 
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
@@ -157,19 +158,23 @@ export async function POST(req: Request) {
        }
     });
 
-    const yesterdayDate = new Date();
-    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
-    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
-
     const defaultData = { success: 0, amount: 0, total: 0, failed: 0 };
     const todayData = groupedRawData[todayStrUTC] || defaultData;
     const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
     return NextResponse.json({
-       success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
-       userRate, balance, serverDate: todayStrUTC,
-       todaySuccess: todayData.success, todaySpend: todayData.amount, 
-       yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
+        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
+        userRate, balance, serverDate: todayStrUTC,
+        todaySuccess: todayData.success, 
+        todaySpend: todayData.amount, 
+        todayEarning: todayData.amount, 
+        todayEarnings: todayData.amount, 
+        todayRevenue: todayData.amount,
+        yesterdaySuccess: yesterdayData.success, 
+        yesterdaySpend: yesterdayData.amount,
+        yesterdayEarning: yesterdayData.amount, 
+        yesterdayEarnings: yesterdayData.amount, 
+        yesterdayRevenue: yesterdayData.amount
     });
 
   } catch (error) { return NextResponse.json({ success: false }); }
