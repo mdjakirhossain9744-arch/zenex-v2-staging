@@ -26,16 +26,9 @@ const extractServiceName = (msg: string) => {
     return "Other"; 
 };
 
-// 💥 TIMEZONE FIX: Ensuring UTC consistency 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
-  try { 
-      const d = new Date(dateObj);
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  } 
-  catch (e) { 
-      const d = new Date();
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  }
+  try { return new Date(dateObj).toISOString().split('T')[0]; } 
+  catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
 const getUTCHour = (dateObj: any = new Date()) => {
@@ -57,37 +50,31 @@ export async function POST(req: Request) {
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     let targetEmail = role === "admin" ? "" : safeEmail;
 
-    // 💥 YESTERDAY CALCULATION FIX 💥
-    const now = new Date();
-    const todayStrUTC = getUTCDateString(now);
-    
-    const yesterdayDate = new Date(now);
-    yesterdayDate.setUTCDate(now.getUTCDate() - 1);
-    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
-
+    const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
 
     // 💥 THE MIDNIGHT CROSSOVER FIX (Smart Live Boundary) 💥
     let liveQueryDateStr = todayStrUTC;
     let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
 
-    const currentUTCHour = now.getUTCHours();
-    const currentUTCMin = now.getUTCMinutes();
+    const currentUTCHour = new Date().getUTCHours();
+    const currentUTCMin = new Date().getUTCMinutes();
     
     // রাত ০০:০০ থেকে ০০:৩৫ পর্যন্ত লাইভ কুয়েরি গতকাল থেকে শুরু হবে (কারণ ক্রন তখনো ডায়েরি লিখেনি)
     if (currentUTCHour === 0 && currentUTCMin <= 35) {
-        liveQueryDateStr = yesterdayStrUTC;
+        const yesterdayDate = new Date();
+        yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+        liveQueryDateStr = getUTCDateString(yesterdayDate);
         liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
     }
     
     // ডায়েরি শুধু লাইভ সীমানার আগের ডাটা আনবে (ডাবল কাউন্ট রোধ করার জন্য)
     const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
     
-    // 💥 Ensure yesterday is ALWAYS fetched regardless of limitDays 💥
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
-        const pastDaysLimit = new Date(now);
-        pastDaysLimit.setUTCDate(now.getUTCDate() - Math.max(limitNum, 2)); // 2 ensures yesterday is always included
+        const pastDaysLimit = new Date();
+        pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
@@ -118,7 +105,11 @@ export async function POST(req: Request) {
     });
 
     // 💥 LIVE ORDERS FETCH 💥
-    // To be 100% safe about yesterday, we also fetch yesterday's live orders if they exist
+    const yesterdayDate = new Date();
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
+
+    // গতকালের ডাটা মিসিং রোধ করতে অর্ডার কুয়েরি গতকালের শুরু থেকে ধরা হলো
     const orderQuery: any = { createdAt: { $gte: new Date(yesterdayStrUTC + "T00:00:00.000Z") } }; 
     
     if (role !== "admin") {
@@ -127,15 +118,17 @@ export async function POST(req: Request) {
 
     const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost orderCommission").lean();
 
+    // ডায়েরির অসম্পূর্ণ ডাটা ওভাররাইট করতে আজকের ও গতকালের ঘর রিলিজ করে নেওয়া হলো
+    groupedRawData[todayStrUTC] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+    groupedRawData[yesterdayStrUTC] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
+
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
 
        // 💥 DATE CONSISTENCY FIX: ওটিপি পরে আসলেও অর্ডারের মূল দিনের ঘরেই কাউন্ট হবে 💥
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       // We only want to process live orders that are NOT already in the diary
-       // If the order's date is older than liveQueryDateStr, and it's NOT yesterday, skip it
-       if (finalDateStr < liveQueryDateStr && finalDateStr !== yesterdayStrUTC) return;
+       if (finalDateStr < liveQueryDateStr && finalDateStr !== yesterdayStrUTC) return; // সিকিউরিটি (ডাবল কাউন্ট রোধ)
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        
@@ -178,10 +171,12 @@ export async function POST(req: Request) {
     const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
     return NextResponse.json({
-       success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
-       userRate, balance, serverDate: todayStrUTC,
-       todaySuccess: todayData.success, todaySpend: todayData.amount, 
-       yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount // 💥 YESTERDAY FIX APPLIED 💥
+        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
+        userRate, balance, serverDate: todayStrUTC,
+        todaySuccess: todayData.success, todaySpend: todayData.amount, 
+        todayEarning: todayData.amount, todayEarnings: todayData.amount, todayRevenue: todayData.amount,
+        yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount,
+        yesterdayEarning: yesterdayData.amount, yesterdayEarnings: yesterdayData.amount, yesterdayRevenue: yesterdayData.amount
     });
 
   } catch (error) { return NextResponse.json({ success: false }); }
