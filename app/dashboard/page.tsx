@@ -4,11 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../DashboardLayout"; 
 
-const getUTCDateString = (dateObj: any = new Date()) => {
-  try { return new Date(dateObj).toISOString().split('T')[0]; } 
-  catch(e) { return new Date().toISOString().split('T')[0]; }
-};
-
 const getUTCHour = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).getUTCHours(); } 
   catch(e) { return 0; }
@@ -23,7 +18,6 @@ export default function UserDashboardPage() {
 
   const [stats, setStats] = useState({ 
     balance: "0.00", 
-    todayTotal: 0, 
     todaySuccess: 0, 
     yesterdaySuccess: 0,
     todayEarnings: 0,
@@ -86,68 +80,38 @@ export default function UserDashboardPage() {
     if (parsedUser.role === "agent") { router.replace("/manager/dashboard"); return; }
 
     setUser(parsedUser);
-    setLiveRate(Number(parsedUser.otpRate || 0));
-
-    const todayStr = getUTCDateString();
-    const yestDate = new Date(); 
-    yestDate.setUTCDate(yestDate.getUTCDate() - 1);
-    const yesterdayStr = getUTCDateString(yestDate);
 
     const fetchUserDashboardData = async () => {
       try {
-        const [userDetailsRes, ordersRes] = await Promise.all([
+        // 💥 OPTIMIZED: এখন শুধু details এবং summary API কল হবে, sync-orders বাদ দিয়েছি! 💥
+        const [userDetailsRes, summaryRes] = await Promise.all([
           fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-          fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
+          fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) }).then(r => r.json())
         ]);
 
-        let currentRate = 0;
         if (userDetailsRes && userDetailsRes.user) {
-          currentRate = Number(userDetailsRes.user.otpRate || 0);
           setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-          setLiveRate(currentRate); 
+          setLiveRate(Number(userDetailsRes.user.otpRate || 0));
         }
 
-        if (ordersRes && ordersRes.success && ordersRes.orders) {
-           let tTotal = 0, tSuccess = 0, ySuccess = 0;
-           const appCounts: Record<string, number> = {};
-           let buckets = [0, 0, 0, 0, 0, 0];
-
-           ordersRes.orders.forEach((log: any) => {
-             const logDate = log.dateString || getUTCDateString(log.createdAt);
-             if (logDate === todayStr) {
-               tTotal++;
-               if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") {
-                 tSuccess++;
-                 const hour = getUTCHour(log.createdAt);
-                 const bIdx = Math.floor(hour / 4);
-                 if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
-               }
-             } else if (logDate === yesterdayStr) {
-               if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") ySuccess++;
-             }
-           });
-
-           const finalTodaySuccess = ordersRes.stats ? ordersRes.stats.success : tSuccess;
+        if (summaryRes && summaryRes.success) {
+           // 💥 BUG FIXED: এখন সরাসরি backend এর ক্যালকুলেট করা ডাটা বসিয়ে দিয়েছি 💥
            setStats(p => ({ 
              ...p, 
-             todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 
-             todaySuccess: finalTodaySuccess, 
-             yesterdaySuccess: ySuccess,
-             todayEarnings: finalTodaySuccess * currentRate,
-             yesterdayEarnings: ySuccess * currentRate
+             todaySuccess: summaryRes.todaySuccess || 0,
+             todayEarnings: summaryRes.todaySpend || 0,
+             yesterdaySuccess: summaryRes.yesterdaySuccess || 0,
+             yesterdayEarnings: summaryRes.yesterdaySpend || 0
            }));
-           setTrafficData(buckets);
            
-           // Fetch today's summary for Top Apps from summary API to sync perfectly
-           fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) })
-             .then(r => r.json())
-             .then(res => {
-                 if (res && res.todayAppCounts) {
-                     setTopPerformers(formatTopApps(res.todayAppCounts));
-                 }
-             });
+           if (summaryRes.todayHourlyTraffic) setTrafficData(summaryRes.todayHourlyTraffic);
+           if (summaryRes.todayAppCounts) setTopPerformers(formatTopApps(summaryRes.todayAppCounts));
         }
-      } catch (e) {} finally { setIsPageLoading(false); }
+      } catch (e) {
+        console.error("Dashboard Sync Error");
+      } finally { 
+        setIsPageLoading(false); 
+      }
     };
 
     fetchUserDashboardData();
