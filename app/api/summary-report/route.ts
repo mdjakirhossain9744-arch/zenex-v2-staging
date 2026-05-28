@@ -53,13 +53,14 @@ export async function POST(req: Request) {
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
 
-    // 💥 THE MIDNIGHT CROSSOVER FIX 💥
+    // 💥 THE MIDNIGHT CROSSOVER FIX (Smart Live Boundary) 💥
     let liveQueryDateStr = todayStrUTC;
     let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
 
     const currentUTCHour = new Date().getUTCHours();
     const currentUTCMin = new Date().getUTCMinutes();
     
+    // রাত ০০:০০ থেকে ০০:৩৫ পর্যন্ত লাইভ কুয়েরি গতকাল থেকে শুরু হবে (কারণ ক্রন তখনো ডায়েরি লিখেনি)
     if (currentUTCHour === 0 && currentUTCMin <= 35) {
         const yesterdayDate = new Date();
         yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
         liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
     }
     
+    // ডায়েরি শুধু লাইভ সীমানার আগের ডাটা আনবে (ডাবল কাউন্ট রোধ করার জন্য)
     const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
     
     if (!isAllTime) {
@@ -84,7 +86,6 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
     
-    // 💥 1. YESTERDAY'S ACCURATE DATA FETCHED HERE 💥
     const dailyStats = await DailyStat.find(dailyStatQuery).lean();
 
     dailyStats.forEach((ds: any) => {
@@ -103,7 +104,7 @@ export async function POST(req: Request) {
         }
     });
 
-    // 💥 2. TODAY'S LIVE ORDERS FETCH 💥
+    // 💥 LIVE ORDERS FETCH 💥
     const orderQuery: any = { createdAt: { $gte: liveQueryStart } }; 
     
     if (role !== "admin") {
@@ -114,6 +115,8 @@ export async function POST(req: Request) {
 
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
+
+       // 💥 DATE CONSISTENCY FIX: ওটিপি পরে আসলেও অর্ডারের মূল দিনের ঘরেই কাউন্ট হবে 💥
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
        if (finalDateStr < liveQueryDateStr) return; // সিকিউরিটি (ডাবল কাউন্ট রোধ)
@@ -162,22 +165,11 @@ export async function POST(req: Request) {
     const todayData = groupedRawData[todayStrUTC] || defaultData;
     const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
-    // 💥 3. SENDING ALL VARIABLE NAMES TO PREVENT FRONTEND MISMATCH 💥
     return NextResponse.json({
-        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
-        userRate, balance, serverDate: todayStrUTC,
-        
-        todaySuccess: todayData.success, 
-        todaySpend: todayData.amount, 
-        todayEarning: todayData.amount, 
-        todayEarnings: todayData.amount, 
-        todayRevenue: todayData.amount,
-        
-        yesterdaySuccess: yesterdayData.success, 
-        yesterdaySpend: yesterdayData.amount,
-        yesterdayEarning: yesterdayData.amount, 
-        yesterdayEarnings: yesterdayData.amount, 
-        yesterdayRevenue: yesterdayData.amount
+       success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
+       userRate, balance, serverDate: todayStrUTC,
+       todaySuccess: todayData.success, todaySpend: todayData.amount, 
+       yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
     });
 
   } catch (error) { return NextResponse.json({ success: false }); }

@@ -26,16 +26,9 @@ const extractServiceName = (msg: string) => {
     return "Other"; 
 };
 
-// 💥 TIMEZONE FIX: Ensuring UTC consistency 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
-  try { 
-      const d = new Date(dateObj);
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  } 
-  catch (e) { 
-      const d = new Date();
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  }
+  try { return new Date(dateObj).toISOString().split('T')[0]; } 
+  catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
 const getUTCHour = (dateObj: any = new Date()) => {
@@ -81,35 +74,29 @@ export async function POST(req: Request) {
     const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
 
-    // 💥 YESTERDAY CALCULATION FIX 💥
-    const now = new Date();
-    const todayStrUTC = getUTCDateString(now);
-    
-    const yesterdayDate = new Date(now);
-    yesterdayDate.setUTCDate(now.getUTCDate() - 1);
-    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
-
+    const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
     
     // 💥 THE MIDNIGHT CROSSOVER FIX 💥
     let liveQueryDateStr = todayStrUTC;
     let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
 
-    const currentUTCHour = now.getUTCHours();
-    const currentUTCMin = now.getUTCMinutes();
+    const currentUTCHour = new Date().getUTCHours();
+    const currentUTCMin = new Date().getUTCMinutes();
     
     if (currentUTCHour === 0 && currentUTCMin <= 35) {
-        liveQueryDateStr = yesterdayStrUTC;
+        const yesterdayDate = new Date();
+        yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+        liveQueryDateStr = getUTCDateString(yesterdayDate);
         liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
     }
 
     const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
 
-    // 💥 Ensure yesterday is ALWAYS fetched regardless of limitDays 💥
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
-        const pastDaysLimit = new Date(now);
-        pastDaysLimit.setUTCDate(now.getUTCDate() - Math.max(limitNum, 2)); // 2 ensures yesterday is always included
+        const pastDaysLimit = new Date();
+        pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
@@ -137,8 +124,7 @@ export async function POST(req: Request) {
         groupedRawData[dDate].amount += (ds.totalCommission || 0);
     });
 
-    // 💥 LIVE ORDERS FETCH FIX FOR YESTERDAY 💥
-    const orderQuery: any = { createdAt: { $gte: new Date(yesterdayStrUTC + "T00:00:00.000Z") } };
+    const orderQuery: any = { createdAt: { $gte: liveQueryStart } };
     
     if (queryConditions.length > 0) {
         orderQuery.$or = queryConditions;
@@ -155,7 +141,7 @@ export async function POST(req: Request) {
        // 💥 DATE CONSISTENCY FIX 💥
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       if (finalDateStr < liveQueryDateStr && finalDateStr !== yesterdayStrUTC) return;
+       if (finalDateStr < liveQueryDateStr) return;
 
        const safeUserEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
@@ -200,6 +186,7 @@ export async function POST(req: Request) {
 
     const nowTime = new Date().getTime();
     const inactiveUsersArr = networkUsers.map((u: any) => {
+        // ... (Inactive Users calculation remains exactly the same)
         const createdTime = new Date(u.createdAt || nowTime).getTime();
         const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : null;
         let timeText = ""; let sortValue = 0; 
@@ -231,6 +218,10 @@ export async function POST(req: Request) {
             inactiveText: timeText, balance: u.balance || 0, sortValue
         };
     }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 10); 
+
+    const yesterdayDate = new Date();
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterdayStrUTC = getUTCDateString(yesterdayDate);
 
     const defaultData = { success: 0, amount: 0, total: 0, failed: 0 };
     const todayData = groupedRawData[todayStrUTC] || defaultData;
