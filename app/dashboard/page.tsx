@@ -88,12 +88,16 @@ export default function UserDashboardPage() {
     setUser(parsedUser);
     setLiveRate(Number(parsedUser.otpRate || 0));
 
+    const todayStr = getUTCDateString();
+    const yestDate = new Date(); 
+    yestDate.setUTCDate(yestDate.getUTCDate() - 1);
+    const yesterdayStr = getUTCDateString(yestDate);
+
     const fetchUserDashboardData = async () => {
       try {
-        const [userDetailsRes, dashboardRes] = await Promise.all([
+        const [userDetailsRes, ordersRes] = await Promise.all([
           fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-          // 💥 FIX: sync-orders এর বদলে dashboard API কল করা হলো, কারণ এটি গতকালের নিখুঁত ডাটা দেয়! 💥
-          fetch("/api/dashboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) }).then(r => r.json())
+          fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: parsedUser.email }) }).then(r => r.json())
         ]);
 
         let currentRate = 0;
@@ -103,31 +107,46 @@ export default function UserDashboardPage() {
           setLiveRate(currentRate); 
         }
 
-        // 💥 FIX: ব্যাকএন্ড থেকে আসা ডাইরেক্ট ডাটা স্টেটে সেভ করা হচ্ছে 💥
-        if (dashboardRes && dashboardRes.success) {
+        if (ordersRes && ordersRes.success && ordersRes.orders) {
+           let tTotal = 0, tSuccess = 0, ySuccess = 0;
+           const appCounts: Record<string, number> = {};
+           let buckets = [0, 0, 0, 0, 0, 0];
+
+           ordersRes.orders.forEach((log: any) => {
+             const logDate = log.dateString || getUTCDateString(log.createdAt);
+             if (logDate === todayStr) {
+               tTotal++;
+               if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") {
+                 tSuccess++;
+                 const hour = getUTCHour(log.createdAt);
+                 const bIdx = Math.floor(hour / 4);
+                 if(bIdx >= 0 && bIdx <= 5) buckets[bIdx]++;
+               }
+             } else if (logDate === yesterdayStr) {
+               if (log.status === "DONE" || log.status === "Success" || log.status === "SUCCESS") ySuccess++;
+             }
+           });
+
+           const finalTodaySuccess = ordersRes.stats ? ordersRes.stats.success : tSuccess;
            setStats(p => ({ 
              ...p, 
-             todayTotal: dashboardRes.groupedRawData?.[dashboardRes.serverDate]?.total || dashboardRes.todaySuccess || 0, 
-             todaySuccess: dashboardRes.todaySuccess || 0, 
-             yesterdaySuccess: dashboardRes.yesterdaySuccess || 0,
-             todayEarnings: dashboardRes.todayEarnings || 0,
-             yesterdayEarnings: dashboardRes.yesterdayEarnings || 0
+             todayTotal: ordersRes.stats ? ordersRes.stats.total : tTotal, 
+             todaySuccess: finalTodaySuccess, 
+             yesterdaySuccess: ySuccess,
+             todayEarnings: finalTodaySuccess * currentRate,
+             yesterdayEarnings: ySuccess * currentRate
            }));
+           setTrafficData(buckets);
            
-           if (dashboardRes.todayHourlyTraffic) {
-               setTrafficData(dashboardRes.todayHourlyTraffic);
-           }
+           // Fetch today's summary for Top Apps from summary API to sync perfectly
+           fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) })
+             .then(r => r.json())
+             .then(res => {
+                 if (res && res.todayAppCounts) {
+                     setTopPerformers(formatTopApps(res.todayAppCounts));
+                 }
+             });
         }
-
-        // Fetch today's summary for Top Apps from summary API to sync perfectly (As in your original code)
-        fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) })
-          .then(r => r.json())
-          .then(res => {
-              if (res && res.todayAppCounts) {
-                  setTopPerformers(formatTopApps(res.todayAppCounts));
-              }
-          });
-
       } catch (e) {} finally { setIsPageLoading(false); }
     };
 
