@@ -17,7 +17,6 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
-    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE) 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
       if (!safeAmount || isNaN(safeAmount) || safeAmount < 100) return NextResponse.json({ success: false, message: "Invalid amount. Minimum is ৳ 100." }, { status: 400 });
@@ -44,15 +43,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: "Withdraw request submitted successfully!" });
     }
 
-    // 💥 2. BULK ACTION (NEW: Select all and PAY multiple Binance accounts at once) 💥
+    // 💥 2. BULK ACTION (Fixed Pending & Processing Both) 💥
     if (action === "BULK_ACTION") {
       const withdraws = await Withdraw.find({ _id: { $in: selectedIds } });
       let successCount = 0;
       let failCount = 0;
 
       for (const request of withdraws) {
-        if (actionType === "PAID" && request.status === "PROCESSING") {
-          const lockedReq = await Withdraw.findOneAndUpdate({ _id: request._id, status: "PROCESSING" }, { $set: { status: "PAYING_LOCK" } }, { new: true });
+        // 💥 FIX: PENDING এবং PROCESSING দুটোকেই রিসিভ করবে 💥
+        if (actionType === "PAID" && (request.status === "PROCESSING" || request.status === "PENDING")) {
+          const lockedReq = await Withdraw.findOneAndUpdate({ _id: request._id, status: { $in: ["PROCESSING", "PENDING"] } }, { $set: { status: "PAYING_LOCK" } }, { new: true });
           if (!lockedReq) continue;
 
           if (request.method === "Binance") {
@@ -68,23 +68,19 @@ export async function POST(req: Request) {
                 successCount++;
               } else {
                 const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                if (errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient")) {
-                  lockedReq.status = "PROCESSING"; // Admin empty wallet
+                
+                // 💥 FIX: API/IP Error-কে Admin Fault হিসেবে ধরা হয়েছে 💥
+                const isAdminFault = errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient") || errorMsg.includes("api") || errorMsg.includes("ip") || errorMsg.includes("permission");
+
+                if (isAdminFault) {
+                  lockedReq.status = "PROCESSING"; // Admin fault, no refund
                   await lockedReq.save();
                   failCount++;
                 } else {
-                  lockedReq.status = "REJECTED"; // Invalid User ID
+                  lockedReq.status = "REJECTED"; // User fault
                   await lockedReq.save();
                   await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
-                  
-                  // 💥 FIX: Specific Notification Message 💥
-                  await Notification.create({ 
-                      userEmail: request.email, 
-                      title: "Auto-Pay Disabled 🔴", 
-                      description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, 
-                      type: "ERROR", 
-                      color: "red" 
-                  });
+                  await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
                   failCount++;
                 }
               }
@@ -106,14 +102,14 @@ export async function POST(req: Request) {
           successCount++;
         }
       }
-      return NextResponse.json({ success: true, message: `Bulk Executed: ${successCount} Success, ${failCount} Failed/Empty Wallet.` });
+      return NextResponse.json({ success: true, message: `Bulk Executed: ${successCount} Success, ${failCount} Failed/Admin Error.` });
     }
 
     // 💥 3. UPDATE SINGLE STATUS (Binance & Manual) 💥
     if (action === "UPDATE_STATUS") {
       if (newStatus === "PAID") {
          const request = await Withdraw.findOneAndUpdate(
-             { _id: withdrawId, status: "PROCESSING" }, 
+             { _id: withdrawId, status: { $in: ["PROCESSING", "PENDING"] } }, 
              { $set: { status: "PAYING_LOCK" } }, 
              { new: true }
          );
@@ -135,23 +131,18 @@ export async function POST(req: Request) {
                  } else {
                      const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
                      
-                     if (errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient")) {
+                     // 💥 FIX: API/IP Error-কে Admin Fault হিসেবে ধরা হয়েছে 💥
+                     const isAdminFault = errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient") || errorMsg.includes("api") || errorMsg.includes("ip") || errorMsg.includes("permission");
+
+                     if (isAdminFault) {
                          request.status = "PROCESSING"; 
                          await request.save();
-                         return NextResponse.json({ success: false, message: `⚠️ Admin Binance Wallet Empty! Top up USDT.` });
+                         return NextResponse.json({ success: false, message: `⚠️ Admin Binance Issue: ${binanceRes.message}` });
                      } else {
                          request.status = "REJECTED"; 
                          await request.save();
                          await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
-                         
-                         // 💥 FIX: Specific Notification Message 💥
-                         await Notification.create({ 
-                            userEmail: request.email, 
-                            title: "Auto-Pay Disabled 🔴", 
-                            description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, 
-                            type: "ERROR", 
-                            color: "red" 
-                         });
+                         await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
                          return NextResponse.json({ success: false, message: `Binance Failed: ${binanceRes.message}. Refunded & Disabled.` });
                      }
                  }
