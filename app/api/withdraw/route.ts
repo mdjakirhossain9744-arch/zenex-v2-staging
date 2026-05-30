@@ -56,45 +56,48 @@ export async function POST(req: Request) {
          
          if (!request) return NextResponse.json({ success: false, message: "Request already processed or locked!" });
 
-         // 💥 BINANCE API EXECUTION 💥
+         // 💥 BINANCE API EXECUTION (Strong Try-Catch) 💥
          if (request.method === "Binance") {
-             const rate = await getLiveUsdtRate();
-             const usdAmount = Number((request.amount / rate).toFixed(2));
+             try {
+                 const rate = await getLiveUsdtRate();
+                 const usdAmount = Number((request.amount / rate).toFixed(2));
 
-             const binanceRes = await sendBinancePay(request.accountNumber, usdAmount, request._id.toString());
+                 const binanceRes = await sendBinancePay(request.accountNumber, usdAmount, request._id.toString());
 
-             if (binanceRes.success) {
-                 request.status = "PAID";
-                 await request.save();
-                 await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
-                 return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
-             } else {
-                 const errorMsg = (binanceRes.message || "").toLowerCase();
-                 
-                 // 🟡 SMART CHECK: If Admin Binance Wallet has insufficient balance
-                 if (errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient")) {
-                     request.status = "PROCESSING"; // Revert to processing, NO REFUND to user
+                 if (binanceRes.success) {
+                     request.status = "PAID";
                      await request.save();
-                     return NextResponse.json({ success: false, message: `⚠️ Admin Binance Wallet Empty! Top up USDT. Request kept in PROCESSING.` });
-                 } 
-                 // 🔴 SMART CHECK: If User provided Invalid ID
-                 else {
-                     request.status = "REJECTED"; 
-                     await request.save();
+                     await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
+                     return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
+                 } else {
+                     const errorMsg = (binanceRes.message || "").toLowerCase();
                      
-                     // Auto Refund Balance to User
-                     await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount } });
-                     
-                     await Notification.create({ 
-                         userEmail: request.email, 
-                         title: "Binance Payment Failed 🔴", 
-                         description: `Invalid Binance ID/Email. ৳ ${request.amount} has been refunded to your balance!`, 
-                         type: "ERROR", 
-                         color: "red" 
-                     });
-
-                     return NextResponse.json({ success: false, message: `Binance Failed: Invalid ID. Amount Auto-Refunded to User.` });
+                     // 🟡 SMART CHECK: Insufficient balance
+                     if (errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient")) {
+                         request.status = "PROCESSING"; // Revert lock
+                         await request.save();
+                         return NextResponse.json({ success: false, message: `⚠️ Admin Binance Wallet Empty! Top up USDT.` });
+                     } 
+                     // 🔴 SMART CHECK: Invalid ID
+                     else {
+                         request.status = "REJECTED"; 
+                         await request.save();
+                         await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount } });
+                         await Notification.create({ 
+                             userEmail: request.email, 
+                             title: "Binance Payment Failed 🔴", 
+                             description: `Invalid Binance ID/Email. ৳ ${request.amount} has been refunded to your balance!`, 
+                             type: "ERROR", 
+                             color: "red" 
+                         });
+                         return NextResponse.json({ success: false, message: `Binance Failed: Invalid ID. Amount Auto-Refunded to User.` });
+                     }
                  }
+             } catch (apiErr: any) {
+                 // 🔴 CRASH CATCHER: If API Keys are wrong or Network Fails
+                 request.status = "PROCESSING"; // Revert lock so it doesn't get stuck
+                 await request.save();
+                 return NextResponse.json({ success: false, message: `API Crash: ${apiErr.message}` });
              }
          }
 
@@ -119,12 +122,10 @@ export async function POST(req: Request) {
          }
       }
 
-      // 💥 Auto-Refund when Admin clicks REJECT
       if (newStatus === "REJECTED" && request.status !== "REJECTED") {
          await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount } });
          await Notification.create({ userEmail: request.email, title: "Withdrawal Rejected", description: `Your ৳ ${request.amount} request was rejected and refunded.`, type: "WARNING", color: "red" });
       } 
-      // Undo Reject (Cut balance again if Admin mistakenly rejected)
       else if (request.status === "REJECTED" && newStatus !== "REJECTED") {
          const userCheck = await User.findOne({ email: request.email });
          if (!userCheck || userCheck.balance < request.amount) return NextResponse.json({ success: false, message: "User doesn't have balance to undo!" }, { status: 400 });
@@ -136,6 +137,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
+    // 💥 4. FETCH LOGIC 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
