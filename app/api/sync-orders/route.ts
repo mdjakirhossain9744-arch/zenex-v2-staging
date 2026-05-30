@@ -250,7 +250,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Race condition locked safely!" });
         }
 
-        // 💥 AUTO-WITHDRAW: Dynamic Full Balance Deduction 💥
+        // 💥 AUTO-WITHDRAW: Exact Balance with Two Decimals Fix 💥
         if (currentOtpCost > 0) {
           const updatedUser = await User.findOneAndUpdate(
              { email }, 
@@ -259,11 +259,11 @@ export async function POST(req: Request) {
           );
 
           if (updatedUser && updatedUser.balance >= 100 && updatedUser.isAutoWithdraw === true && updatedUser.binancePayId) {
-             const exactBalance = updatedUser.balance; // 💥 পুরা ব্যালেন্স ক্যাপচার 💥
+             const exactBalance = Number(updatedUser.balance.toFixed(2)); // 💥 FIX: দশমিক ক্লিন করা হলো 💥
              
              const balanceLock = await User.findOneAndUpdate(
-                { email: updatedUser.email, balance: exactBalance }, // Atomic Lock
-                { $inc: { balance: -exactBalance } }, // পুরা টাকা জিরো করে দেওয়া
+                { email: updatedUser.email, balance: { $gte: 100 } }, 
+                { $inc: { balance: -exactBalance } }, 
                 { new: true }
              );
 
@@ -272,7 +272,7 @@ export async function POST(req: Request) {
                     email: updatedUser.email,
                     name: updatedUser.fullName || updatedUser.name || updatedUser.email.split('@')[0],
                     role: updatedUser.role,
-                    amount: exactBalance, // 💥 পুরা টাকার রিকোয়েস্ট তৈরি 💥
+                    amount: exactBalance, 
                     method: "Binance",
                     accountNumber: updatedUser.binancePayId,
                     status: "PROCESSING", 
@@ -299,7 +299,7 @@ export async function POST(req: Request) {
   }
 }
 
-// 💥 CRON JOB ENGINE (Dynamic Full Balance Deduction) 💥
+// 💥 CRON JOB ENGINE 💥
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
@@ -311,15 +311,15 @@ export async function GET(req: Request) {
     });
 
     if (eligibleUsers.length === 0) {
-        return NextResponse.json({ success: true, message: "No eligible users found for background auto-withdraw." });
+        return NextResponse.json({ success: true, message: "No eligible users found." });
     }
 
     let processedCount = 0;
 
     for (const user of eligibleUsers) {
-        const exactBalance = user.balance; // 💥 পুরা ব্যালেন্স ক্যাপচার 💥
+        const exactBalance = Number(user.balance.toFixed(2)); // 💥 FIX: দশমিক ক্লিন 💥
         const updatedUser = await User.findOneAndUpdate(
-            { _id: user._id, balance: exactBalance },
+            { _id: user._id, balance: { $gte: 100 } },
             { $inc: { balance: -exactBalance } },
             { new: true }
         );
@@ -329,7 +329,7 @@ export async function GET(req: Request) {
                 email: user.email,
                 name: user.fullName || user.name || user.email.split('@')[0],
                 role: user.role,
-                amount: exactBalance, // 💥 পুরা টাকার রিকোয়েস্ট 💥
+                amount: exactBalance,
                 method: "Binance",
                 accountNumber: user.binancePayId,
                 status: "PROCESSING",
@@ -341,11 +341,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ 
         success: true, 
-        message: `Background Auto-Sync Complete! Processed ${processedCount} full-balance withdrawals.` 
+        message: `Background Auto-Sync Complete! Processed ${processedCount} withdrawals.` 
     });
 
   } catch (error: any) {
-    console.error("Cron Auto-Sync Error:", error);
     return NextResponse.json({ success: false, message: "Cron Server Error" }, { status: 500 });
   }
 }
