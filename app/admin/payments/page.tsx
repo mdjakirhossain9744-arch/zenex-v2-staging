@@ -12,7 +12,7 @@ export default function AdminPayments() {
 
   // 💥 3-TIER GATEWAY CONTROLLERS 💥
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(true);
-  const [isManualWithdrawOpen, setIsManualWithdrawOpen] = useState(true); // NEW
+  const [isManualWithdrawOpen, setIsManualWithdrawOpen] = useState(true); 
   const [binanceAutoPayActive, setBinanceAutoPayActive] = useState(true); 
   const [methodConfig, setMethodConfig] = useState<any>({ bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true });
   
@@ -59,7 +59,7 @@ export default function AdminPayments() {
       const data = await res.json();
       if (data.success && data.data) { 
           setIsWithdrawOpen(data.data.isWithdrawOpen); 
-          setIsManualWithdrawOpen(data.data.isManualWithdrawOpen ?? true); // NEW
+          setIsManualWithdrawOpen(data.data.isManualWithdrawOpen ?? true); 
           setBinanceAutoPayActive(data.data.binanceAutoPayActive ?? true); 
           setMethodConfig(data.data.methods || { bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true }); 
       }
@@ -121,6 +121,11 @@ export default function AdminPayments() {
     if (newStatus === "PAID" && method === "Binance") {
         if (!window.confirm("Are you sure? This will instantly send REAL USD to the user's Binance account!")) return;
     }
+    // REJECT কনফার্মেশন
+    if (newStatus === "REJECTED") {
+        if (!window.confirm("Are you sure you want to REJECT and refund this amount?")) return;
+    }
+
     try {
       const res = await fetch("/api/withdraw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE_STATUS", withdrawId: id, newStatus }) });
       const data = await res.json();
@@ -140,12 +145,14 @@ export default function AdminPayments() {
 
   const handleSmartBulkAction = async () => {
     if (selectedIds.length === 0) return;
-    const actionType = (activeAdminTab === "MANUAL_PENDING" || activeAdminTab === "BINANCE_AUTO") ? "PROCESS" : "PAID";
+    const actionType = (activeAdminTab === "MANUAL_PENDING") ? "PROCESS" : "PAID";
+    
     if (!window.confirm(`Execute action for ${selectedIds.length} requests?`)) return;
     try {
       const res = await fetch("/api/withdraw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "BULK_ACTION", actionType, selectedIds }) });
       const data = await res.json();
       if (data.success) { showToast(data.message); setSelectedIds([]); fetchRealData(); }
+      else { showToast(data.message || "Failed bulk action"); }
     } catch(err) { showToast("Failed bulk action"); }
   };
 
@@ -171,7 +178,6 @@ export default function AdminPayments() {
             </div>
 
             <div className="flex flex-wrap items-center gap-4 bg-[#0F172A] p-3 rounded-2xl border border-[#334155] shadow-inner w-full xl:w-auto">
-              {/* 💥 Global Switch 💥 */}
               <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                  <span className="text-[10px] text-[#94A3B8] uppercase font-black">Global Gate</span>
                  <button onClick={toggleGlobalWithdraw} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${isWithdrawOpen ? 'bg-[#10B981]' : 'bg-[#F43F5E]'}`}>
@@ -179,7 +185,6 @@ export default function AdminPayments() {
                  </button>
               </div>
 
-              {/* 💥 NEW: Manual Gate Switch 💥 */}
               <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                  <span className="text-[10px] text-[#3B82F6] uppercase font-black">Manual Gate</span>
                  <button onClick={toggleManualGate} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${isManualWithdrawOpen ? 'bg-[#3B82F6]' : 'bg-[#334155]'}`}>
@@ -187,7 +192,6 @@ export default function AdminPayments() {
                  </button>
               </div>
 
-              {/* 💥 Auto-Pay Engine Switch 💥 */}
               <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                  <span className="text-[10px] text-[#FCD34D] uppercase font-black">⚡ Auto-Pay</span>
                  <button onClick={toggleAutoPayEngine} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${binanceAutoPayActive ? 'bg-[#F59E0B]' : 'bg-[#334155]'}`}>
@@ -195,7 +199,6 @@ export default function AdminPayments() {
                  </button>
               </div>
               
-              {/* Individual Switches */}
               <div className="flex flex-wrap items-center gap-4 px-2">
                  {Object.keys(methodConfig).filter(m => m !== "TRC20").map((methodKey) => (
                     <div key={methodKey} className="flex items-center gap-2">
@@ -209,9 +212,6 @@ export default function AdminPayments() {
             </div>
           </div>
 
-          {/* ... বাকি HTML (স্ট্যাটস কার্ড, ট্যাব, টেবিল) হুবহু আগের মতোই থাকবে, কোনো পরিবর্তন নেই ... */}
-          {/* সংক্ষেপে টেবিল অংশটুকু দিচ্ছি যাতে ফাইল কমপ্লিট থাকে */}
-          
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#3B82F6]">
               <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Total Requests</p>
@@ -245,7 +245,7 @@ export default function AdminPayments() {
                </button>
                {(activeAdminTab !== "HISTORY") && selectedIds.length > 0 && (
                  <button onClick={handleSmartBulkAction} className={`text-white font-black px-4 py-2.5 rounded-xl text-sm transition-shadow ${activeAdminTab === "MANUAL_PENDING" ? 'bg-gradient-to-r from-[#EAB308] to-[#CA8A04] shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 'bg-gradient-to-r from-[#10B981] to-[#059669] shadow-[0_0_15px_rgba(16,185,129,0.4)]'}`}>
-                   {activeAdminTab === "MANUAL_PENDING" ? `Process (${selectedIds.length})` : `Pay (${selectedIds.length})`}
+                   {activeAdminTab === "MANUAL_PENDING" ? `Process (${selectedIds.length})` : `Pay All Selected (${selectedIds.length})`}
                  </button>
                )}
                <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full md:w-56 bg-[#0F172A] border border-[#334155] text-white text-sm px-4 py-2.5 rounded-xl focus:border-[#3B82F6] outline-none" />
@@ -299,15 +299,23 @@ export default function AdminPayments() {
                             <button onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} className="text-[#F43F5E] hover:underline text-xs font-black px-2">Reject</button>
                           </>
                         ) : req.status === "PROCESSING" ? (
-                          <button 
-                             onClick={() => handleAdminStatusUpdate(req._id, "PAID", req.method)} 
-                             className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                                req.method === "Binance" 
-                                  ? "bg-gradient-to-r from-[#F59E0B] to-[#D97706] text-white shadow-lg hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] border border-[#FCD34D]/50" 
-                                  : "bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981] hover:text-white"
-                             }`}>
-                             {req.method === "Binance" ? "⚡ Auto Pay Binance" : "Mark Paid"}
-                          </button>
+                          // 💥 FIX: Added Reject Button beside the Auto Pay button 💥
+                          <div className="flex items-center justify-end gap-2">
+                              <button 
+                                 onClick={() => handleAdminStatusUpdate(req._id, "PAID", req.method)} 
+                                 className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                                    req.method === "Binance" 
+                                      ? "bg-gradient-to-r from-[#F59E0B] to-[#D97706] text-white shadow-lg border border-[#FCD34D]/50" 
+                                      : "bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981] hover:text-white"
+                                 }`}>
+                                 {req.method === "Binance" ? "⚡ Auto Pay" : "Mark Paid"}
+                              </button>
+                              <button 
+                                 onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} 
+                                 className="text-[#F43F5E] bg-[#F43F5E]/10 hover:bg-[#F43F5E] hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors">
+                                 Reject
+                              </button>
+                          </div>
                         ) : (
                           <div className="flex items-center justify-end gap-3">
                             <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${req.status === 'PAID' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#F43F5E]/20 text-[#F43F5E]'}`}>{req.status}</span>
