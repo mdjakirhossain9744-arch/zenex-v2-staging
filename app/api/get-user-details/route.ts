@@ -15,7 +15,8 @@ const generateApiKey = () => {
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
+    // 💥 NEW: withdrawPin added in destructuring
+    const { action, email, binancePayId, isAutoWithdraw, withdrawPin } = await req.json();
 
     if (!email) {
       return NextResponse.json(
@@ -26,6 +27,31 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
+    // 💥 NEW: Auto-Pay Settings Save Logic with strict Security PIN Validation 💥
+    if (action === "UPDATE_AUTO_PAY") {
+        if (!withdrawPin) {
+           return NextResponse.json({ success: false, message: "Security PIN is required!" }, { status: 400 });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) {
+           return NextResponse.json({ success: false, message: "User not found!" }, { status: 404 });
+        }
+
+        // 💥 Verify PIN before saving (Default "1234" if not set) 💥
+        if ((user.withdrawPin || "1234") !== withdrawPin.trim()) {
+           return NextResponse.json({ success: false, message: "🔴 Invalid Security PIN! Settings not saved." }, { status: 403 });
+        }
+
+        // PIN সঠিক হলে তবেই ডাটাবেস আপডেট হবে
+        await User.findOneAndUpdate(
+            { email }, 
+            { $set: { binancePayId, isAutoWithdraw } }
+        );
+        return NextResponse.json({ success: true, message: "Settings Updated Successfully" });
+    }
+
+    // 💥 Default Fetch User Logic 💥
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -35,14 +61,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 💥 অটো-ফিক্স: যদি পুরোনো ইউজারের API Key না থাকে, তবে নতুন তৈরি করে দাও 💥
+    // অটো-ফিক্স: যদি পুরোনো ইউজারের API Key না থাকে, তবে নতুন তৈরি করে দাও
     if (!user.apiKey || user.apiKey === "") {
       const newApiKey = generateApiKey();
       user.apiKey = newApiKey;
-      await user.save(); // ডাটাবেসে সেভ করে নিলাম
+      await user.save(); 
     }
 
-    // 💥 ইউজারের আসল এজেন্টের ডাটা খোঁজা 💥
+    // ইউজারের আসল এজেন্টের ডাটা খোঁজা
     let agent = null;
     if (user.agentEmail) {
       agent = await User.findOne({
@@ -51,7 +77,7 @@ export async function POST(req: Request) {
       }).select("fullName customAgentMail email telegramLink telegram");
     }
 
-    // 💥 গ্লোবাল সাপোর্ট লিংক ডাটাবেস থেকে আনা 💥
+    // গ্লোবাল সাপোর্ট লিংক ডাটাবেস থেকে আনা
     let globalSupportLink = "https://t.me/Zenexacademy1";
     try {
       const setting = await Setting.findOne({ key: "GLOBAL_SUPPORT_LINK" });

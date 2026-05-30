@@ -33,6 +33,10 @@ const userSchema = new Schema(
     isApiActive: { type: Boolean, default: false }, 
 
     activeSessions: { type: [String], default: [] },
+
+    // 💥 NEW: Binance Auto-Withdraw Fields 💥
+    isAutoWithdraw: { type: Boolean, default: false }, // অটো উইথড্র চালু আছে কি না
+    binancePayId: { type: String, default: "" },       // ইউজারের সেভ করা বিন্যান্স পে-আইডি বা ইমেইল
   },
   { timestamps: true }
 );

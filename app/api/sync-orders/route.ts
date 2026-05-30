@@ -4,6 +4,7 @@ import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
+import Withdraw from "../../../models/Withdraw"; // 💥 NEW: Auto-Withdraw এর জন্য মডেল ইম্পোর্ট 💥
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +97,6 @@ export async function POST(req: Request) {
           }
       }
 
-      // 💥 4-BOX FIX: ব্যাকএন্ড ডাটা আর ভাঙবে না, সরাসরি পাঠিয়ে দেবে 💥
       orders.forEach((o: any) => {
         const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
         finalOrders.push({
@@ -131,13 +131,11 @@ export async function POST(req: Request) {
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
       
-      // 💥 ID FIX: ডাটাবেস থেকে User এর সব ডাটা আনা হচ্ছে 💥
       const user = await User.findOne({ email }).lean();
       
-      // 💥 নাম এবং আজীবনের জন্য ফিক্সড ZX-ID জেনারেট লজিক 💥
       const matchedName = user?.fullName || email.split("@")[0];
       const matchedUid = user?.uid || user?.zxId || (user?._id ? `ZX-${user._id.toString().slice(-6).toUpperCase()}` : "ZX-UNKNOWN");
-      const matchedAgent = (user?.agentEmail || user?.customAgentMail || "admin").toLowerCase(); // Case-insensitive fix
+      const matchedAgent = (user?.agentEmail || user?.customAgentMail || "admin").toLowerCase(); 
 
       const newOrder = new Order({
         userEmail: email, 
@@ -253,9 +251,37 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Race condition locked safely!" });
         }
 
+        // 💥 AUTO-WITHDRAW TRIGGER LOGIC (The Magic) 💥
         if (currentOtpCost > 0) {
-          await User.updateOne({ email }, { $inc: { balance: currentOtpCost } });
+          const updatedUser = await User.findOneAndUpdate(
+             { email }, 
+             { $inc: { balance: currentOtpCost } },
+             { new: true }
+          );
+
+          if (updatedUser && updatedUser.balance >= 100 && updatedUser.isAutoWithdraw === true && updatedUser.binancePayId) {
+             const balanceLock = await User.findOneAndUpdate(
+                { email: updatedUser.email, balance: { $gte: 100 } },
+                { $inc: { balance: -100 } },
+                { new: true }
+             );
+
+             if (balanceLock) {
+                const newWithdraw = new Withdraw({
+                    email: updatedUser.email,
+                    name: updatedUser.fullName || updatedUser.name || updatedUser.email.split('@')[0],
+                    role: updatedUser.role,
+                    amount: 100,
+                    method: "Binance",
+                    accountNumber: updatedUser.binancePayId,
+                    status: "PROCESSING", 
+                    date: new Date().toLocaleDateString('en-GB')
+                });
+                await newWithdraw.save();
+             }
+          }
         }
+
         if (currentOtpCommission > 0 && agentToUpdate) {
           await User.updateOne(
             { _id: agentToUpdate._id }, 
