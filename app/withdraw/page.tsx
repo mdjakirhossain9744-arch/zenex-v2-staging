@@ -13,7 +13,6 @@ export default function UserWithdrawal() {
   const [toastMessage, setToastMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // 💥 3-TIER SETTINGS 💥
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(true);
   const [isManualWithdrawOpen, setIsManualWithdrawOpen] = useState(true); 
   const [binanceAutoPayActive, setBinanceAutoPayActive] = useState(true); 
@@ -89,9 +88,8 @@ export default function UserWithdrawal() {
 
   const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(""), 3000); };
 
-  // 💥 SMART TRIGGER INCLUDED HERE 💥
   const handleSaveAutoSettings = async () => {
-    if (!savedBinanceId.trim()) return showToast("Please enter a Binance Pay ID or Email.");
+    if (!savedBinanceId.trim()) return showToast("Please enter a valid USDT (Solana) Address.");
     if (!autoPayPin.trim() || autoPayPin.length < 4) return showToast("Enter your 4-digit Security PIN to save!");
 
     setIsSavingAuto(true);
@@ -105,16 +103,12 @@ export default function UserWithdrawal() {
            showToast("Auto-Pay Settings Saved!");
            setAutoPayPin(""); 
 
-           // 💥 INSTANT ENGINE TRIGGER: If ON, immediately call sync-orders to cut balance 💥
            if (isAutoWithdrawOn) {
                showToast("Syncing Auto-Pay Engine...");
                try {
-                   await fetch("/api/sync-orders"); // Trigger the background auto-withdraw route
-                   // Fetch fresh balance after 2 seconds to show the updated amount
+                   await fetch("/api/sync-orders"); 
                    setTimeout(() => { fetchRealData(userEmail, role); }, 2000);
-               } catch (syncErr) {
-                   console.error("Engine sync failed", syncErr);
-               }
+               } catch (syncErr) {}
            }
        } else { 
            showToast(data.message || "Failed to save settings. Check your PIN."); 
@@ -161,7 +155,6 @@ export default function UserWithdrawal() {
           </div>
         )}
 
-        {/* 💥 GLOBAL WARNING 💥 */}
         {!isWithdrawOpen && (
           <div className="bg-[#F43F5E]/10 border border-[#F43F5E]/30 rounded-2xl p-5 mb-8 flex items-start gap-4">
              <div className="p-3 bg-[#F43F5E]/20 text-[#F43F5E] rounded-xl"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
@@ -200,9 +193,10 @@ export default function UserWithdrawal() {
                    </div>
                  ) : (
                    <>
+                     {/* 💥 FIX: VERY CLEAR LABEL AND PLACEHOLDER FOR SOLANA 💥 */}
                      <div className="mb-4">
-                        <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-2">Binance Pay ID / Email</label>
-                        <input type="text" value={savedBinanceId} onChange={(e) => setSavedBinanceId(e.target.value)} placeholder="e.g. 123456789 or user@email.com" className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-[#F59E0B] transition-all" />
+                        <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-2">Binance USDT (Solana/SOL) Address</label>
+                        <input type="text" value={savedBinanceId} onChange={(e) => setSavedBinanceId(e.target.value)} placeholder="e.g. HN7cAB... (Must be Solana Network)" className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-[#F59E0B] transition-all" />
                      </div>
 
                      <div className="flex items-center justify-between mb-4 bg-[#0F172A] p-3 rounded-xl border border-[#334155]">
@@ -229,10 +223,9 @@ export default function UserWithdrawal() {
                  )}
               </div>
 
-              {/* 💥 MANUAL WITHDRAW BOX (Dark Overlay, Visible Structure) 💥 */}
+              {/* 💥 MANUAL WITHDRAW BOX 💥 */}
               <div className="bg-[#1E293B]/80 border border-[#334155] p-6 rounded-3xl shadow-lg relative overflow-hidden">
                  
-                 {/* 🔒 DARK LOCK OVERLAY (Z-Index 100) 🔒 */}
                  {!isManualWithdrawOpen && (
                    <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#0F172A]/80 backdrop-blur-[2px] transition-all duration-500">
                      <div className="bg-[#F43F5E]/20 p-4 rounded-full mb-3 shadow-[0_0_25px_rgba(244,63,94,0.5)]">
@@ -246,7 +239,6 @@ export default function UserWithdrawal() {
                    </div>
                  )}
 
-                 {/* 📦 INNER CONTENT (Visible but unclickable when OFF) 📦 */}
                  <div className={`${!isManualWithdrawOpen ? 'opacity-40 pointer-events-none select-none' : ''} transition-all duration-500`}>
                      <h3 className="text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-4">Manual Withdraw</h3>
                      
@@ -260,8 +252,9 @@ export default function UserWithdrawal() {
 
                      {selectedMethod && (
                        <div className="mb-6 animate-fade-in">
-                          <label className="block text-xs font-black text-[#94A3B8] uppercase tracking-widest mb-2">Enter your {selectedMethod} Number</label>
-                          <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder={`e.g. 017XXXXXX`} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-[#3B82F6] transition-all" />
+                          {/* 💥 FIX: Dynamic Label for Binance 💥 */}
+                          <label className="block text-xs font-black text-[#94A3B8] uppercase tracking-widest mb-2">Enter your {selectedMethod} {selectedMethod === "Binance" ? "USDT (Solana) Address" : "Number"}</label>
+                          <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder={selectedMethod === "Binance" ? "e.g. HN7cABqLq46..." : "e.g. 017XXXXXX"} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-[#3B82F6] transition-all" />
                        </div>
                      )}
 
