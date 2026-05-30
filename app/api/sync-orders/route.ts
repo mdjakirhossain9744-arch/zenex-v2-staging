@@ -4,7 +4,7 @@ import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
-import Withdraw from "../../../models/Withdraw"; // 💥 NEW: Auto-Withdraw এর জন্য মডেল ইম্পোর্ট 💥
+import Withdraw from "../../../models/Withdraw"; 
 
 export const dynamic = "force-dynamic";
 
@@ -251,7 +251,6 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Race condition locked safely!" });
         }
 
-        // 💥 AUTO-WITHDRAW TRIGGER LOGIC (The Magic) 💥
         if (currentOtpCost > 0) {
           const updatedUser = await User.findOneAndUpdate(
              { email }, 
@@ -295,5 +294,58 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, message: "Invalid action" });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Database Error" }, { status: 500 });
+  }
+}
+
+// 💥========================================================================💥
+// 💥 NEW: CRON JOB ENGINE (For cron-job.org & Browser GET Request) 💥
+// 💥========================================================================💥
+export async function GET(req: Request) {
+  try {
+    await connectToDatabase();
+
+    // 💥 FIX: $nin ব্যবহার করা হয়েছে যাতে VS Code এ লাল দাগ না আসে 💥
+    const eligibleUsers = await User.find({ 
+        isAutoWithdraw: true, 
+        balance: { $gte: 100 },
+        binancePayId: { $nin: [null, ""] } 
+    });
+
+    if (eligibleUsers.length === 0) {
+        return NextResponse.json({ success: true, message: "No eligible users found for background auto-withdraw." });
+    }
+
+    let processedCount = 0;
+
+    for (const user of eligibleUsers) {
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: user._id, balance: { $gte: 100 } },
+            { $inc: { balance: -100 } },
+            { new: true }
+        );
+
+        if (updatedUser) {
+            await Withdraw.create({
+                email: user.email,
+                name: user.fullName || user.name || user.email.split('@')[0],
+                role: user.role,
+                amount: 100,
+                method: "Binance",
+                accountNumber: user.binancePayId,
+                status: "PROCESSING",
+                date: new Date().toLocaleDateString('en-GB')
+            });
+            processedCount++;
+        }
+    }
+
+    return NextResponse.json({ 
+        success: true, 
+        message: `Background Auto-Sync Complete! Processed ${processedCount} automatic withdrawals.` 
+    });
+
+  } catch (error: any) {
+    console.error("Cron Auto-Sync Error:", error);
+    return NextResponse.json({ success: false, message: "Cron Server Error" }, { status: 500 });
   }
 }
