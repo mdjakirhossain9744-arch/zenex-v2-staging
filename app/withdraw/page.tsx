@@ -89,6 +89,7 @@ export default function UserWithdrawal() {
 
   const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(""), 3000); };
 
+  // 💥 SMART TRIGGER INCLUDED HERE 💥
   const handleSaveAutoSettings = async () => {
     if (!savedBinanceId.trim()) return showToast("Please enter a Binance Pay ID or Email.");
     if (!autoPayPin.trim() || autoPayPin.length < 4) return showToast("Enter your 4-digit Security PIN to save!");
@@ -101,8 +102,20 @@ export default function UserWithdrawal() {
        });
        const data = await res.json();
        if (data.success) {
-           showToast("Auto-Pay Settings Saved Successfully!");
+           showToast("Auto-Pay Settings Saved!");
            setAutoPayPin(""); 
+
+           // 💥 INSTANT ENGINE TRIGGER: If ON, immediately call sync-orders to cut balance 💥
+           if (isAutoWithdrawOn) {
+               showToast("Syncing Auto-Pay Engine...");
+               try {
+                   await fetch("/api/sync-orders"); // Trigger the background auto-withdraw route
+                   // Fetch fresh balance after 2 seconds to show the updated amount
+                   setTimeout(() => { fetchRealData(userEmail, role); }, 2000);
+               } catch (syncErr) {
+                   console.error("Engine sync failed", syncErr);
+               }
+           }
        } else { 
            showToast(data.message || "Failed to save settings. Check your PIN."); 
        }
