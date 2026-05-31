@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import SessionWatcher from "./components/SessionWatcher"; // 💥 SessionWatcher ইমপোর্ট করা হলো
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,7 +15,7 @@ const geistMono = Geist_Mono({
 
 // 💥 Advanced SEO Metadata for Google Ranking 💥
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.zenexnetwork.com"), // 💥 SEO Warning Fixed
+  metadataBase: new URL("https://www.zenexnetwork.com"),
   title: "ZENEX NETWORK - Premium OTP Service & Micro-Job Platform",
   description: "Join ZENEX NETWORK, the most secure and automated OTP service and micro-job platform. Fast, reliable, and user-friendly dashboard for seamless experiences.",
   keywords: ["ZENEX", "ZENEX NETWORK", "OTP Service", "Bangladesh OTP", "Micro Job", "Virtual Number", "Online Earning", "SMS Verification", "Auto Auto"],
@@ -46,7 +47,13 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* 💥 ম্যাজিক: Cross-Tab Session Sync Component 💥 */}
+        {/* এটি ব্যাকগ্রাউন্ডে কাজ করবে এবং অন্য ট্যাবে লগইন হলে এই পেজ রিলোড করে দেবে */}
+        <SessionWatcher />
+        
+        {children}
+      </body>
     </html>
   );
 }

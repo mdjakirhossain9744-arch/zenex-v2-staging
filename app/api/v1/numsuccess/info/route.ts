@@ -5,7 +5,6 @@ import Order from "../../../../../models/Order";
 
 export const dynamic = "force-dynamic";
 
-const rateLimitMap = new Map<string, number>();
 let globalMnetCache: any = null;
 let mnetLastFetchTime = 0;
 const MNET_CACHE_TTL = 3000; 
@@ -14,36 +13,30 @@ export async function GET(req: Request) {
   try {
     const apiKey = req.headers.get("mapikey");
     if (!apiKey || apiKey.trim().length < 10) {
-      return NextResponse.json({ meta: { status: "error" }, message: "Missing or Invalid mapikey in headers" }, { status: 401 });
+      return NextResponse.json({ meta: { status: "error" }, message: "Missing API Key" }, { status: 401 });
     }
-    const cleanApiKey = apiKey.trim();
-
-    const now = Date.now();
-    const lastRequestTime = rateLimitMap.get(cleanApiKey);
-    if (lastRequestTime && (now - lastRequestTime < 1000)) { 
-        return NextResponse.json({ meta: { status: "error", code: 429 }, message: "Too Many Requests. Please wait 1 second." }, { status: 429 });
-    }
-    rateLimitMap.set(cleanApiKey, now);
 
     await connectToDatabase();
-    const user = await User.findOne({ apiKey: cleanApiKey }).lean();
-    if (!user) return NextResponse.json({ meta: { status: "error" }, message: "Invalid API Key" }, { status: 401 });
-    if (!user.isApiActive) return NextResponse.json({ meta: { status: "error" }, message: "API Access Disabled" }, { status: 403 });
+    const user = await User.findOne({ apiKey: apiKey.trim() }).lean();
+    if (!user || !user.isApiActive) {
+      return NextResponse.json({ meta: { status: "error" }, message: "Unauthorized" }, { status: 401 });
+    }
 
+    const now = Date.now();
     const REAL_API_KEY = "M_7VX25KAJI"; 
     
+    // 💥 Provider Cache Sync 💥
     if (!globalMnetCache || (now - mnetLastFetchTime > MNET_CACHE_TTL)) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); 
+        const timeoutId = setTimeout(() => controller.abort(), 6000); 
 
         try {
             const response = await fetch(`https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${now}`, {
               method: "GET",
-              headers: {
-                "mapikey": REAL_API_KEY,
-                "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
-                "Accept": "application/json",
-                "Connection": "keep-alive"
+              headers: { 
+                 "mapikey": REAL_API_KEY, 
+                 "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
+                 "Connection": "keep-alive" 
               },
               cache: "no-store",
               signal: controller.signal
@@ -56,127 +49,127 @@ export async function GET(req: Request) {
             }
         } catch (fetchError: any) {
             clearTimeout(timeoutId);
-            if (fetchError.name === 'AbortError') {
-                return NextResponse.json({ meta: { status: "error" }, message: "Provider Timeout. Try again." }, { status: 504 });
-            }
-            if (!globalMnetCache) throw fetchError; 
+            if (!globalMnetCache) return NextResponse.json({ meta: { status: "error" }, message: "Provider Error" }, { status: 504 });
         }
     }
 
-    const data = globalMnetCache;
-    let safeUserOtps: any[] = [];
+    const rawOtps = globalMnetCache?.data?.otps;
+    const liveOtps = Array.isArray(rawOtps) ? rawOtps : []; // 💥 SECURITY: Array Checking
+    let userSpecificOtps: any[] = [];
 
-    if (data?.meta?.status === "success" && data?.data?.otps) {
-      const liveOtps = Array.isArray(data.data.otps) ? data.data.otps : [];
-      
-      if (liveOtps.length > 0) {
-        const pendingOrders = await Order.find({ userEmail: user.email, status: { $in: ["WAIT", "DONE"] } }).lean();
+    // 💥 REVERSE SEARCH LOGIC 💥
+    if (liveOtps.length > 0) {
+        const liveNumbers = liveOtps.map((o: any) => String(o.number).replace(/\D/g, ""));
+        
+        const matchedOrders = await Order.find({
+            userEmail: user.email,
+            status: { $in: ["WAIT", "DONE"] },
+            $expr: {
+              $in: [
+                { $substr: ["$searchNumber", { $subtract: [{ $strLenCP: "$searchNumber" }, 6] }, 6] },
+                liveNumbers.map((n: string) => n.slice(-6))
+              ]
+            }
+        }).lean();
 
-        for (const order of pendingOrders) {
-          const cleanSearchNumber = String(order.searchNumber).replace(/\D/g, ""); 
-          const last6Digits = cleanSearchNumber.slice(-6); 
+        for (const order of matchedOrders) {
+            const cleanSearchNum = String(order.searchNumber).replace(/\D/g, "");
+            const last6 = cleanSearchNum.slice(-6);
 
-          const matchedOtpObj = liveOtps.find((m: any) => {
-             if(!m.number) return false;
-             return String(m.number).replace(/\D/g, "").endsWith(last6Digits);
-          });
+            const matchedOtpObj = liveOtps.find((m: any) => String(m.number).replace(/\D/g, "").endsWith(last6));
 
-          if (matchedOtpObj) {
-             const incomingMsg = (matchedOtpObj.otp || "").trim();
-             
-             const currentMsg = order.fullMessage || "";
-             const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
-             const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg; // 💥 STRICT OTP EXTRACTION 💥
+            if (matchedOtpObj) {
+                userSpecificOtps.push(matchedOtpObj);
 
-             const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
-             const existingCodes = currentMsgsArray.map((msg: string) => {
-                 const match = msg.match(/\b\d{4,8}\b/);
-                 return match ? match[0] : msg.trim();
-             });
+                const incomingMsg = (matchedOtpObj.otp || "").trim();
+                const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
+                const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg; 
 
-             if (existingCodes.includes(incomingCode)) {
-                 continue; 
-             }
+                // 💥 SECURITY: Duplicate SMS Blocker 💥
+                const existingMsgs = order.fullMessage ? order.fullMessage.split(" _||_ ") : [];
+                const alreadyExists = existingMsgs.some((msg: string) => {
+                    const match = msg.match(/\b\d{4,8}\b/);
+                    const code = match ? match[0] : msg.trim();
+                    return code === incomingCode;
+                });
 
-             let regexStr = "";
-             if (/^\d+$/.test(incomingCode)) {
-                  regexStr = `\\b${incomingCode}\\b`;
-             } else {
-                  regexStr = incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-             }
+                if (alreadyExists) continue;
 
-             const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || incomingMsg.toLowerCase().includes("telegram") || incomingMsg.toLowerCase().includes("t.me");
+                const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || incomingMsg.toLowerCase().includes("telegram") || incomingMsg.toLowerCase().includes("t.me");
+                
+                let otpCost = isFreeService ? 0 : (Number(user.otpRate) || 0.50);
+                let otpCommission = 0;
+                let agentId = null;
 
-             let currentOtpCost = 0;
-             let currentOtpCommission = 0;
-             let agentToUpdate = null;
-
-             if (!isFreeService) {
-                currentOtpCost = Number(user.otpRate) || 0.50;
-                if (user.agentEmail) {
-                   agentToUpdate = await User.findOne({
-                     $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
-                     role: "agent"
+                // 💥 SECURITY: Custom Agent Check Included 💥
+                if (!isFreeService && user.agentEmail) {
+                   const agent = await User.findOne({ 
+                      $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
+                      role: "agent" 
                    }).lean();
-                   if (agentToUpdate) {
-                      const agentRate = Number(agentToUpdate.agentMaxRate) || 0.70;
-                      const commission = Number((agentRate - currentOtpCost).toFixed(2));
-                      if (commission > 0) currentOtpCommission = commission;
+                   
+                   if (agent) {
+                      agentId = agent._id;
+                      const agentRate = Number(agent.agentMaxRate) || 0.70;
+                      otpCommission = Math.max(0, Number((agentRate - otpCost).toFixed(2)));
                    }
                 }
-             }
 
-             const updatedOrder = await Order.findOneAndUpdate(
-               { 
-                  _id: order._id, 
-                  fullMessage: { $not: new RegExp(regexStr) } 
-               },
-               { 
-                 $set: { 
-                   status: "DONE", 
-                   otp: incomingCode, // 💥 BUG FIXED: Now saves only the clean code, not the full message
-                   fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
-                   expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) 
-                 },
-                 $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
-               },
-               { new: true }
-             );
+                let regexStr = /^\d+$/.test(incomingCode) ? `\\b${incomingCode}\\b` : incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-             if (updatedOrder) {
-                if (currentOtpCost > 0) {
-                  await User.updateOne({ _id: user._id }, { $inc: { balance: currentOtpCost } });
+                // 💥 ATOMIC DB UPDATE 💥
+                const updatedOrder = await Order.findOneAndUpdate(
+                   { _id: order._id, fullMessage: { $not: new RegExp(regexStr) } },
+                   { 
+                     $set: { 
+                       status: "DONE", 
+                       otp: incomingCode, 
+                       fullMessage: order.fullMessage ? order.fullMessage + " _||_ " + incomingMsg : incomingMsg,
+                       expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) 
+                     },
+                     $inc: { orderCost: otpCost, orderCommission: otpCommission }
+                   },
+                   { new: true }
+                );
+
+                if (updatedOrder && otpCost > 0) {
+                   const updatedUser = await User.findOneAndUpdate(
+                       { _id: user._id }, 
+                       { $inc: { balance: otpCost } },
+                       { new: true }
+                   );
+
+                   if (otpCommission > 0 && agentId) {
+                      await User.updateOne({ _id: agentId }, { $inc: { agentEarning: otpCommission, balance: otpCommission } });
+                   }
+
+                   // 💥 AUTO-PAY BACKGROUND TRIGGER 💥
+                   if (updatedUser && updatedUser.autoPayEnabled && updatedUser.balance >= 100) {
+                      triggerBinanceAutoPay(updatedUser).catch(err => console.log("AutoPay error:", err));
+                   }
                 }
-                if (currentOtpCommission > 0 && agentToUpdate) {
-                  await User.updateOne({ _id: agentToUpdate._id }, { $inc: { agentEarning: currentOtpCommission, balance: currentOtpCommission } });
-                }
-             }
-          }
+            }
         }
-
-        const userRecentOrders = await Order.find({ 
-          userEmail: user.email, 
-          status: { $in: ["WAIT", "DONE"] } 
-        }).sort({ _id: -1 }).limit(100).lean();
-
-        safeUserOtps = liveOtps.filter((m: any) => {
-           if(!m.number) return false;
-           return userRecentOrders.some(order => {
-             const cleanSearchNum = String(order.searchNumber).replace(/\D/g, "");
-             return String(m.number).replace(/\D/g, "").endsWith(cleanSearchNum.slice(-6));
-           });
-        });
-      }
     }
 
-    const secureResponse = {
-      meta: data?.meta || { status: "success", code: 200 },
-      data: { otps: safeUserOtps }
-    };
-
-    return NextResponse.json(secureResponse, { status: 200 });
+    return NextResponse.json({
+      meta: globalMnetCache?.meta || { status: "success", code: 200 },
+      data: { otps: userSpecificOtps }
+    }, { status: 200 });
 
   } catch (error: any) {
     return NextResponse.json({ meta: { status: "error" }, message: "Server Error" }, { status: 500 });
   }
+}
+
+async function triggerBinanceAutoPay(user: any) {
+    try {
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/cron/process-binance-payout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user._id })
+        });
+    } catch (e) {
+        // Background fail is ignored silently
+    }
 }
