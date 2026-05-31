@@ -8,7 +8,6 @@ export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
-    // 💥 1. SECURITY FIX: Exactly matching your system's token check 💥
     const token = req.cookies.get("zenex_token")?.value;
     if (!token) return NextResponse.json({ success: false, message: "🔴 UNAUTHORIZED" }, { status: 401 });
 
@@ -24,13 +23,11 @@ export async function GET(req: NextRequest) {
 
     let query: any = {};
 
-    // 💥 2. AGENT FILTER LOGIC (100% Fail-Proof) 💥
     if (role !== 'admin') {
        if (!passedAgentEmail) {
            return NextResponse.json({ success: true, data: [] });
        }
 
-       // Find the Agent
        const agent = await User.findOne({
          $or: [{ email: passedAgentEmail }, { customAgentMail: passedAgentEmail }]
        });
@@ -39,7 +36,6 @@ export async function GET(req: NextRequest) {
            return NextResponse.json({ success: true, data: [] });
        }
 
-       // Find Users under this Agent
        const users = await User.find({
          $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }]
        }).select("email");
@@ -50,12 +46,10 @@ export async function GET(req: NextRequest) {
            return NextResponse.json({ success: true, data: [] });
        }
 
-       // Create case-insensitive exact match for MongoDB (Safest method)
        const emailRegexArr = userEmails.map(e => ({ email: { $regex: new RegExp(`^${e}$`, 'i') } }));
        query.$or = emailRegexArr;
     }
 
-    // 💥 3. SEARCH LOGIC 💥
     if (search) {
        const searchFilter = {
          $or: [
@@ -73,26 +67,25 @@ export async function GET(req: NextRequest) {
        }
     }
 
-    // 💥 4. DATABASE FETCH 💥
     const totalItems = await Withdraw.countDocuments(query);
     const requests = await Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
-    // 💥 5. ZERO-LOAD STATS CALCULATION 💥
-    const allFiltered = await Withdraw.find(query).select("amount status createdAt date").lean();
-    let tDist = 0, cMonth = 0, tPend = 0, tTrans = allFiltered.length;
-    const currentMonth = new Date().getMonth();
+    const allFiltered = await Withdraw.find(query).select("amount status").lean();
+    
+    // 💥 ADDED: Rejected Count Logic 💥
+    let tDist = 0, tPend = 0, tApprovedCount = 0, tRejectedCount = 0;
 
     allFiltered.forEach(tx => {
        const st = (tx.status || "").toUpperCase();
        const amt = Number(tx.amount) || 0;
-       const txTime = new Date(tx.createdAt || tx.date);
 
        if (st === "PAID" || st === "COMPLETED") {
            tDist += amt;
-           if (txTime.getMonth() === currentMonth) cMonth++;
-       }
-       if (st === "PENDING" || st === "PROCESSING") {
+           tApprovedCount++; 
+       } else if (st === "PENDING" || st === "PROCESSING") {
            tPend++;
+       } else if (st === "REJECTED") {
+           tRejectedCount++; 
        }
     });
 
@@ -101,9 +94,9 @@ export async function GET(req: NextRequest) {
       data: requests,
       stats: {
          totalDistributed: tDist,
-         completedMonth: cMonth,
+         totalRejectedCount: tRejectedCount,
          totalPending: tPend,
-         totalTransactions: tTrans
+         totalApprovedCount: tApprovedCount 
       },
       pagination: { page, limit, totalPages: Math.ceil(totalItems / limit) || 1 }
     });

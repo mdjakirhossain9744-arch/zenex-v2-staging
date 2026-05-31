@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
-    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE & WID GENERATION) 💥
+    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE & BRANDED WID GENERATION) 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
       if (!safeAmount || isNaN(safeAmount) || safeAmount < 100) return NextResponse.json({ success: false, message: "Invalid amount. Minimum is ৳ 100." }, { status: 400 });
@@ -39,7 +39,8 @@ export async function POST(req: Request) {
       );
       if (!updatedUser) return NextResponse.json({ success: false, message: "Insufficient Balance!" }, { status: 400 });
 
-      const generatedWid = "M_" + Math.random().toString(36).substring(2, 11).toUpperCase();
+      // 💥 FIXED: Brand Consistent Transaction ID starting with ZX- 💥
+      const generatedWid = "ZX-" + Math.random().toString(36).substring(2, 9).toUpperCase();
 
       const newWithdraw = new Withdraw({ 
           email, 
@@ -187,11 +188,8 @@ export async function POST(req: Request) {
          if (googleSheetUrl) fetch(googleSheetUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: request.date, name: request.name, email: request.email, amount: request.amount, method: request.method, accountNumber: request.accountNumber, status: "PROCESSING" }) }).catch(()=>{}); 
       }
 
-      // 💥 FIXED: Manual Reject by Admin automatically disables user Auto Pay and refunds balance 💥
       if (newStatus === "REJECTED" && request.status !== "REJECTED") {
          request.adminNote = "Rejected manually by Admin. Refunded & Auto-Pay Disabled.";
-         
-         // Balance return AND AutoPay disable together
          await User.findOneAndUpdate(
             { email: request.email }, 
             { 
@@ -199,7 +197,6 @@ export async function POST(req: Request) {
                $set: { isAutoWithdraw: false } 
             }
          );
-
          await Notification.create({ 
             userEmail: request.email, 
             title: "Withdrawal Rejected & Auto-Pay Off 🔴", 

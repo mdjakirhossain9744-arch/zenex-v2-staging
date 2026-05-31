@@ -13,11 +13,11 @@ export default function AgentPayments() {
   const fetchPayments = async (searchQuery = '', currentPage = 1) => {
     setLoading(true);
     try {
-      // 💥 FIXED: Fetching agent email directly from local storage exactly like your other pages 💥
       const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
       const agentEmail = storedUser?.email || '';
+      const role = storedUser?.role || ''; 
 
-      const res = await fetch(`/api/manager/payments?search=${searchQuery}&page=${currentPage}&limit=10&agentEmail=${agentEmail}`, {
+      const res = await fetch(`/api/manager/payments?search=${searchQuery}&page=${currentPage}&limit=10&agentEmail=${agentEmail}&role=${role}`, {
         cache: 'no-store'
       });
       const result = await res.json();
@@ -55,11 +55,12 @@ export default function AgentPayments() {
           <p className="text-[#94A3B8] text-xs md:text-sm font-medium tracking-wide">Track withdrawal history and success notes for users under your agency.</p>
         </div>
 
+        {/* 💥 UNIQUE CARDS DESIGN 💥 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <StatCard title="Total Distributed" value={`$${stats?.totalDistributed?.toFixed(2) || '0.00'}`} subtitle="Lifetime amount" color="text-[#10B981]" border="border-[#10B981]/30" />
-          <StatCard title="Completed (Month)" value={stats?.completedMonth || 0} subtitle="Transactions this month" color="text-[#3B82F6]" border="border-[#3B82F6]/30" />
+          <StatCard title="Total Distributed" value={`৳ ${stats?.totalDistributed?.toFixed(2) || '0.00'}`} subtitle="Lifetime paid amount" color="text-[#10B981]" border="border-[#10B981]/30" />
+          <StatCard title="Total Approved" value={stats?.totalApprovedCount || 0} subtitle="Lifetime successful" color="text-[#3B82F6]" border="border-[#3B82F6]/30" />
           <StatCard title="Pending Request" value={stats?.totalPending || 0} subtitle="Waiting for approval" color="text-[#EAB308]" border="border-[#EAB308]/30" />
-          <StatCard title="Total Approved" value={(stats?.totalTransactions - stats?.totalPending) || 0} subtitle="Lifetime processed" color="text-[#A855F7]" border="border-[#A855F7]/30" />
+          <StatCard title="Total Rejected" value={stats?.totalRejectedCount || 0} subtitle="Cancelled or Refunded" color="text-[#F43F5E]" border="border-[#F43F5E]/30" />
         </div>
 
         <div className="bg-[#1E293B]/80 backdrop-blur-xl border border-[#334155] rounded-xl overflow-hidden shadow-2xl">
@@ -98,10 +99,11 @@ export default function AgentPayments() {
                     const status = tx.status?.toUpperCase() || '';
                     const isPaid = status === 'PAID' || status === 'COMPLETED';
                     const isPending = status === 'PENDING' || status === 'PROCESSING';
+                    
                     return (
                       <tr key={idx} className="bg-transparent border-b border-[#334155]/50 hover:bg-[#334155]/20 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="font-mono text-[#3B82F6] font-bold text-xs">{tx.wid || 'Processing...'}</div>
+                          <div className="font-mono text-[#3B82F6] font-bold text-xs">{tx.wid || 'WID-PENDING'}</div>
                           <div className="text-[#E2E8F0] mt-1 text-xs truncate max-w-[150px] font-medium">{tx.name}</div>
                           <div className="text-[#64748B] text-[10px]">{tx.email}</div>
                         </td>
