@@ -8,12 +8,18 @@ const withdrawSchema = new Schema(
     amount: { type: Number, required: true },
     method: { type: String, required: true },
     accountNumber: { type: String, required: true }, 
-    status: { type: String, default: "PENDING" }, // PENDING, PROCESSING, PAID, REJECTED
+    status: { type: String, default: "PENDING" }, 
     date: { type: String, required: true },
     
-    // Transaction ID and Notes
-    wid: { type: String, default: "" }, 
-    adminNote: { type: String, default: "" },
+    // 💥 GLOBAL AUTO-GENERATOR: Works for Manual AND Auto-Pay 💥
+    wid: { 
+        type: String, 
+        default: () => "ZX-" + Math.random().toString(36).substring(2, 8).toUpperCase() 
+    }, 
+    adminNote: { 
+        type: String, 
+        default: "Processing request..." 
+    },
   },
   { timestamps: true }
 );

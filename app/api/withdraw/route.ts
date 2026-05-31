@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
-    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE & BRANDED WID GENERATION) 💥
+    // 💥 1. CREATE CUSTOM WITHDRAW 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
       if (!safeAmount || isNaN(safeAmount) || safeAmount < 100) return NextResponse.json({ success: false, message: "Invalid amount. Minimum is ৳ 100." }, { status: 400 });
@@ -39,7 +39,6 @@ export async function POST(req: Request) {
       );
       if (!updatedUser) return NextResponse.json({ success: false, message: "Insufficient Balance!" }, { status: 400 });
 
-      // 💥 FIXED: Brand Consistent Transaction ID starting with ZX- 💥
       const generatedWid = "ZX-" + Math.random().toString(36).substring(2, 9).toUpperCase();
 
       const newWithdraw = new Withdraw({ 
@@ -217,7 +216,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC 💥
+    // 💥 4. FETCH LOGIC (Search WID added!) 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -228,7 +227,15 @@ export async function POST(req: Request) {
          if (tab === "BINANCE_AUTO") { query.status = { $in: ["PENDING", "PROCESSING"] }; query.method = "Binance"; }
          if (tab === "HISTORY") query.status = { $in: ["PAID", "REJECTED"] };
 
-         if (searchQuery) { query.$or = [{ name: { $regex: searchQuery, $options: "i" } }, { email: { $regex: searchQuery, $options: "i" } }, { accountNumber: { $regex: searchQuery, $options: "i" } }]; }
+         // 💥 FIXED: Added 'wid' in Admin Search 💥
+         if (searchQuery) { 
+             query.$or = [
+                 { wid: { $regex: searchQuery, $options: "i" } },
+                 { name: { $regex: searchQuery, $options: "i" } }, 
+                 { email: { $regex: searchQuery, $options: "i" } }, 
+                 { accountNumber: { $regex: searchQuery, $options: "i" } }
+             ]; 
+         }
 
          if (timeFilter !== "ALL" && tab === "HISTORY") {
             const now = new Date();

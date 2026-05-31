@@ -121,7 +121,6 @@ export default function AdminPayments() {
     if (newStatus === "PAID" && method === "Binance") {
         if (!window.confirm("Are you sure? This will instantly send REAL USD to the user's Binance account!")) return;
     }
-    // REJECT কনফার্মেশন
     if (newStatus === "REJECTED") {
         if (!window.confirm("Are you sure you want to REJECT and refund this amount?")) return;
     }
@@ -135,8 +134,8 @@ export default function AdminPayments() {
   };
 
   const downloadPageCSV = () => {
-    const headers = ["Date", "Name", "Email", "Amount", "Method", "Account Number", "Status"];
-    const rows = dbRequests.map(req => [req.date || new Date(req.createdAt).toLocaleDateString(), req.name, req.email, req.amount, req.method, req.accountNumber, req.status]);
+    const headers = ["WID", "Date", "Name", "Email", "Amount", "Method", "Account Number", "Status"];
+    const rows = dbRequests.map(req => [req.wid || "ZX-PENDING", req.date || new Date(req.createdAt).toLocaleDateString(), req.name, req.email, req.amount, req.method, req.accountNumber, req.status]);
     const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([csvContent], { type: "text/csv;charset=utf-8;" }));
@@ -214,7 +213,7 @@ export default function AdminPayments() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#3B82F6]">
-              <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Total Requests</p>
+              <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Total Transactions</p>
               <p className="text-2xl font-black text-white">{stats.totalRequests}</p>
             </div>
             <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#EAB308]">
@@ -226,7 +225,7 @@ export default function AdminPayments() {
               <p className="text-2xl font-black text-[#10B981]">৳ {stats.paidAmount.toFixed(2)}</p>
             </div>
             <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#8B5CF6]">
-              <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Total Requested</p>
+              <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Lifetime Volume</p>
               <p className="text-2xl font-black text-white">৳ {stats.totalAmount.toFixed(2)}</p>
             </div>
           </div>
@@ -259,7 +258,8 @@ export default function AdminPayments() {
                   {(activeAdminTab !== "HISTORY") && (
                     <th className="p-4 pl-6 w-10"><input type="checkbox" onChange={toggleSelectAll} checked={selectedIds.length === dbRequests.length && dbRequests.length > 0} className="w-4 h-4 rounded bg-[#1E293B] border-[#334155] cursor-pointer" /></th>
                   )}
-                  <th className="p-4 pl-6 font-black">Date</th>
+                  {/* 💥 FIXED: Updated Header for WID & Date 💥 */}
+                  <th className="p-4 pl-6 font-black">Ref ID & Date</th>
                   <th className="p-4 font-black">User Details</th>
                   <th className="p-4 font-black">Amount</th>
                   <th className="p-4 font-black">Account Info</th>
@@ -280,7 +280,13 @@ export default function AdminPayments() {
                           else setSelectedIds(selectedIds.filter(id => id !== req._id));
                         }} className="w-4 h-4 cursor-pointer" /></td>
                       )}
-                      <td className="p-4 pl-6"><span className="text-xs font-black text-[#94A3B8]">{req.date || new Date(req.createdAt).toLocaleDateString()}</span></td>
+                      
+                      {/* 💥 FIXED: Displaying ZX- ID and Date 💥 */}
+                      <td className="p-4 pl-6">
+                         <div className="font-mono text-[#3B82F6] font-bold text-xs">{req.wid || 'ZX-PENDING'}</div>
+                         <div className="text-[10px] font-black text-[#94A3B8] mt-0.5">{req.date || new Date(req.createdAt).toLocaleDateString()}</div>
+                      </td>
+
                       <td className="p-4"><p className="font-bold text-[#E2E8F0]">{req.name}</p><p className="text-[10px] text-[#64748B]">{req.email}</p></td>
                       <td className="p-4 font-black text-[#10B981] text-lg">৳ {req.amount}</td>
                       <td className="p-4">
@@ -299,7 +305,6 @@ export default function AdminPayments() {
                             <button onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} className="text-[#F43F5E] hover:underline text-xs font-black px-2">Reject</button>
                           </>
                         ) : req.status === "PROCESSING" ? (
-                          // 💥 FIX: Added Reject Button beside the Auto Pay button 💥
                           <div className="flex items-center justify-end gap-2">
                               <button 
                                  onClick={() => handleAdminStatusUpdate(req._id, "PAID", req.method)} 
