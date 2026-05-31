@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import connectToDatabase from '../../../lib/mongodb';
 import Withdraw from '../../../../models/Withdraw';
-import User from '../../../../models/User'; // 💥 Fixed: Added User Model 💥
+import User from '../../../../models/User';
+
+// 💥 FIXED: Next.js Cache Buster (রিয়েল-টাইম ডাটা আনার জন্য) 💥
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,14 +27,16 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
 
     let matchStage: any = {};
-    if (decoded.role === 'agent') {
-      // Now User model is available and it won't crash!
+    
+    // 💥 FIXED: Admin bypasses filtering. Agent only sees their network. 💥
+    if (decoded.role === 'agent' || decoded.role === 'manager') {
       const users = await User.find({ 
         $or: [{ addedBy: decoded.email }, { agent: decoded.email }] 
       }).select('email');
       
       const userEmails = users.map((u: any) => u.email);
-      matchStage.email = { $in: userEmails };
+      // যদি এজেন্টের কোনো ইউজার না থাকে, তবে সে কিছুই দেখবে না
+      matchStage.email = userEmails.length > 0 ? { $in: userEmails } : { $in: ['dummy_no_match@email.com'] };
     }
 
     if (search) {
@@ -58,13 +64,13 @@ export async function GET(req: NextRequest) {
               $group: {
                 _id: null,
                 totalDistributed: { 
-                  $sum: { $cond: [{ $eq: [{ $toUpper: '$status' }, 'PAID'] }, '$amount', 0] } 
+                  $sum: { $cond: [{ $in: [{ $toUpper: '$status' }, ['PAID', 'COMPLETED']] }, '$amount', 0] } 
                 },
                 completedMonth: {
-                  $sum: { $cond: [{ $and: [{ $eq: [{ $toUpper: '$status' }, 'PAID'] }, { $gte: ['$createdAt', startOfMonth] }] }, 1, 0] }
+                  $sum: { $cond: [{ $and: [{ $in: [{ $toUpper: '$status' }, ['PAID', 'COMPLETED']] }, { $gte: ['$createdAt', startOfMonth] }] }, 1, 0] }
                 },
                 totalPending: {
-                  $sum: { $cond: [{ $eq: [{ $toUpper: '$status' }, 'PENDING'] }, 1, 0] }
+                  $sum: { $cond: [{ $in: [{ $toUpper: '$status' }, ['PENDING', 'PROCESSING']] }, 1, 0] }
                 },
                 totalTransactions: { $sum: 1 }
               }
@@ -86,7 +92,6 @@ export async function GET(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("Payment API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import DashboardLayout from '../../DashboardLayout'; // 💥 Fixed: Added Dashboard Layout 💥
+import DashboardLayout from '../../DashboardLayout'; 
 
 export default function AgentPayments() {
   const [data, setData] = useState<any[]>([]);
@@ -13,7 +13,10 @@ export default function AgentPayments() {
   const fetchPayments = async (searchQuery = '', currentPage = 1) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/manager/payments?search=${searchQuery}&page=${currentPage}&limit=10`);
+      // 💥 FIXED: Added cache: 'no-store' to force fresh live data 💥
+      const res = await fetch(`/api/manager/payments?search=${searchQuery}&page=${currentPage}&limit=10`, {
+        cache: 'no-store'
+      });
       const result = await res.json();
       if (result.success) {
         setData(result.data);
@@ -89,8 +92,9 @@ export default function AgentPayments() {
                   <tr><td colSpan={5} className="text-center py-12 text-[#64748B] font-medium">No transactions found.</td></tr>
                 ) : (
                   data.map((tx, idx) => {
-                    const isPaid = tx.status?.toUpperCase() === 'PAID' || tx.status?.toUpperCase() === 'COMPLETED';
-                    const isPending = tx.status?.toUpperCase() === 'PENDING';
+                    const status = tx.status?.toUpperCase() || '';
+                    const isPaid = status === 'PAID' || status === 'COMPLETED';
+                    const isPending = status === 'PENDING' || status === 'PROCESSING';
                     return (
                       <tr key={idx} className="bg-transparent border-b border-[#334155]/50 hover:bg-[#334155]/20 transition-colors">
                         <td className="px-6 py-4">
@@ -99,7 +103,7 @@ export default function AgentPayments() {
                           <div className="text-[#64748B] text-[10px]">{tx.email}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-lg font-black text-white">${tx.amount?.toFixed(2)}</div>
+                          <div className="text-lg font-black text-white">৳ {tx.amount?.toFixed(2)}</div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-[#A855F7] uppercase text-[10px] font-black tracking-widest mb-1">{tx.method}</div>
@@ -115,7 +119,7 @@ export default function AgentPayments() {
                           </span>
                         </td>
                         <td className="px-6 py-4 min-w-[200px]">
-                          <div className="text-[#94A3B8] mb-1 text-[10px] uppercase font-bold tracking-wider">{new Date(tx.createdAt).toLocaleString()}</div>
+                          <div className="text-[#94A3B8] mb-1 text-[10px] uppercase font-bold tracking-wider">{new Date(tx.createdAt || tx.date).toLocaleString()}</div>
                           {tx.adminNote && (
                             <div className={`text-[10px] p-2 rounded border break-words mt-2 font-mono ${isPaid ? 'bg-[#10B981]/5 border-[#10B981]/20 text-[#34D399]' : 'bg-[#F43F5E]/5 border-[#F43F5E]/20 text-[#FB7185]'}`}>
                               <span className="font-bold opacity-75 mr-1">Note:</span>{tx.adminNote}
