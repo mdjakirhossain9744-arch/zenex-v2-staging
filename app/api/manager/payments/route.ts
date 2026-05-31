@@ -4,7 +4,6 @@ import connectToDatabase from '../../../lib/mongodb';
 import Withdraw from '../../../../models/Withdraw';
 import User from '../../../../models/User';
 
-// 💥 FIXED: Next.js Cache Buster (রিয়েল-টাইম ডাটা আনার জন্য) 💥
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -12,14 +11,16 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
 
+    // 1. Token Verification
     const token = req.cookies.get('zenex_token')?.value;
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
     const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'zenex_secret');
-    if (decoded.role !== 'agent' && decoded.role !== 'admin') {
+    if (decoded.role !== 'agent' && decoded.role !== 'admin' && decoded.role !== 'manager') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // 2. Query Params Parsing
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -28,17 +29,39 @@ export async function GET(req: NextRequest) {
 
     let matchStage: any = {};
     
-    // 💥 FIXED: Admin bypasses filtering. Agent only sees their network. 💥
+    // 💥 THE EXACT ORIGINAL LOGIC FROM YOUR SYSTEM 💥
     if (decoded.role === 'agent' || decoded.role === 'manager') {
-      const users = await User.find({ 
-        $or: [{ addedBy: decoded.email }, { agent: decoded.email }] 
-      }).select('email');
       
-      const userEmails = users.map((u: any) => u.email);
-      // যদি এজেন্টের কোনো ইউজার না থাকে, তবে সে কিছুই দেখবে না
-      matchStage.email = userEmails.length > 0 ? { $in: userEmails } : { $in: ['dummy_no_match@email.com'] };
+      const agentId = decoded.id || decoded._id || decoded.userId;
+      const currentAgent = await User.findById(agentId);
+      
+      if (currentAgent) {
+        const agentPrimaryEmail = currentAgent.email;
+        const agentCustomMail = currentAgent.customAgentMail || agentPrimaryEmail;
+
+        // Finding users using exact agentEmail match (Just like your get-agent-users API)
+        const users = await User.find({ 
+          $or: [
+            { agentEmail: agentPrimaryEmail }, 
+            { agentEmail: agentCustomMail }
+          ],
+          role: "user"
+        }).select('email');
+        
+        const userEmails = users.map((u: any) => u.email);
+        
+        if (userEmails.length > 0) {
+            matchStage.email = { $in: userEmails };
+        } else {
+            // No users found for this agent
+            matchStage.email = "NO_USERS_FOUND_FOR_THIS_AGENT_123"; 
+        }
+      } else {
+        matchStage.email = "NO_USERS_FOUND_FOR_THIS_AGENT_123";
+      }
     }
 
+    // 3. Search Filtering
     if (search) {
       matchStage.$or = [
         { wid: { $regex: search, $options: 'i' } },
@@ -49,6 +72,7 @@ export async function GET(req: NextRequest) {
 
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
+    // 4. Zero-Load Fast Aggregation
     const result = await Withdraw.aggregate([
       { $match: matchStage },
       {
