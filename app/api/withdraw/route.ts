@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
-    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE) 💥
+    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE & WID GENERATION) 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
       if (!safeAmount || isNaN(safeAmount) || safeAmount < 100) return NextResponse.json({ success: false, message: "Invalid amount. Minimum is ৳ 100." }, { status: 400 });
@@ -39,7 +39,19 @@ export async function POST(req: Request) {
       );
       if (!updatedUser) return NextResponse.json({ success: false, message: "Insufficient Balance!" }, { status: 400 });
 
-      const newWithdraw = new Withdraw({ email, name, role, amount: safeAmount, method, accountNumber, date: new Date().toLocaleDateString('en-GB') });
+      const generatedWid = "M_" + Math.random().toString(36).substring(2, 11).toUpperCase();
+
+      const newWithdraw = new Withdraw({ 
+          email, 
+          name, 
+          role, 
+          amount: safeAmount, 
+          method, 
+          accountNumber, 
+          date: new Date().toLocaleDateString('en-GB'),
+          wid: generatedWid,
+          adminNote: "Processing request..."
+      });
       await newWithdraw.save();
       return NextResponse.json({ success: true, message: "Withdraw request submitted successfully!" });
     }
@@ -63,6 +75,7 @@ export async function POST(req: Request) {
               
               if (binanceRes.success) {
                 lockedReq.status = "PAID";
+                lockedReq.adminNote = "Auto Paid. Binance TX Processed.";
                 await lockedReq.save();
                 await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
                 successCount++;
@@ -72,23 +85,27 @@ export async function POST(req: Request) {
 
                 if (isAdminFault) {
                   lockedReq.status = "PROCESSING"; 
+                  lockedReq.adminNote = "Admin Issue: " + binanceRes.message;
                   await lockedReq.save();
                   failCount++;
                 } else {
                   lockedReq.status = "REJECTED"; 
+                  lockedReq.adminNote = "Binance Failed: " + binanceRes.message;
                   await lockedReq.save();
                   await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
                   await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
                   failCount++;
                 }
               }
-            } catch (e) {
+            } catch (e: any) {
               lockedReq.status = "PROCESSING";
+              lockedReq.adminNote = "API Crash: " + e.message;
               await lockedReq.save();
               failCount++;
             }
           } else {
             lockedReq.status = "PAID";
+            lockedReq.adminNote = "Manual Payment Completed.";
             await lockedReq.save();
             await Notification.create({ userEmail: request.email, title: "Payment Successful 🎉", description: `৳ ${request.amount} has been paid!`, type: "SUCCESS", color: "green" });
             successCount++;
@@ -96,6 +113,7 @@ export async function POST(req: Request) {
         } 
         else if (actionType === "PROCESS" && request.status === "PENDING") {
           request.status = "PROCESSING";
+          request.adminNote = "Request is being verified...";
           await request.save();
           successCount++;
         }
@@ -123,6 +141,7 @@ export async function POST(req: Request) {
 
                  if (binanceRes.success) {
                      request.status = "PAID";
+                     request.adminNote = "Auto Paid. Binance TX Processed.";
                      await request.save();
                      await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
                      return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
@@ -132,10 +151,12 @@ export async function POST(req: Request) {
 
                      if (isAdminFault) {
                          request.status = "PROCESSING"; 
+                         request.adminNote = "Admin Issue: " + binanceRes.message;
                          await request.save();
                          return NextResponse.json({ success: false, message: `⚠️ Admin Binance Issue: ${binanceRes.message}` });
                      } else {
                          request.status = "REJECTED"; 
+                         request.adminNote = "Binance Failed: " + binanceRes.message;
                          await request.save();
                          await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
                          await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
@@ -144,12 +165,14 @@ export async function POST(req: Request) {
                  }
              } catch (apiErr: any) {
                  request.status = "PROCESSING"; 
+                 request.adminNote = "API Crash: " + apiErr.message;
                  await request.save();
                  return NextResponse.json({ success: false, message: `API Crash: ${apiErr.message}` });
              }
          }
 
          request.status = "PAID";
+         request.adminNote = "Manual Payment Completed.";
          await request.save();
          await Notification.create({ userEmail: request.email, title: "Payment Successful 🎉", description: `৳ ${request.amount} has been paid!`, type: "SUCCESS", color: "green" });
          return NextResponse.json({ success: true, message: "Status updated to PAID" });
@@ -159,15 +182,34 @@ export async function POST(req: Request) {
       if (!request) return NextResponse.json({ success: false, message: "Request not found!" });
 
       if (newStatus === "PROCESSING" && request.status !== "PROCESSING") {
+         request.adminNote = "Request is being verified...";
          const googleSheetUrl = process.env.GOOGLE_SHEET_WEBHOOK;
          if (googleSheetUrl) fetch(googleSheetUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: request.date, name: request.name, email: request.email, amount: request.amount, method: request.method, accountNumber: request.accountNumber, status: "PROCESSING" }) }).catch(()=>{}); 
       }
 
+      // 💥 FIXED: Manual Reject by Admin automatically disables user Auto Pay and refunds balance 💥
       if (newStatus === "REJECTED" && request.status !== "REJECTED") {
-         await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount } });
-         await Notification.create({ userEmail: request.email, title: "Withdrawal Rejected", description: `Your ৳ ${request.amount} request was rejected and refunded.`, type: "WARNING", color: "red" });
+         request.adminNote = "Rejected manually by Admin. Refunded & Auto-Pay Disabled.";
+         
+         // Balance return AND AutoPay disable together
+         await User.findOneAndUpdate(
+            { email: request.email }, 
+            { 
+               $inc: { balance: request.amount }, 
+               $set: { isAutoWithdraw: false } 
+            }
+         );
+
+         await Notification.create({ 
+            userEmail: request.email, 
+            title: "Withdrawal Rejected & Auto-Pay Off 🔴", 
+            description: `Admin rejected your request. ৳ ${request.amount} refunded and Auto-Pay disabled.`, 
+            type: "ERROR", 
+            color: "red" 
+         });
       } 
       else if (request.status === "REJECTED" && newStatus !== "REJECTED") {
+         request.adminNote = "Action Reversed by Admin.";
          const userCheck = await User.findOne({ email: request.email });
          if (!userCheck || userCheck.balance < request.amount) return NextResponse.json({ success: false, message: "Insufficient balance to undo!" }, { status: 400 });
          await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: -request.amount } });
@@ -178,7 +220,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC (100% Fail-Safe Stats Aggregation) 💥
+    // 💥 4. FETCH LOGIC 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -205,7 +247,6 @@ export async function POST(req: Request) {
          
          requests.forEach(r => r.amount = Number(r.amount.toFixed(2)));
 
-         // 💥 BUG FIX: $convert protects database from crashing if amount is null/empty/string 💥
          const pendingAgg = await Withdraw.aggregate([
              { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, 
              { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
