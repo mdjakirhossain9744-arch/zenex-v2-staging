@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
 
-    // 1. Token Verification
     const token = req.cookies.get('zenex_token')?.value;
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
@@ -20,31 +19,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 2. Query Params Parsing
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const search = searchParams.get('search') || '';
+    
+    // 💥 EXACT LOGIC MATCHING get-agent-users 💥
+    const passedAgentEmail = searchParams.get('agentEmail') || decoded.email;
     const skip = (page - 1) * limit;
 
     let matchStage: any = {};
     
-    // 💥 THE EXACT ORIGINAL LOGIC FROM YOUR SYSTEM 💥
     if (decoded.role === 'agent' || decoded.role === 'manager') {
-      
-      const agentId = decoded.id || decoded._id || decoded.userId;
-      const currentAgent = await User.findById(agentId);
-      
-      if (currentAgent) {
-        const agentPrimaryEmail = currentAgent.email;
-        const agentCustomMail = currentAgent.customAgentMail || agentPrimaryEmail;
+      // Find the agent exactly like your existing system does
+      const agent = await User.findOne({
+        $or: [{ email: passedAgentEmail }, { customAgentMail: passedAgentEmail }],
+        role: { $in: ["agent", "manager"] }
+      });
 
-        // Finding users using exact agentEmail match (Just like your get-agent-users API)
-        const users = await User.find({ 
-          $or: [
-            { agentEmail: agentPrimaryEmail }, 
-            { agentEmail: agentCustomMail }
-          ],
+      if (agent) {
+        // Find users exactly like your existing system does
+        const users = await User.find({
+          $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }],
           role: "user"
         }).select('email');
         
@@ -53,7 +49,6 @@ export async function GET(req: NextRequest) {
         if (userEmails.length > 0) {
             matchStage.email = { $in: userEmails };
         } else {
-            // No users found for this agent
             matchStage.email = "NO_USERS_FOUND_FOR_THIS_AGENT_123"; 
         }
       } else {
@@ -61,7 +56,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. Search Filtering
     if (search) {
       matchStage.$or = [
         { wid: { $regex: search, $options: 'i' } },
@@ -72,7 +66,6 @@ export async function GET(req: NextRequest) {
 
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
-    // 4. Zero-Load Fast Aggregation
     const result = await Withdraw.aggregate([
       { $match: matchStage },
       {

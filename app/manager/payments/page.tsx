@@ -13,8 +13,11 @@ export default function AgentPayments() {
   const fetchPayments = async (searchQuery = '', currentPage = 1) => {
     setLoading(true);
     try {
-      // 💥 FIXED: Added cache: 'no-store' to force fresh live data 💥
-      const res = await fetch(`/api/manager/payments?search=${searchQuery}&page=${currentPage}&limit=10`, {
+      // 💥 FIXED: Fetching agent email directly from local storage exactly like your other pages 💥
+      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const agentEmail = storedUser?.email || '';
+
+      const res = await fetch(`/api/manager/payments?search=${searchQuery}&page=${currentPage}&limit=10&agentEmail=${agentEmail}`, {
         cache: 'no-store'
       });
       const result = await res.json();
