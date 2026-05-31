@@ -1,4 +1,3 @@
-// Location: models/Withdraw.ts
 import mongoose, { Schema, models } from "mongoose";
 
 const withdrawSchema = new Schema(
@@ -11,8 +10,10 @@ const withdrawSchema = new Schema(
     accountNumber: { type: String, required: true }, 
     status: { type: String, default: "PENDING" }, // PENDING, PROCESSING, PAID, REJECTED
     date: { type: String, required: true },
-    wid: { type: String, default: "" }, // Added for Transaction/Ref ID
-    adminNote: { type: String, default: "" }, // Added for TX Hash or Action Note
+    
+    // Transaction ID and Notes
+    wid: { type: String, default: "" }, 
+    adminNote: { type: String, default: "" },
   },
   { timestamps: true }
 );
