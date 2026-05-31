@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
+    // 💥 1. CREATE CUSTOM WITHDRAW (MANUAL GATE) 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
       if (!safeAmount || isNaN(safeAmount) || safeAmount < 100) return NextResponse.json({ success: false, message: "Invalid amount. Minimum is ৳ 100." }, { status: 400 });
@@ -43,14 +44,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: "Withdraw request submitted successfully!" });
     }
 
-    // 💥 2. BULK ACTION (Fixed Pending & Processing Both) 💥
+    // 💥 2. BULK ACTION 💥
     if (action === "BULK_ACTION") {
       const withdraws = await Withdraw.find({ _id: { $in: selectedIds } });
       let successCount = 0;
       let failCount = 0;
 
       for (const request of withdraws) {
-        // 💥 FIX: PENDING এবং PROCESSING দুটোকেই রিসিভ করবে 💥
         if (actionType === "PAID" && (request.status === "PROCESSING" || request.status === "PENDING")) {
           const lockedReq = await Withdraw.findOneAndUpdate({ _id: request._id, status: { $in: ["PROCESSING", "PENDING"] } }, { $set: { status: "PAYING_LOCK" } }, { new: true });
           if (!lockedReq) continue;
@@ -68,16 +68,14 @@ export async function POST(req: Request) {
                 successCount++;
               } else {
                 const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                
-                // 💥 FIX: API/IP Error-কে Admin Fault হিসেবে ধরা হয়েছে 💥
                 const isAdminFault = errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient") || errorMsg.includes("api") || errorMsg.includes("ip") || errorMsg.includes("permission");
 
                 if (isAdminFault) {
-                  lockedReq.status = "PROCESSING"; // Admin fault, no refund
+                  lockedReq.status = "PROCESSING"; 
                   await lockedReq.save();
                   failCount++;
                 } else {
-                  lockedReq.status = "REJECTED"; // User fault
+                  lockedReq.status = "REJECTED"; 
                   await lockedReq.save();
                   await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
                   await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
@@ -105,7 +103,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Bulk Executed: ${successCount} Success, ${failCount} Failed/Admin Error.` });
     }
 
-    // 💥 3. UPDATE SINGLE STATUS (Binance & Manual) 💥
+    // 💥 3. UPDATE SINGLE STATUS 💥
     if (action === "UPDATE_STATUS") {
       if (newStatus === "PAID") {
          const request = await Withdraw.findOneAndUpdate(
@@ -130,8 +128,6 @@ export async function POST(req: Request) {
                      return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
                  } else {
                      const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                     
-                     // 💥 FIX: API/IP Error-কে Admin Fault হিসেবে ধরা হয়েছে 💥
                      const isAdminFault = errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient") || errorMsg.includes("api") || errorMsg.includes("ip") || errorMsg.includes("permission");
 
                      if (isAdminFault) {
@@ -159,7 +155,6 @@ export async function POST(req: Request) {
          return NextResponse.json({ success: true, message: "Status updated to PAID" });
       }
 
-      // 💥 4. MANUAL REJECT & UNDO 💥
       const request = await Withdraw.findById(withdrawId);
       if (!request) return NextResponse.json({ success: false, message: "Request not found!" });
 
@@ -183,6 +178,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
+    // 💥 4. FETCH LOGIC (100% Fail-Safe Stats Aggregation) 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -209,7 +205,34 @@ export async function POST(req: Request) {
          
          requests.forEach(r => r.amount = Number(r.amount.toFixed(2)));
 
-         return NextResponse.json({ success: true, data: requests, pagination: { total: totalItems, page, limit, totalPages: Math.ceil(totalItems / limit) || 1 } });
+         // 💥 BUG FIX: $convert protects database from crashing if amount is null/empty/string 💥
+         const pendingAgg = await Withdraw.aggregate([
+             { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, 
+             { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+         ]);
+         
+         const paidAgg = await Withdraw.aggregate([
+             { $match: { status: "PAID" } }, 
+             { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+         ]);
+         
+         const allAgg = await Withdraw.aggregate([
+             { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+         ]);
+         
+         const totalCount = await Withdraw.countDocuments();
+
+         return NextResponse.json({ 
+            success: true, 
+            data: requests, 
+            pagination: { total: totalItems, page, limit, totalPages: Math.ceil(totalItems / limit) || 1 },
+            stats: { 
+               totalRequests: totalCount, 
+               pendingAmount: pendingAgg[0]?.total || 0, 
+               paidAmount: paidAgg[0]?.total || 0, 
+               totalAmount: allAgg[0]?.total || 0 
+            }
+         });
       } else {
          let requests = await Withdraw.find({ email }).sort({ createdAt: -1 });
          requests.forEach(r => r.amount = Number(r.amount.toFixed(2)));
