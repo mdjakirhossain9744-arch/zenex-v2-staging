@@ -5,6 +5,18 @@ import Order from "../../../../models/Order";
 
 export const dynamic = "force-dynamic";
 
+// 💥 CORS Headers (ব্রাউজার এক্সটেনশন যেন ব্লক না খায় তার জন্য) 💥
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, mapikey",
+};
+
+// 💥 OPTIONS মেথড: ব্রাউজার আগে চেক করবে আপনার API সেফ কিনা 💥
+export async function OPTIONS() {
+  return NextResponse.json({}, { status: 200, headers: corsHeaders });
+}
+
 // 💥 PURE UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
@@ -15,7 +27,10 @@ export async function POST(req: Request) {
     const apiKey = req.headers.get("mapikey");
     
     if (!apiKey || apiKey.trim().length < 10) {
-      return NextResponse.json({ meta: { status: "error" }, message: "Invalid API Key" }, { status: 401 });
+      return NextResponse.json(
+        { meta: { status: "error" }, message: "Invalid API Key" }, 
+        { status: 401, headers: corsHeaders }
+      );
     }
 
     const cleanApiKey = apiKey.trim();
@@ -23,15 +38,13 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
     
-    // 💥 SECURITY: User Validation 💥
     const user = await User.findOne({ apiKey: cleanApiKey }).lean();
-    if (!user) return NextResponse.json({ meta: { status: "error" }, message: "Invalid API Key" }, { status: 401 });
-    if (!user.isApiActive) return NextResponse.json({ meta: { status: "error" }, message: "API Disabled" }, { status: 403 });
-    if (user.status !== "active") return NextResponse.json({ meta: { status: "error" }, message: "Account Inactive" }, { status: 403 });
+    if (!user) return NextResponse.json({ meta: { status: "error" }, message: "Invalid API Key" }, { status: 401, headers: corsHeaders });
+    if (!user.isApiActive) return NextResponse.json({ meta: { status: "error" }, message: "API Disabled" }, { status: 403, headers: corsHeaders });
+    if (user.status !== "active") return NextResponse.json({ meta: { status: "error" }, message: "Account Inactive" }, { status: 403, headers: corsHeaders });
 
     const REAL_API_KEY = "M_7VX25KAJI"; 
 
-    // 💥 ANTI-HANG FIX: 5 Sec Timeout 💥
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); 
 
@@ -42,7 +55,7 @@ export async function POST(req: Request) {
           headers: {
             "mapikey": REAL_API_KEY,
             "Content-Type": "application/json",
-            "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", // MNIT Original User Agent
+            "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
             "Accept": "application/json",
             "Connection": "keep-alive"
           },
@@ -53,12 +66,12 @@ export async function POST(req: Request) {
         clearTimeout(timeoutId);
     } catch (fetchError: any) {
         clearTimeout(timeoutId);
-        return NextResponse.json({ meta: { status: "error" }, message: "Provider is slow. Try again." }, { status: 504 });
+        return NextResponse.json({ meta: { status: "error" }, message: "Provider is slow. Try again." }, { status: 504, headers: corsHeaders });
     }
 
     const data = await response.json();
 
-    // 💥 ASYNC BACKGROUND SAVE (Zero User Wait Time) 💥
+    // 💥 ASYNC BACKGROUND SAVE 💥
     if (data.meta?.status === "success") {
       const todayStr = getUTCDateString();
       
@@ -70,14 +83,15 @@ export async function POST(req: Request) {
         operator: data.data.operator || "Any",
         status: "WAIT",
         dateString: todayStr,
-        expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 Days Auto Expiration
+        expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) 
       });
       newOrder.save().catch((e:any) => console.error("Order Save Error:", e));
     }
 
-    return NextResponse.json(data, { status: response.status || 200 });
+    // রেসপন্সে CORS Header যুক্ত করে দেওয়া হলো
+    return NextResponse.json(data, { status: response.status || 200, headers: corsHeaders });
 
   } catch (error: any) {
-    return NextResponse.json({ meta: { status: "error" }, message: "Server Error" }, { status: 500 });
+    return NextResponse.json({ meta: { status: "error" }, message: "Server Error" }, { status: 500, headers: corsHeaders });
   }
 }
