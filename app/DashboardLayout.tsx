@@ -263,12 +263,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="h-20 flex items-center justify-between px-5 border-b border-[#334155] shrink-0">
           
-          {/* 💥 PERFECTLY ALIGNED DESKTOP LOGO 💥 */}
+          {/* 💥 DESKTOP LOGO CACHE FIX & ALIGNMENT 💥 */}
           <Link href={dashboardUrl} className="flex items-center gap-2.5 group">
             <div className="relative flex items-center justify-center">
                <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full group-hover:opacity-40 transition-opacity duration-500"></div>
-               <Image src="/zenex-logo.png" alt="ZENEX" width={26} height={26} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
+               <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={26} height={26} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
             </div>
+            {/* Removed margin top (mt-1) for perfect alignment */}
             <h1 className="text-[20px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all">ZENEX</h1>
           </Link>
 
@@ -337,12 +338,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-2 sm:gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30 shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
              
-             {/* 💥 PERFECTLY ALIGNED MOBILE LOGO 💥 */}
+             {/* 💥 MOBILE LOGO CACHE FIX & PERFECT ALIGNMENT 💥 */}
              <Link href={dashboardUrl} className="md:hidden flex items-center gap-1.5 group shrink-0">
                <div className="relative flex items-center justify-center">
                   <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full"></div>
-                  <Image src="/zenex-logo.png" alt="ZENEX" width={22} height={22} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
+                  <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={22} height={22} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
                </div>
+               {/* Removed mt-0.5 for perfect vertical alignment */}
                <h1 className="text-[17px] sm:text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none">ZENEX</h1>
              </Link>
 
@@ -391,7 +393,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      {/* 💥 VERSION V4.0.1 💥 */}
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-end md:items-center justify-end group">
         <div className={`absolute bottom-full mb-3 right-0 md:bottom-auto md:mb-0 md:right-full md:mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl md:rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 origin-bottom-right md:origin-right ${isBadgeOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'} md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}>
            <div className="flex flex-col md:flex-row items-center md:gap-4 px-4 py-3 md:py-2.5 whitespace-nowrap">

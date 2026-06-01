@@ -13,21 +13,21 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 💥 Advanced SEO Metadata for Google Ranking 💥
+// 💥 Advanced SEO Metadata & Telegram Cache Fix 💥
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.zenexnetwork.com"),
-  title: "ZENEX NETWORK - Premium OTP Service & Micro-Job Platform",
-  description: "Join ZENEX NETWORK, the most secure and automated OTP service and micro-job platform. Fast, reliable, and user-friendly dashboard for seamless experiences.",
-  keywords: ["ZENEX", "ZENEX NETWORK", "OTP Service", "Bangladesh OTP", "Micro Job", "Virtual Number", "Online Earning", "SMS Verification", "Auto Auto"],
+  title: "ZENEX NETWORK - Free Numbers & Instant Payouts",
+  description: "Join ZENEX NETWORK. Get free virtual numbers, complete successful OTP tasks, and get paid instantly. Enterprise micro-job platform.",
+  keywords: ["ZENEX", "ZENEX NETWORK", "Free OTP", "Bangladesh OTP", "Micro Job", "Virtual Number", "Online Earning", "SMS Verification", "Instant Payout"],
   authors: [{ name: "Zenex Team" }],
   openGraph: {
-    title: "ZENEX NETWORK - Premium OTP Service",
-    description: "The most secure and automated OTP service platform.",
+    title: "ZENEX NETWORK - Free Numbers & Instant Payouts",
+    description: "Get free numbers, complete OTP tasks, and earn instant payouts.",
     url: "https://www.zenexnetwork.com",
     siteName: "ZENEX NETWORK",
     images: [
       {
-        url: "/zenex-logo.png", // আপনার পাবলিক ফোল্ডারে থাকা লোগো
+        url: "/zenex-logo.png?v=4.0.1", // 💥 CACHE FIX: forces telegram/socials to fetch new logo 💥
         width: 800,
         height: 600,
       },
@@ -35,6 +35,11 @@ export const metadata: Metadata = {
     locale: "en_US",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "ZENEX NETWORK - Free Numbers & Instant Payouts",
+    images: ["/zenex-logo.png?v=4.0.1"], // 💥 TWITTER CACHE FIX 💥
+  }
 };
 
 export default function RootLayout({
