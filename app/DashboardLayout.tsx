@@ -174,7 +174,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 } 
                 else if (item.status === "DONE") {
                    const alreadySeenKeys = item.seenKeys || [];
-
                    const newMatches = processedMatches.filter((mObj: any) => !alreadySeenKeys.includes(mObj.uniqueKey));
 
                    if (newMatches.length > 0) {
@@ -262,15 +261,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {isMobileMenuOpen && (<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>)}
 
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
-        <div className="h-20 flex items-center justify-between px-6 border-b border-[#334155] shrink-0">
+        <div className="h-20 flex items-center justify-between px-5 border-b border-[#334155] shrink-0">
           
-          {/* 💥 ENTERPRISE DESKTOP LOGO WITH GLOW 💥 */}
-          <Link href={dashboardUrl} className="flex items-center gap-3 group mt-2">
+          {/* 💥 OPTIMIZED DESKTOP LOGO (Better Alignment & Size) 💥 */}
+          <Link href={dashboardUrl} className="flex items-center gap-2.5 group mt-1">
             <div className="relative flex items-center justify-center">
-               <div className="absolute inset-0 bg-[#3B82F6] blur-md opacity-50 rounded-full group-hover:opacity-100 transition-opacity duration-500"></div>
-               <Image src="/zenex-logo.png" alt="ZENEX Logo" width={42} height={42} className="relative z-10 object-contain drop-shadow-[0_0_15px_rgba(59,130,246,0.6)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
+               <div className="absolute inset-0 bg-[#3B82F6] blur-md opacity-40 rounded-full group-hover:opacity-80 transition-opacity duration-500"></div>
+               <Image src="/zenex-logo.png" alt="ZENEX" width={28} height={28} className="relative z-10 object-contain drop-shadow-[0_0_10px_rgba(59,130,246,0.6)] group-hover:scale-110 transition-transform duration-300" priority unoptimized />
             </div>
-            <h1 className="text-[26px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-1 group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.4)] transition-all">ZENEX</h1>
+            <h1 className="text-[20px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-1 group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.4)] transition-all">ZENEX</h1>
           </Link>
 
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#94A3B8] hover:text-white"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -281,36 +280,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {role === "admin" && (
               <>
                 <p className="px-4 text-[10px] font-bold tracking-widest text-[#F43F5E] mb-3 uppercase">Admin Controls</p>
-                <Link href="/admin" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin' ? activeBlue : inactive}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                  Control Room
-                </Link>
-                <Link href="/admin/users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/users' ? activeBlue : inactive}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                  Users Directory
-                </Link>
-                <Link href="/admin/realtime" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/realtime' ? activeBlue : inactive}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                  Global Realtime
-                </Link>
+                <Link href="/admin" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>Control Room</Link>
+                <Link href="/admin/users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/users' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>Users Directory</Link>
+                <Link href="/admin/realtime" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/admin/realtime' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>Global Realtime</Link>
               </>
             )}
 
             {role === "agent" && (
               <>
                 <p className="px-4 text-[10px] font-bold tracking-widest text-[#A855F7] mb-3 uppercase">Agent Controls</p>
-                <Link href="/manager/users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/users' ? activeYellow : inactive}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                  My Network Users
-                </Link>
-                <Link href="/manager/realtime" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/realtime' ? activeYellow : inactive}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                  Realtime
-                </Link>
-                <Link href="/manager/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/payments' ? activeYellow : inactive}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                  User Payments
-                </Link>
+                <Link href="/manager/users" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/users' ? activeYellow : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>My Network Users</Link>
+                <Link href="/manager/realtime" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/realtime' ? activeYellow : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>Realtime</Link>
+                <Link href="/manager/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/payments' ? activeYellow : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>User Payments</Link>
               </>
             )}
 
@@ -319,9 +300,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href={dashboardUrl} className={`flex items-center gap-3 px-4 py-3 transition-all ${isDashboardActive ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>Dashboard</Link>
             
             {role === "user" && (
-              <>
-                <Link href="/get-number" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/get-number' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>Get Number</Link>
-              </>
+              <Link href="/get-number" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/get-number' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>Get Number</Link>
             )}
 
             <Link href="/console" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/console' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>Console</Link>
@@ -354,17 +333,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main className={`flex-1 flex flex-col h-screen overflow-hidden w-full relative ${isMaintenance && role === 'admin' ? 'mt-6' : ''}`}>
-        <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full shrink-0 relative">
-          <div className="flex items-center gap-3">
-             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+        <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-3 sm:px-4 md:px-10 z-[50] w-full shrink-0 relative">
+          <div className="flex items-center gap-2 sm:gap-3">
+             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30 shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
              
-             {/* 💥 ENTERPRISE MOBILE LOGO WITH GLOW 💥 */}
-             <Link href={dashboardUrl} className="md:hidden flex items-center gap-2 group mt-1">
+             {/* 💥 COMPACT MOBILE LOGO 💥 */}
+             <Link href={dashboardUrl} className="md:hidden flex items-center gap-1.5 group shrink-0">
                <div className="relative flex items-center justify-center">
                   <div className="absolute inset-0 bg-[#3B82F6] blur-sm opacity-50 rounded-full"></div>
-                  <Image src="/zenex-logo.png" alt="ZENEX Logo" width={32} height={32} className="relative z-10 object-contain drop-shadow-[0_0_10px_rgba(59,130,246,0.6)]" priority unoptimized />
+                  <Image src="/zenex-logo.png" alt="ZENEX" width={24} height={24} className="relative z-10 object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" priority unoptimized />
                </div>
-               <h1 className="text-[22px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-0.5">ZENEX</h1>
+               <h1 className="text-[17px] sm:text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-0.5">ZENEX</h1>
              </Link>
 
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'}`}>
@@ -373,50 +352,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              </span>
           </div>
           
-          <div className="flex items-center gap-2.5 md:gap-6 relative">
+          {/* 💥 COMPACT MOBILE RIGHT ICONS 💥 */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-6 relative shrink-0">
             {role !== "admin" && (
-              <div className="px-2.5 py-1 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-md md:rounded-lg flex items-center md:gap-3 shadow-inner">
-                 <span className="hidden md:block text-[9px] md:text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Balance</span>
-                 <span className="text-sm md:text-lg font-black text-[#10B981] md:text-[#F8FAFC]">৳{balance}</span>
+              <div className="px-1.5 py-0.5 sm:px-2.5 sm:py-1 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-md md:rounded-lg flex items-center md:gap-3 shadow-inner">
+                 <span className="hidden md:block text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Balance</span>
+                 <span className="text-[11px] sm:text-xs md:text-lg font-black text-[#10B981] md:text-[#F8FAFC]">৳{balance}</span>
               </div>
             )}
             <div className="relative">
-              <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-1.5 md:p-2 text-[#94A3B8] hover:text-white transition-colors">
-                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                 {headerNotifs.length > 0 && <span className="absolute top-1 right-1 md:top-1.5 md:right-1.5 w-2.5 h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>}
+              <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-1 md:p-2 text-[#94A3B8] hover:text-white transition-colors">
+                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                 {headerNotifs.length > 0 && <span className="absolute top-1 right-1 md:top-1.5 md:right-1.5 w-2 h-2 md:w-2.5 md:h-2.5 bg-[#F43F5E] border-2 border-[#1E293B] rounded-full animate-pulse"></span>}
               </button>
               {isNotifOpen && (
-                <div className="absolute top-12 right-0 w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center">
-                      <span className="text-white font-bold text-sm">Notifications</span>
-                      
-                      {/* 💥 FIXED: View All points to Personal Tab 💥 */}
-                      <Link href="/notifications?tab=personal" onClick={() => setIsNotifOpen(false)} className="text-[10px] font-bold text-[#3B82F6] cursor-pointer hover:underline uppercase tracking-widest">View All</Link>
-                  </div>
+                <div className="absolute top-10 right-0 w-72 md:w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center"><span className="text-white font-bold text-sm">Notifications</span><Link href="/notifications?tab=personal" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline uppercase font-bold tracking-widest">View All</Link></div>
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                    {headerNotifs.length > 0 ? ( 
-                        headerNotifs.map((notif: any) => ( 
-                            
-                            /* 💥 FIXED: Individual item points to Personal Tab 💥 */
-                            <Link href="/notifications?tab=personal" key={notif._id} onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
-                                <p className="text-xs text-[#E2E8F0] leading-relaxed">
-                                    <span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>
-                                        {notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}
-                                    </span>
-                                    {notif.title || notif.description}
-                                </p>
-                                <span className="text-[9px] text-[#64748B] mt-1 block font-bold">{timeAgo(notif.createdAt)}</span>
-                            </Link> 
-                        )) 
-                    ) : (<div className="p-4 text-center text-xs text-[#64748B] font-bold">No recent notifications</div>)}
+                    {headerNotifs.length > 0 ? ( headerNotifs.map((notif: any) => ( <Link href="/notifications?tab=personal" key={notif._id} onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors"><p className="text-xs text-[#E2E8F0] leading-relaxed"><span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>{notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}</span>{notif.title || notif.description}</p><span className="text-[9px] text-[#64748B] mt-1 block">{timeAgo(notif.createdAt)}</span></Link> )) ) : (<div className="p-4 text-center text-xs text-[#64748B]">No recent notifications</div>)}
                   </div>
                 </div>
               )}
             </div>
-            <div className="relative">
-              <div onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className="w-8 h-8 md:w-10 md:h-10 rounded-full p-[2px] bg-gradient-to-tr from-[#00C6FF] to-[#3B82F6] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center"><div className="w-full h-full bg-[#1E293B] rounded-full flex items-center justify-center text-sm font-bold text-white tracking-wider">{userInitials}</div></div>
+            <div className="relative shrink-0">
+              <div onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full p-[2px] bg-gradient-to-tr from-[#00C6FF] to-[#3B82F6] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center"><div className="w-full h-full bg-[#1E293B] rounded-full flex items-center justify-center text-xs md:text-sm font-bold text-white tracking-wider">{userInitials}</div></div>
               {isProfileMenuOpen && (
-                <div className="absolute top-14 right-0 w-64 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                <div className="absolute top-12 right-0 w-64 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
                   <div className="px-5 py-4 border-b border-[#334155]/50"><h4 className="text-white font-bold text-lg leading-tight truncate">{userName}</h4><p className={`text-[10px] font-bold tracking-widest uppercase mt-1 ${role === 'admin' ? 'text-[#F43F5E]' : role === 'agent' ? 'text-[#A855F7]' : 'text-[#94A3B8]'}`}>{userRoleText}</p></div>
                   <div className="border-t border-[#334155]/50"><button onClick={handleLogout} className="w-full flex items-center gap-3 px-5 py-4 text-sm font-bold text-red-400 hover:bg-red-500/10 transition-colors text-left">Logout</button></div>
                 </div>
