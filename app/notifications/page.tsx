@@ -5,9 +5,13 @@ import DashboardLayout from "../DashboardLayout";
 
 export default function Notifications() {
   const [role, setRole] = useState("user");
+  const [userEmail, setUserEmail] = useState("");
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // 💥 NEW: Tab State 💥
+  const [activeTab, setActiveTab] = useState("GLOBAL"); // "GLOBAL" or "PERSONAL"
+
   const [isPosting, setIsPosting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
@@ -15,17 +19,32 @@ export default function Notifications() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
-    if (storedUser) setRole(JSON.parse(storedUser).role);
-    fetchNotifications();
+    if (storedUser) {
+       const parsed = JSON.parse(storedUser);
+       setRole(parsed.role);
+       setUserEmail(parsed.email);
+    }
+
+    // 💥 URL Checker: If user clicked Bell Icon, open Personal Tab automatically 💥
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("tab") === "personal") {
+       setActiveTab("PERSONAL");
+    }
   }, []);
 
-  const fetchNotifications = async () => {
+  useEffect(() => {
+    if (userEmail || activeTab === "GLOBAL") {
+      fetchNotifications(activeTab);
+    }
+  }, [activeTab, userEmail]);
+
+  const fetchNotifications = async (tabType: string) => {
+    setLoading(true);
     try {
-      // 💥 UPDATED: Added fetchType: "GLOBAL" so backend only returns Admin Notices 💥
       const res = await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "FETCH", fetchType: "GLOBAL" }) 
+        body: JSON.stringify({ action: "FETCH", fetchType: tabType, email: userEmail }) 
       });
       const data = await res.json();
       
@@ -34,7 +53,8 @@ export default function Notifications() {
         const viewedNotifs = JSON.parse(localStorage.getItem("zenex_viewed") || "[]");
 
         const formatted = data.data.map((n: any) => {
-           if (!viewedNotifs.includes(n._id)) {
+           // We only track views/likes for GLOBAL notices
+           if (tabType === "GLOBAL" && !viewedNotifs.includes(n._id)) {
               viewedNotifs.push(n._id);
               localStorage.setItem("zenex_viewed", JSON.stringify(viewedNotifs));
               fetch("/api/notifications", {
@@ -85,7 +105,7 @@ export default function Notifications() {
         }
       }
       return notif;
-    }));
+    });
 
     localStorage.setItem("zenex_reactions", JSON.stringify(savedReactions));
 
@@ -104,13 +124,12 @@ export default function Notifications() {
     const res = await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // 💥 UPDATED: Added type: "GLOBAL" so this notice shows to everyone 💥
       body: JSON.stringify({ action: "CREATE", title: newTitle, description: newDesc, type: newType, color, noticeType: "GLOBAL" })
     });
     
     if (res.ok) {
       setNewTitle(""); setNewDesc(""); setIsPosting(false);
-      fetchNotifications(); 
+      fetchNotifications("GLOBAL"); 
     }
   };
 
@@ -139,10 +158,26 @@ export default function Notifications() {
       <div className="p-4 md:p-10 w-full relative z-10 pb-20">
         <div className="max-w-4xl mx-auto flex flex-col gap-6">
 
-           {role === "admin" && (
+           {/* 💥 TOP TAB NAVIGATION 💥 */}
+           <div className="flex items-center gap-2 bg-[#0F172A] p-2 rounded-2xl border border-[#334155] w-full md:w-max">
+             <button 
+                onClick={() => setActiveTab("GLOBAL")} 
+                className={`flex-1 md:flex-none px-6 py-3 rounded-xl text-sm font-black transition-all ${activeTab === "GLOBAL" ? "bg-[#3B82F6] text-white shadow-lg" : "text-[#94A3B8] hover:text-white"}`}
+             >
+                🌍 Global Notices
+             </button>
+             <button 
+                onClick={() => setActiveTab("PERSONAL")} 
+                className={`flex-1 md:flex-none px-6 py-3 rounded-xl text-sm font-black transition-all ${activeTab === "PERSONAL" ? "bg-[#10B981] text-white shadow-lg" : "text-[#94A3B8] hover:text-white"}`}
+             >
+                🔔 My Alerts
+             </button>
+           </div>
+
+           {role === "admin" && activeTab === "GLOBAL" && (
              <div className="mb-4">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-black text-white uppercase tracking-wider">Announcement Dashboard</h2>
+                  <h2 className="text-lg font-black text-[#64748B] uppercase tracking-wider">Admin Controls</h2>
                   <button 
                     onClick={() => setIsPosting(!isPosting)} 
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${isPosting ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-[#3B82F6] hover:bg-[#2563EB] text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]'}`}
@@ -183,9 +218,9 @@ export default function Notifications() {
            )}
 
            {loading ? (
-              <div className="text-center text-[#3B82F6] font-bold py-10">Loading Data...</div>
+              <div className="text-center text-[#3B82F6] font-bold py-10">Loading Messages...</div>
            ) : notifications.length === 0 ? (
-              <div className="text-center text-[#64748B] font-bold py-10">No announcements yet.</div>
+              <div className="text-center text-[#64748B] font-bold py-10">No {activeTab === "PERSONAL" ? "personal alerts" : "announcements"} found.</div>
            ) : (
              notifications.map((notif) => (
                 <div key={notif._id} className="bg-[#1E293B]/80 border border-[#334155] hover:border-[#3B82F6]/50 rounded-3xl p-6 md:p-8 shadow-lg transition-all relative overflow-hidden group">
@@ -193,6 +228,7 @@ export default function Notifications() {
                    <div className={`absolute top-0 left-0 w-1.5 h-full ${
                      notif.color === 'blue' ? 'bg-[#3B82F6]' : 
                      notif.color === 'yellow' ? 'bg-[#EAB308]' : 
+                     notif.color === 'red' ? 'bg-[#F43F5E]' :
                      'bg-[#10B981]'
                    }`}></div>
 
@@ -201,6 +237,7 @@ export default function Notifications() {
                         <span className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest ${
                            notif.color === 'blue' ? 'bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20' : 
                            notif.color === 'yellow' ? 'bg-[#EAB308]/10 text-[#EAB308] border border-[#EAB308]/20' : 
+                           notif.color === 'red' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20' : 
                            'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20'
                         }`}>
                            {notif.type}
@@ -211,7 +248,7 @@ export default function Notifications() {
                         </span>
                       </div>
 
-                      {role === "admin" && (
+                      {role === "admin" && activeTab === "GLOBAL" && (
                         <button onClick={() => handleDeletePost(notif._id)} className="text-[#64748B] hover:text-[#F43F5E] transition-colors p-1" title="Delete Post">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
@@ -219,38 +256,41 @@ export default function Notifications() {
                    </div>
 
                    <h3 className="text-xl font-black text-white mb-2 pr-6">{notif.title}</h3>
-                   <p className="text-[#94A3B8] text-sm leading-relaxed mb-6 whitespace-pre-wrap">
+                   <p className={`text-sm leading-relaxed mb-6 whitespace-pre-wrap ${notif.color === 'red' ? 'text-red-200' : 'text-[#94A3B8]'}`}>
                       {notif.description}
                    </p>
 
-                   <div className="flex items-center justify-between pt-4 border-t border-[#334155]/50">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-[#64748B]">
-                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                         {notif.views.toLocaleString()} Views
-                      </div>
+                   {/* Only show views and reactions for GLOBAL notices */}
+                   {activeTab === "GLOBAL" && (
+                     <div className="flex items-center justify-between pt-4 border-t border-[#334155]/50">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#64748B]">
+                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                           {notif.views?.toLocaleString() || 0} Views
+                        </div>
 
-                      <div className="flex items-center gap-4">
-                         <button 
-                           onClick={() => handleReaction(notif._id, "like")}
-                           className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
-                             notif.userReaction === "like" ? "bg-[#3B82F6]/20 text-[#3B82F6]" : "bg-[#0F172A] text-[#94A3B8] hover:text-white border border-[#334155]"
-                           }`}
-                         >
-                           <svg className="w-4 h-4" fill={notif.userReaction === "like" ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" /></svg>
-                           {notif.likes}
-                         </button>
+                        <div className="flex items-center gap-4">
+                           <button 
+                             onClick={() => handleReaction(notif._id, "like")}
+                             className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                               notif.userReaction === "like" ? "bg-[#3B82F6]/20 text-[#3B82F6]" : "bg-[#0F172A] text-[#94A3B8] hover:text-white border border-[#334155]"
+                             }`}
+                           >
+                             <svg className="w-4 h-4" fill={notif.userReaction === "like" ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" /></svg>
+                             {notif.likes || 0}
+                           </button>
 
-                         <button 
-                           onClick={() => handleReaction(notif._id, "dislike")}
-                           className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
-                             notif.userReaction === "dislike" ? "bg-[#F43F5E]/20 text-[#F43F5E]" : "bg-[#0F172A] text-[#94A3B8] hover:text-white border border-[#334155]"
-                           }`}
-                         >
-                           <svg className="w-4 h-4" fill={notif.userReaction === "dislike" ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" /></svg>
-                           {notif.dislikes}
-                         </button>
-                      </div>
-                   </div>
+                           <button 
+                             onClick={() => handleReaction(notif._id, "dislike")}
+                             className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                               notif.userReaction === "dislike" ? "bg-[#F43F5E]/20 text-[#F43F5E]" : "bg-[#0F172A] text-[#94A3B8] hover:text-white border border-[#334155]"
+                             }`}
+                           >
+                             <svg className="w-4 h-4" fill={notif.userReaction === "dislike" ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" /></svg>
+                             {notif.dislikes || 0}
+                           </button>
+                        </div>
+                     </div>
+                   )}
                 </div>
              ))
            )}

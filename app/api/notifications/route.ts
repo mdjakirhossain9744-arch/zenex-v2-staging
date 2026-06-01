@@ -1,4 +1,3 @@
-// app/api/notifications/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import mongoose from "mongoose";
 import Notification from "../../../models/Notification";
@@ -22,26 +21,32 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json().catch(() => ({}));
     
-    // 💥 নতুন প্যারামিটার fetchType, email, noticeType রিসিভ করা হলো 💥
     const { action, id, title, description, type, color, reactionType, fetchType, email, noticeType } = body;
     
     const role = getUserRole(req);
 
-    // 💥 ১. Sidebar Notification Page-এর জন্য নোটিশ ফেচ করা (শুধুমাত্র গ্লোবাল, লিমিট ৫০) 💥
+    // 💥 ১. Sidebar Notification Page-এর জন্য নোটিশ ফেচ করা (GLOBAL & PERSONAL আলাদা) 💥
     if (action === "FETCH") {
-      const query = fetchType === "GLOBAL" ? { userEmail: "global" } : {};
+      let query: any = {};
+      if (fetchType === "GLOBAL") {
+         query = { userEmail: "global" };
+      } else if (fetchType === "PERSONAL") {
+         if (!email) return NextResponse.json({ success: false, message: "Email required for personal notices" });
+         query = { userEmail: email };
+      }
+
       const notifs = await Notification.find(query).sort({ createdAt: -1 }).limit(50);
       return NextResponse.json({ success: true, data: notifs });
     }
 
-    // 💥 ২. Header Bell Icon-এর জন্য নোটিশ ফেচ করা (গ্লোবাল + পার্সোনাল, লিমিট ১০) 💥
+    // 💥 ২. Header Bell Icon-এর জন্য নোটিশ ফেচ করা (গ্লোবাল + পার্সোনাল) 💥
     if (action === "FETCH_HEADER") {
       if (!email) return NextResponse.json({ success: false, message: "Email required for personal notices" });
       
       const notifs = await Notification.find({
         $or: [
-          { userEmail: "global" }, // অ্যাডমিনের গ্লোবাল মেসেজ
-          { userEmail: email }     // ইউজারের নিজের মেসেজ (Welcome/Withdraw)
+          { userEmail: "global" }, 
+          { userEmail: email }     
         ]
       })
       .sort({ createdAt: -1 })
@@ -66,14 +71,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // 💥 ৪. এডমিনের জন্য নোটিশ ডিলিট করা 💥
+    // 💥 ৪. নোটিশ ডিলিট করা 💥
     if (action === "DELETE") {
       if (role !== "admin") return NextResponse.json({ message: "🔴 FORBIDDEN" }, { status: 403 });
       await Notification.findByIdAndDelete(id);
       return NextResponse.json({ success: true });
     }
 
-    // 💥 ৫. লাইক/ডিসলাইক/ভিউ কাউন্ট আপডেট করা (Atomic Operation) 💥
+    // 💥 ৫. লাইক/ডিসলাইক/ভিউ কাউন্ট আপডেট করা 💥
     if (action === "REACTION") {
       const updateDoc: any = {};
       if (reactionType === "view") updateDoc.views = 1;

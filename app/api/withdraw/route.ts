@@ -81,7 +81,6 @@ export async function POST(req: Request) {
                 successCount++;
               } else {
                 const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                // 💥 BULLETPROOF ADMIN FAULT CHECKER 💥
                 const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
                 const isAdminFault = adminKeywords.some(kw => errorMsg.includes(kw));
 
@@ -95,7 +94,15 @@ export async function POST(req: Request) {
                   lockedReq.adminNote = "Binance Failed: " + binanceRes.message;
                   await lockedReq.save();
                   await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
-                  await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
+                  
+                  // 💥 FIXED: Detailed Notification Title & Description 💥
+                  await Notification.create({ 
+                      userEmail: request.email, 
+                      title: "Payment Rejected & Auto-Pay Disabled 🔴", 
+                      description: `Your payout of ৳ ${request.amount} was rejected due to an invalid address or network error (${binanceRes.message}). Your balance has been refunded. Please update your Solana address and try again.`, 
+                      type: "ERROR", 
+                      color: "red" 
+                  });
                   failCount++;
                 }
               }
@@ -149,7 +156,6 @@ export async function POST(req: Request) {
                      return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
                  } else {
                      const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                     // 💥 BULLETPROOF ADMIN FAULT CHECKER 💥
                      const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
                      const isAdminFault = adminKeywords.some(kw => errorMsg.includes(kw));
 
@@ -163,7 +169,15 @@ export async function POST(req: Request) {
                          request.adminNote = "Binance Failed: " + binanceRes.message;
                          await request.save();
                          await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
-                         await Notification.create({ userEmail: request.email, title: "Auto-Pay Disabled 🔴", description: `Reason: ${binanceRes.message || 'Invalid ID'}. ৳ ${request.amount} refunded.`, type: "ERROR", color: "red" });
+                         
+                         // 💥 FIXED: Detailed Notification Title & Description 💥
+                         await Notification.create({ 
+                             userEmail: request.email, 
+                             title: "Payment Rejected & Auto-Pay Disabled 🔴", 
+                             description: `Your payout of ৳ ${request.amount} was rejected due to an invalid address or network error (${binanceRes.message}). Your balance has been refunded. Please update your Solana address and try again.`, 
+                             type: "ERROR", 
+                             color: "red" 
+                         });
                          return NextResponse.json({ success: false, message: `Binance Failed: ${binanceRes.message}. Refunded & Disabled.` });
                      }
                  }
@@ -200,10 +214,11 @@ export async function POST(req: Request) {
                $set: { isAutoWithdraw: false } 
             }
          );
+         // 💥 FIXED: Manual Reject Notification Details 💥
          await Notification.create({ 
             userEmail: request.email, 
             title: "Withdrawal Rejected & Auto-Pay Off 🔴", 
-            description: `Admin rejected your request. ৳ ${request.amount} refunded and Auto-Pay disabled.`, 
+            description: `Admin rejected your payout of ৳ ${request.amount}. Your balance has been refunded and Auto-Pay is now disabled. Please check your payment details.`, 
             type: "ERROR", 
             color: "red" 
          });
