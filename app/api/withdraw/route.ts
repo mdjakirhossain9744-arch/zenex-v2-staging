@@ -81,7 +81,9 @@ export async function POST(req: Request) {
                 successCount++;
               } else {
                 const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                const isAdminFault = errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient") || errorMsg.includes("api") || errorMsg.includes("ip") || errorMsg.includes("permission");
+                // 💥 BULLETPROOF ADMIN FAULT CHECKER 💥
+                const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
+                const isAdminFault = adminKeywords.some(kw => errorMsg.includes(kw));
 
                 if (isAdminFault) {
                   lockedReq.status = "PROCESSING"; 
@@ -147,7 +149,9 @@ export async function POST(req: Request) {
                      return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
                  } else {
                      const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
-                     const isAdminFault = errorMsg.includes("balance") || errorMsg.includes("fund") || errorMsg.includes("insufficient") || errorMsg.includes("api") || errorMsg.includes("ip") || errorMsg.includes("permission");
+                     // 💥 BULLETPROOF ADMIN FAULT CHECKER 💥
+                     const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
+                     const isAdminFault = adminKeywords.some(kw => errorMsg.includes(kw));
 
                      if (isAdminFault) {
                          request.status = "PROCESSING"; 
@@ -216,7 +220,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC (Search WID added!) 💥
+    // 💥 4. FETCH LOGIC 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -227,7 +231,6 @@ export async function POST(req: Request) {
          if (tab === "BINANCE_AUTO") { query.status = { $in: ["PENDING", "PROCESSING"] }; query.method = "Binance"; }
          if (tab === "HISTORY") query.status = { $in: ["PAID", "REJECTED"] };
 
-         // 💥 FIXED: Added 'wid' in Admin Search 💥
          if (searchQuery) { 
              query.$or = [
                  { wid: { $regex: searchQuery, $options: "i" } },
