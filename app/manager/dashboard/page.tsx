@@ -341,13 +341,14 @@ export default function ManagerDashboardPage() {
                 )}
             </div>
 
+            {/* 💥 UNSEEN USERS BOX (WITH ACTION BUTTONS) 💥 */}
             <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl">
                 <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
                    <div>
                      <h3 className="text-lg md:text-xl font-black text-red-400 tracking-wide flex items-center gap-2">
-                        Unseen Users <span className="text-[10px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded border border-red-500/30">INACTIVE</span>
+                        Unseen Users <span className="text-[10px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded border border-red-500/30">ACTIVE ONLY</span>
                      </h3>
-                     <p className="text-[10px] md:text-xs text-[#94A3B8] font-medium mt-1">Users with the oldest last login time.</p>
+                     <p className="text-[10px] md:text-xs text-[#94A3B8] font-medium mt-1">Users taking up limits without activity. Manage them instantly.</p>
                    </div>
                    <div className="p-2 bg-red-500/10 rounded-full border border-red-500/20">
                       <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
@@ -364,26 +365,61 @@ export default function ManagerDashboardPage() {
                             const initials = u.name.substring(0, 2).toUpperCase();
                             const lastSeenText = u.inactiveText || "Unknown";
                             
-                            // 💥 SMART COLOR LOGIC 💥
                             let statusColor = "text-orange-400"; 
                             if (lastSeenText === "Never") statusColor = "text-red-500";
                             else if (lastSeenText === "New Account") statusColor = "text-emerald-400";
 
+                            // 💥 ACTION FUNCTION 💥
+                            const handleUserAction = async (email: string, action: string) => {
+                                const confirmAction = window.confirm(`Are you sure you want to ${action.toUpperCase()} this user?`);
+                                if (!confirmAction) return;
+
+                                // Optimistic UI Update (Remove instantly)
+                                setInactiveUsers(prev => prev.filter(user => user.email !== email));
+
+                                try {
+                                   await fetch("/api/auth/manage-user", {
+                                      method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ action: "UPDATE_STATUS", targetEmail: email, newStatus: action })
+                                   });
+                                } catch (e) { console.error("Action Failed"); }
+                            };
+
                             return (
-                                <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-[#0F172A]/50 border border-[#334155] hover:border-red-500/50 transition-colors">
+                                <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-[#0F172A]/50 border border-[#334155] hover:border-[#64748B]/50 transition-colors gap-3">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-slate-300 text-sm">
+                                        <div className="w-10 h-10 shrink-0 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-slate-300 text-sm">
                                             {initials}
                                         </div>
                                         <div>
                                             <p className="text-sm font-bold text-slate-200">{u.name}</p>
-                                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">{u.id}</p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                               <span className="text-[10px] text-slate-500 font-mono">{u.id}</span>
+                                               <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${statusColor} bg-[#0F172A] border border-[#334155]`}>
+                                                   {lastSeenText}
+                                               </span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="text-right flex flex-col items-end">
-                                        <span className={`text-xs font-black ${statusColor}`}>
-                                            {lastSeenText}
-                                        </span>
+                                    
+                                    {/* 💥 QUICK ACTION BUTTONS 💥 */}
+                                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                                        <button 
+                                          onClick={() => handleUserAction(u.email, "pending")}
+                                          className="flex items-center gap-1 px-3 py-1.5 bg-[#EAB308]/10 text-[#EAB308] border border-[#EAB308]/20 hover:bg-[#EAB308] hover:text-black transition-all rounded-lg text-[10px] font-black uppercase tracking-widest"
+                                          title="Set to Pending"
+                                        >
+                                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                           Pending
+                                        </button>
+                                        <button 
+                                          onClick={() => handleUserAction(u.email, "banned")}
+                                          className="flex items-center gap-1 px-3 py-1.5 bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20 hover:bg-[#F43F5E] hover:text-white transition-all rounded-lg text-[10px] font-black uppercase tracking-widest"
+                                          title="Ban User"
+                                        >
+                                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                           Ban
+                                        </button>
                                     </div>
                                 </div>
                             );

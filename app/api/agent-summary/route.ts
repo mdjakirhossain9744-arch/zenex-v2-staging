@@ -6,6 +6,10 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
+// 💥 15-SECOND MICRO-CACHE MECHANISM (ZERO DB LOAD) 💥
+const cache = new Map<string, { timestamp: number, data: any }>();
+const CACHE_DURATION = 15000; // 15 seconds
+
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
@@ -38,10 +42,19 @@ const getUTCHour = (dateObj: any = new Date()) => {
 
 export async function POST(req: Request) {
   try {
-    await connectToDatabase();
-    
-    const { email, limitDays = 60 } = await req.json();
+    const body = await req.json();
+    const { email, limitDays = 60 } = body;
     const safeAgentEmail = email.toLowerCase().trim();
+    const cacheKey = `${safeAgentEmail}_${limitDays}`;
+
+    // 💥 CHECK CACHE FIRST 💥
+    const now = Date.now();
+    const cachedData = cache.get(cacheKey);
+    if (cachedData && (now - cachedData.timestamp < CACHE_DURATION)) {
+        return NextResponse.json(cachedData.data);
+    }
+
+    await connectToDatabase();
 
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
@@ -50,7 +63,7 @@ export async function POST(req: Request) {
     if (agent.customAgentMail) emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
 
     const networkUsers = await User.find({ $or: emailConditions, role: "user" })
-      .select("email otpRate fullName uid _id lastLogin createdAt balance")
+      .select("email otpRate fullName uid _id lastLogin createdAt balance status")
       .lean();
 
     const targetEmails = new Set<string>();
@@ -137,8 +150,6 @@ export async function POST(req: Request) {
     
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
-
-       // 💥 DATE CONSISTENCY FIX 💥
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
        if (finalDateStr < liveQueryDateStr) return;
@@ -150,7 +161,7 @@ export async function POST(req: Request) {
        }
        
        groupedRawData[finalDateStr].total += 1;
-       groupedRawData[finalDateStr].allocation += 1;
+       groupedRawData[finalDateStr].allocation += 1; // 💥 RESTORED ORIGINAL LOGIC
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
           const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
@@ -176,7 +187,7 @@ export async function POST(req: Request) {
               todayAppCounts[sName] += validMsgCount;
           }
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
-           groupedRawData[finalDateStr].failed += 1;
+           groupedRawData[finalDateStr].failed += 1; // 💥 RESTORED FAILED LOGIC
        }
     });
 
@@ -185,14 +196,22 @@ export async function POST(req: Request) {
        .filter(u => u.otpCount > 0).sort((a, b) => b.otpCount - a.otpCount).slice(0, 15); 
 
     const nowTime = new Date().getTime();
-    const inactiveUsersArr = networkUsers.map((u: any) => {
-        // ... (Inactive Users calculation remains exactly the same)
+    
+    // 💥 SMART FILTER: ONLY ACTIVE USERS FOR "UNSEEN LIST" 💥
+    const activeNetworkUsers = networkUsers.filter((u: any) => {
+        const s = (u.status || "active").toLowerCase();
+        return s !== "banned" && s !== "pending" && s !== "suspended";
+    });
+
+    const inactiveUsersArr = activeNetworkUsers.map((u: any) => {
         const createdTime = new Date(u.createdAt || nowTime).getTime();
         const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : null;
         let timeText = ""; let sortValue = 0; 
         if (loginTime) {
             sortValue = loginTime;
             const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
+            
+            // 💥 RESTORED ORIGINAL FULL TIME LOGIC 💥
             if (diffDays === 0) timeText = "Today";
             else if (diffDays === 1) timeText = "Yesterday";
             else if (diffDays < 7) timeText = `${diffDays} days ago`;
@@ -212,12 +231,16 @@ export async function POST(req: Request) {
             if (diffDays > 3) timeText = "Never"; 
             else timeText = "New Account"; 
         }
+        
         return {
             id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
+            email: u.email,
             name: u.fullName || u.email.split('@')[0],
-            inactiveText: timeText, balance: u.balance || 0, sortValue
+            inactiveText: timeText, 
+            balance: u.balance || 0, 
+            sortValue
         };
-    }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 10); 
+    }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 15); // TOP 15
 
     const yesterdayDate = new Date();
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
@@ -227,12 +250,17 @@ export async function POST(req: Request) {
     const todayData = groupedRawData[todayStrUTC] || defaultData;
     const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
-    return NextResponse.json({
+    const responseData = {
        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
        userRate: agentMaxRate, balance: agent.agentEarning || 0, serverDate: todayStrUTC,
        topPerformers: topPerformersArr, inactiveUsers: inactiveUsersArr,
        todaySuccess: todayData.success, todayRevenue: todayData.amount, 
        yesterdaySuccess: yesterdayData.success, yesterdayRevenue: yesterdayData.amount
-    });
+    };
+
+    // 💥 SAVE TO CACHE 💥
+    cache.set(cacheKey, { timestamp: now, data: responseData });
+
+    return NextResponse.json(responseData);
   } catch (error) { return NextResponse.json({ success: false }); }
 }

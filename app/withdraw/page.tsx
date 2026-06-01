@@ -173,7 +173,6 @@ export default function UserWithdrawal() {
                  <span className="text-5xl font-black text-white tracking-tight drop-shadow-md">৳ {balance}</span>
               </div>
 
-              {/* 💥 SMART BINANCE AUTO-PAY SETUP BOX 💥 */}
               <div className="bg-gradient-to-br from-[#1E293B]/80 to-[#F59E0B]/5 border border-[#F59E0B]/30 p-6 rounded-3xl shadow-[0_0_15px_rgba(245,158,11,0.05)] relative overflow-hidden">
                  <div className="absolute top-0 right-0 w-24 h-24 bg-[#F59E0B] opacity-10 rounded-full blur-2xl"></div>
                  
@@ -193,7 +192,6 @@ export default function UserWithdrawal() {
                    </div>
                  ) : (
                    <>
-                     {/* 💥 FIX: VERY CLEAR LABEL AND PLACEHOLDER FOR SOLANA 💥 */}
                      <div className="mb-4">
                         <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-2">Binance USDT (Solana/SOL) Address</label>
                         <input type="text" value={savedBinanceId} onChange={(e) => setSavedBinanceId(e.target.value)} placeholder="e.g. HN7cAB... (Must be Solana Network)" className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-[#F59E0B] transition-all" />
@@ -223,9 +221,7 @@ export default function UserWithdrawal() {
                  )}
               </div>
 
-              {/* 💥 MANUAL WITHDRAW BOX 💥 */}
               <div className="bg-[#1E293B]/80 border border-[#334155] p-6 rounded-3xl shadow-lg relative overflow-hidden">
-                 
                  {!isManualWithdrawOpen && (
                    <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#0F172A]/80 backdrop-blur-[2px] transition-all duration-500">
                      <div className="bg-[#F43F5E]/20 p-4 rounded-full mb-3 shadow-[0_0_25px_rgba(244,63,94,0.5)]">
@@ -252,7 +248,6 @@ export default function UserWithdrawal() {
 
                      {selectedMethod && (
                        <div className="mb-6 animate-fade-in">
-                          {/* 💥 FIX: Dynamic Label for Binance 💥 */}
                           <label className="block text-xs font-black text-[#94A3B8] uppercase tracking-widest mb-2">Enter your {selectedMethod} {selectedMethod === "Binance" ? "USDT (Solana) Address" : "Number"}</label>
                           <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder={selectedMethod === "Binance" ? "e.g. HN7cABqLq46..." : "e.g. 017XXXXXX"} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-[#3B82F6] transition-all" />
                        </div>
@@ -288,27 +283,63 @@ export default function UserWithdrawal() {
               </div>
            </div>
 
+           {/* 💥 PREMIUM WITHDRAWAL HISTORY PANEL 💥 */}
            <div className="bg-[#1E293B]/80 border border-[#334155] rounded-3xl shadow-lg flex flex-col h-[650px] lg:h-auto">
               <div className="p-6 border-b border-[#334155] bg-[#0F172A]/50">
                 <h3 className="text-sm font-black text-white uppercase tracking-widest">My Recent Transactions</h3>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
                  {dbRequests.length === 0 ? (
-                   <p className="text-[#64748B] text-center font-bold mt-10">No history found.</p>
+                   <div className="flex flex-col items-center justify-center py-20 text-[#64748B]">
+                      <svg className="w-12 h-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      <p className="font-bold">No history found.</p>
+                   </div>
                  ) : (
                    dbRequests.map((item) => (
-                     <div key={item._id} className="bg-[#0F172A] border border-[#334155] p-4 rounded-xl mb-4 flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-sm font-bold text-white flex items-center gap-2">
-                            {item.method} 
-                            <span className="text-[9px] text-[#64748B] font-normal">{item.date || new Date(item.createdAt).toLocaleDateString()}</span>
-                          </span>
-                          <span className="text-[10px] text-[#A855F7] font-mono">{item.accountNumber}</span>
+                     <div key={item._id} className="bg-[#0F172A] border border-[#334155] rounded-xl mb-4 p-4 hover:border-[#3B82F6]/50 transition-all relative overflow-hidden group">
+                        
+                        {/* TOP ROW: Reference ID & Status */}
+                        <div className="flex justify-between items-start mb-3 border-b border-[#334155]/50 pb-3">
+                            <div>
+                                <span className="text-[10px] text-[#94A3B8] uppercase tracking-widest block mb-0.5">Reference ID</span>
+                                <span className="text-xs font-black text-white font-mono">{item.wid || "ZX-PENDING"}</span>
+                            </div>
+                            <span className={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest ${
+                                item.status === "PENDING" || item.status === "PROCESSING" ? "bg-[#EAB308]/10 text-[#EAB308] border border-[#EAB308]/20" : 
+                                item.status === "PAID" ? "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20" : 
+                                "bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20"
+                            }`}>
+                                {item.status}
+                            </span>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="text-lg font-black text-white">৳ {item.amount}</span>
-                          <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${item.status === "PENDING" || item.status === "PROCESSING" ? "bg-[#EAB308]/10 text-[#EAB308]" : item.status === "PAID" ? "bg-[#10B981]/10 text-[#10B981]" : "bg-[#F43F5E]/10 text-[#F43F5E]"}`}>{item.status}</span>
+                        
+                        {/* MIDDLE ROW: Method, Account & Amount */}
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="flex flex-col">
+                                <span className="text-sm font-black text-white flex items-center gap-2">
+                                    {item.method}
+                                </span>
+                                <span className="text-[10px] text-[#A855F7] font-mono mt-0.5 truncate max-w-[150px] md:max-w-[200px]" title={item.accountNumber}>
+                                    {item.accountNumber}
+                                </span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-[10px] text-[#94A3B8] uppercase tracking-widest mb-0.5">Amount</span>
+                                <span className="text-lg font-black text-white">৳ {item.amount}</span>
+                            </div>
                         </div>
+
+                        {/* BOTTOM ROW: Date & Note */}
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-[#1E293B] rounded-lg p-2.5 mt-2 gap-2 sm:gap-0">
+                             <div className="flex items-center gap-2 text-[10px] font-bold text-[#94A3B8]">
+                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                 {item.date || new Date(item.createdAt).toLocaleDateString()}
+                             </div>
+                             <div className={`text-[10px] font-bold truncate max-w-full sm:max-w-[200px] ${item.status === 'REJECTED' ? 'text-red-400' : item.status === 'PAID' ? 'text-green-400' : 'text-slate-400'}`} title={item.adminNote}>
+                                 Note: {item.adminNote || (item.status === 'PENDING' ? "Processing request..." : "")}
+                             </div>
+                        </div>
+                        
                      </div>
                    ))
                  )}

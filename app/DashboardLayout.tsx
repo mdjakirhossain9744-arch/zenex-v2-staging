@@ -262,11 +262,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {isMobileMenuOpen && (<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>)}
 
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
-        <div className="h-20 flex items-center justify-between px-8 border-b border-[#334155] shrink-0">
+        <div className="h-20 flex items-center justify-between px-6 border-b border-[#334155] shrink-0">
+          
+          {/* 💥 ENTERPRISE DESKTOP LOGO WITH GLOW 💥 */}
           <Link href={dashboardUrl} className="flex items-center gap-3 group mt-2">
-            <Image src="/zenex-logo.png" alt="ZENEX Logo" width={38} height={38} className="w-9 h-9 object-contain" priority unoptimized />
-            <h1 className="text-[24px] font-black tracking-widest text-white leading-none mt-1">ZENEX</h1>
+            <div className="relative flex items-center justify-center">
+               <div className="absolute inset-0 bg-[#3B82F6] blur-md opacity-50 rounded-full group-hover:opacity-100 transition-opacity duration-500"></div>
+               <Image src="/zenex-logo.png" alt="ZENEX Logo" width={42} height={42} className="relative z-10 object-contain drop-shadow-[0_0_15px_rgba(59,130,246,0.6)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
+            </div>
+            <h1 className="text-[26px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-1 group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.4)] transition-all">ZENEX</h1>
           </Link>
+
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#94A3B8] hover:text-white"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
         
@@ -301,7 +307,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                   Realtime
                 </Link>
-                {/* 💥 NEW ADDITION: User Payments 💥 */}
                 <Link href="/manager/payments" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/manager/payments' ? activeYellow : inactive}`}>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
                   User Payments
@@ -352,10 +357,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="h-16 md:h-20 bg-[#1E293B]/80 backdrop-blur-2xl border-b border-[#334155] flex items-center justify-between px-4 md:px-10 z-[50] w-full shrink-0 relative">
           <div className="flex items-center gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+             
+             {/* 💥 ENTERPRISE MOBILE LOGO WITH GLOW 💥 */}
              <Link href={dashboardUrl} className="md:hidden flex items-center gap-2 group mt-1">
-               <Image src="/zenex-logo.png" alt="ZENEX Logo" width={30} height={30} className="w-7 h-7 object-contain" priority unoptimized />
-               <h1 className="text-[20px] font-black tracking-widest text-white leading-none mt-0.5">ZENEX</h1>
+               <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-0 bg-[#3B82F6] blur-sm opacity-50 rounded-full"></div>
+                  <Image src="/zenex-logo.png" alt="ZENEX Logo" width={32} height={32} className="relative z-10 object-contain drop-shadow-[0_0_10px_rgba(59,130,246,0.6)]" priority unoptimized />
+               </div>
+               <h1 className="text-[22px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-0.5">ZENEX</h1>
              </Link>
+
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${role === 'admin' ? 'bg-[#F43F5E]' : role === 'agent' ? 'bg-[#A855F7]' : 'bg-[#10B981]'}`}></span> 
                 {role === 'admin' ? 'System Online' : role === 'agent' ? 'Agent Active' : 'Active'}
@@ -376,9 +387,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
               {isNotifOpen && (
                 <div className="absolute top-12 right-0 w-80 bg-[#1E293B] border border-[#334155] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center"><span className="text-white font-bold text-sm">Notifications</span><Link href="/notifications" onClick={() => setIsNotifOpen(false)} className="text-[10px] text-[#3B82F6] cursor-pointer hover:underline">View All</Link></div>
+                  <div className="px-4 py-3 border-b border-[#334155]/50 flex justify-between items-center">
+                      <span className="text-white font-bold text-sm">Notifications</span>
+                      
+                      {/* 💥 FIXED: View All points to Personal Tab 💥 */}
+                      <Link href="/notifications?tab=personal" onClick={() => setIsNotifOpen(false)} className="text-[10px] font-bold text-[#3B82F6] cursor-pointer hover:underline uppercase tracking-widest">View All</Link>
+                  </div>
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                    {headerNotifs.length > 0 ? ( headerNotifs.map((notif: any) => ( <Link href="/notifications" key={notif._id} onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors"><p className="text-xs text-[#E2E8F0] leading-relaxed"><span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>{notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}</span>{notif.title || notif.description}</p><span className="text-[9px] text-[#64748B] mt-1 block">{timeAgo(notif.createdAt)}</span></Link> )) ) : (<div className="p-4 text-center text-xs text-[#64748B]">No recent notifications</div>)}
+                    {headerNotifs.length > 0 ? ( 
+                        headerNotifs.map((notif: any) => ( 
+                            
+                            /* 💥 FIXED: Individual item points to Personal Tab 💥 */
+                            <Link href="/notifications?tab=personal" key={notif._id} onClick={() => setIsNotifOpen(false)} className="block p-4 border-b border-[#334155]/30 hover:bg-[#334155]/20 cursor-pointer transition-colors">
+                                <p className="text-xs text-[#E2E8F0] leading-relaxed">
+                                    <span className={`${notif.type === 'PERSONAL' ? 'text-[#10B981]' : 'text-[#3B82F6]'} font-bold`}>
+                                        {notif.type === 'PERSONAL' ? 'Alert: ' : 'System: '}
+                                    </span>
+                                    {notif.title || notif.description}
+                                </p>
+                                <span className="text-[9px] text-[#64748B] mt-1 block font-bold">{timeAgo(notif.createdAt)}</span>
+                            </Link> 
+                        )) 
+                    ) : (<div className="p-4 text-center text-xs text-[#64748B] font-bold">No recent notifications</div>)}
                   </div>
                 </div>
               )}
