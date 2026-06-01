@@ -263,13 +263,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="h-20 flex items-center justify-between px-5 border-b border-[#334155] shrink-0">
           
-          {/* 💥 OPTIMIZED DESKTOP LOGO (Better Alignment & Size) 💥 */}
-          <Link href={dashboardUrl} className="flex items-center gap-2.5 group mt-1">
+          {/* 💥 PERFECTLY ALIGNED DESKTOP LOGO 💥 */}
+          <Link href={dashboardUrl} className="flex items-center gap-2.5 group">
             <div className="relative flex items-center justify-center">
-               <div className="absolute inset-0 bg-[#3B82F6] blur-md opacity-40 rounded-full group-hover:opacity-80 transition-opacity duration-500"></div>
-               <Image src="/zenex-logo.png" alt="ZENEX" width={28} height={28} className="relative z-10 object-contain drop-shadow-[0_0_10px_rgba(59,130,246,0.6)] group-hover:scale-110 transition-transform duration-300" priority unoptimized />
+               <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full group-hover:opacity-40 transition-opacity duration-500"></div>
+               <Image src="/zenex-logo.png" alt="ZENEX" width={26} height={26} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
             </div>
-            <h1 className="text-[20px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-1 group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.4)] transition-all">ZENEX</h1>
+            <h1 className="text-[20px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all">ZENEX</h1>
           </Link>
 
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#94A3B8] hover:text-white"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -337,13 +337,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-2 sm:gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30 shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
              
-             {/* 💥 COMPACT MOBILE LOGO 💥 */}
+             {/* 💥 PERFECTLY ALIGNED MOBILE LOGO 💥 */}
              <Link href={dashboardUrl} className="md:hidden flex items-center gap-1.5 group shrink-0">
                <div className="relative flex items-center justify-center">
-                  <div className="absolute inset-0 bg-[#3B82F6] blur-sm opacity-50 rounded-full"></div>
-                  <Image src="/zenex-logo.png" alt="ZENEX" width={24} height={24} className="relative z-10 object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" priority unoptimized />
+                  <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full"></div>
+                  <Image src="/zenex-logo.png" alt="ZENEX" width={22} height={22} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
                </div>
-               <h1 className="text-[17px] sm:text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-0.5">ZENEX</h1>
+               <h1 className="text-[17px] sm:text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none">ZENEX</h1>
              </Link>
 
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'}`}>
@@ -352,7 +352,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              </span>
           </div>
           
-          {/* 💥 COMPACT MOBILE RIGHT ICONS 💥 */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-6 relative shrink-0">
             {role !== "admin" && (
               <div className="px-1.5 py-0.5 sm:px-2.5 sm:py-1 md:px-4 md:py-2 bg-[#0F172A] border border-[#334155] rounded-md md:rounded-lg flex items-center md:gap-3 shadow-inner">
@@ -392,16 +391,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
+      {/* 💥 VERSION V4.0.1 💥 */}
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] flex items-end md:items-center justify-end group">
         <div className={`absolute bottom-full mb-3 right-0 md:bottom-auto md:mb-0 md:right-full md:mr-3 flex items-center bg-[#1E293B]/95 backdrop-blur-xl border border-[#334155] rounded-xl md:rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 origin-bottom-right md:origin-right ${isBadgeOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'} md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}>
            <div className="flex flex-col md:flex-row items-center md:gap-4 px-4 py-3 md:py-2.5 whitespace-nowrap">
-              <div className="flex items-center gap-2 md:border-r border-[#334155] pb-2 md:pb-0 border-b md:border-b-0 w-full md:w-auto md:pr-4 justify-center md:justify-start"><div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_#10B981]"></div><span className="text-[10px] font-black text-white tracking-widest uppercase">System Core <span className="text-[#94A3B8]">B:3.1.5</span></span></div>
-              <div className="pt-2 md:pt-0 flex flex-col items-center md:items-start"><span className="text-[10px] font-black text-[#10B981] md:hidden uppercase mb-1">V3.0.1 (Secured)</span><a href="mailto:zenexpart44@gmail.com" className="text-[10px] font-black text-[#00C6FF] hover:text-white transition-colors underline underline-offset-2">Developed by Zenex Team</a></div>
+              <div className="flex items-center gap-2 md:border-r border-[#334155] pb-2 md:pb-0 border-b md:border-b-0 w-full md:w-auto md:pr-4 justify-center md:justify-start"><div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shadow-[0_0_8px_#10B981]"></div><span className="text-[10px] font-black text-white tracking-widest uppercase">System Core <span className="text-[#94A3B8]">B:4.0.1</span></span></div>
+              <div className="pt-2 md:pt-0 flex flex-col items-center md:items-start"><span className="text-[10px] font-black text-[#10B981] md:hidden uppercase mb-1">V4.0.1 (Secured)</span><a href="mailto:zenexpart44@gmail.com" className="text-[10px] font-black text-[#00C6FF] hover:text-white transition-colors underline underline-offset-2">Developed by Zenex Team</a></div>
            </div>
         </div>
         <div onClick={() => setIsBadgeOpen(!isBadgeOpen)} className="bg-[#1E293B]/90 backdrop-blur-md border border-[#334155] text-[#94A3B8] p-2.5 md:px-4 md:py-2.5 rounded-full shadow-lg transition-all duration-300 hover:text-white hover:border-[#10B981] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center justify-center gap-2">
           <svg className="w-5 h-5 text-[#10B981] md:hidden block" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-          <span className="hidden md:block text-[10px] md:text-xs font-mono font-bold">V3.0.1 (Secured)</span>
+          <span className="hidden md:block text-[10px] md:text-xs font-mono font-bold">V4.0.1 (Secured)</span>
           <svg className={`hidden md:block w-4 h-4 text-[#10B981] transition-transform duration-300 ${isBadgeOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
         </div>
       </div>

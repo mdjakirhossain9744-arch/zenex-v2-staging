@@ -138,7 +138,7 @@ export default function LoginPage() {
               <button type="button" onClick={() => setLang(lang === "EN" ? "BN" : "EN")} className="bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded-md border border-slate-600 transition">
                 {lang === "EN" ? "Switch to বাংলা" : "Switch to English"}
               </button>
-              <span>V3.0.1 (Secured)</span>
+              <span>v4.0.1 (Secured)</span>
             </div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-500 bg-clip-text text-transparent uppercase tracking-wider">
               Zenex Network
