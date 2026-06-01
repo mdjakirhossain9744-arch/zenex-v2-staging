@@ -49,13 +49,12 @@ export default function AgentPayments() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 w-full">
+      <div className="p-4 md:p-6 w-full font-sans">
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-black tracking-wide text-white mb-1 uppercase">User Payments</h1>
           <p className="text-[#94A3B8] text-xs md:text-sm font-medium tracking-wide">Track withdrawal history and success notes for users under your agency.</p>
         </div>
 
-        {/* 💥 UNIQUE CARDS DESIGN 💥 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <StatCard title="Total Distributed" value={`৳ ${stats?.totalDistributed?.toFixed(2) || '0.00'}`} subtitle="Lifetime paid amount" color="text-[#10B981]" border="border-[#10B981]/30" />
           <StatCard title="Total Approved" value={stats?.totalApprovedCount || 0} subtitle="Lifetime successful" color="text-[#3B82F6]" border="border-[#3B82F6]/30" />
@@ -91,7 +90,6 @@ export default function AgentPayments() {
               </thead>
               <tbody className="divide-y divide-[#334155]/50">
                 {loading ? (
-                  // 💥 PREMIUM SKELETON LOADER 💥
                   Array.from({ length: 5 }).map((_, idx) => (
                     <tr key={idx} className="bg-transparent border-b border-[#334155]/50">
                       <td className="p-4 pl-6">
@@ -99,7 +97,7 @@ export default function AgentPayments() {
                         <div className="h-3 w-32 bg-[#334155] rounded animate-pulse mb-1"></div>
                         <div className="h-2 w-40 bg-[#334155] rounded animate-pulse"></div>
                       </td>
-                      <td className="p-4"><div className="h-6 w-20 bg-[#334155] rounded animate-pulse"></div></td>
+                      <td className="p-4"><div className="h-4 w-16 bg-[#334155] rounded animate-pulse"></div></td>
                       <td className="p-4">
                         <div className="h-3 w-16 bg-[#334155] rounded animate-pulse mb-2"></div>
                         <div className="h-5 w-32 bg-[#334155] rounded animate-pulse"></div>
@@ -126,16 +124,21 @@ export default function AgentPayments() {
                           <div className="text-[#E2E8F0] mt-1 text-xs truncate max-w-[150px] font-medium">{tx.name}</div>
                           <div className="text-[#64748B] text-[10px]">{tx.email}</div>
                         </td>
+                        
+                        {/* 💥 FIXED: Clean, Simple, Single-line Amount 💥 */}
                         <td className="px-6 py-4">
-                          <div className="text-lg font-black text-white">৳ {tx.amount?.toFixed(2)}</div>
+                          <div className="text-sm font-medium text-[#E2E8F0] whitespace-nowrap">
+                            <span className="text-[#10B981] mr-1">৳</span>{tx.amount?.toFixed(2)}
+                          </div>
                         </td>
+
                         <td className="px-6 py-4">
                           <div className="text-[#A855F7] uppercase text-[10px] font-black tracking-widest mb-1">{tx.method}</div>
                           <div className="text-[#94A3B8] font-mono text-xs truncate max-w-[200px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155]">{tx.accountNumber}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border ${
-                            isPaid ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]' :
+                          <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border whitespace-nowrap ${
+                            isPaid ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30' :
                             isPending ? 'bg-[#EAB308]/10 text-[#EAB308] border-[#EAB308]/30' :
                             'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/30'
                           }`}>
