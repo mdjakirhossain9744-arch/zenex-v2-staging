@@ -26,9 +26,11 @@ export default function Notifications() {
     }
 
     // 💥 URL Checker: If user clicked Bell Icon, open Personal Tab automatically 💥
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("tab") === "personal") {
-       setActiveTab("PERSONAL");
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("tab") === "personal") {
+         setActiveTab("PERSONAL");
+      }
     }
   }, []);
 
@@ -61,14 +63,14 @@ export default function Notifications() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "REACTION", id: n._id, reactionType: "view" })
               });
-              n.views += 1;
+              n.views = (n.views || 0) + 1;
            }
            return { ...n, userReaction: savedReactions[n._id] || null };
         });
         setNotifications(formatted);
       }
-    } catch (err) {
-      console.error("Failed to load notifications");
+    } catch (err: any) {
+      console.error("Failed to load notifications", err);
     } finally {
       setLoading(false);
     }
@@ -91,8 +93,8 @@ export default function Notifications() {
             dislikes: reaction === "dislike" ? notif.dislikes - 1 : notif.dislikes,
           };
         } else {
-          let newLikes = notif.likes;
-          let newDislikes = notif.dislikes;
+          let newLikes = notif.likes || 0;
+          let newDislikes = notif.dislikes || 0;
 
           if (currentReaction === "like") { newLikes--; fetch("/api/notifications", { method: "POST", body: JSON.stringify({ action: "REACTION", id, reactionType: "unlike" }) }); }
           if (currentReaction === "dislike") { newDislikes--; fetch("/api/notifications", { method: "POST", body: JSON.stringify({ action: "REACTION", id, reactionType: "undislike" }) }); }
@@ -105,7 +107,7 @@ export default function Notifications() {
         }
       }
       return notif;
-    });
+    })); // 💥 FIXED HERE: Properly closed the bracket! 💥
 
     localStorage.setItem("zenex_reactions", JSON.stringify(savedReactions));
 
