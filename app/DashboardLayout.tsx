@@ -263,13 +263,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className={`fixed md:relative top-0 left-0 h-full w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="h-20 flex items-center justify-between px-5 border-b border-[#334155] shrink-0">
           
-          {/* 💥 DESKTOP LOGO CACHE FIX & ALIGNMENT 💥 */}
-          <Link href={dashboardUrl} className="flex items-center gap-2.5 group">
-            <div className="relative flex items-center justify-center">
-               <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full group-hover:opacity-40 transition-opacity duration-500"></div>
-               <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={26} height={26} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
-            </div>
-            {/* Removed margin top (mt-1) for perfect alignment */}
+          <Link href={dashboardUrl} className="flex items-center gap-2 group">
+            <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={26} height={26} className="object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)] group-hover:scale-105 transition-transform duration-300" priority unoptimized />
             <h1 className="text-[20px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] via-[#E2E8F0] to-[#3B82F6] text-transparent bg-clip-text leading-none group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all">ZENEX</h1>
           </Link>
 
@@ -338,14 +333,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-2 sm:gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30 shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
              
-             {/* 💥 MOBILE LOGO CACHE FIX & PERFECT ALIGNMENT 💥 */}
+             {/* 💥 MOBILE LOGO PERFECTLY CENTERED (No margins) 💥 */}
              <Link href={dashboardUrl} className="md:hidden flex items-center gap-1.5 group shrink-0">
-               <div className="relative flex items-center justify-center">
-                  <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full"></div>
-                  <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={22} height={22} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
-               </div>
-               {/* Removed mt-0.5 for perfect vertical alignment */}
-               <h1 className="text-[17px] sm:text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none">ZENEX</h1>
+               <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={22} height={22} className="object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
+               <h1 className="text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none">ZENEX</h1>
              </Link>
 
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'}`}>
