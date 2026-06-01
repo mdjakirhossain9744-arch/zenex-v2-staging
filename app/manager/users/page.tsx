@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation"; // 💥 রাউটার ইম্পোর্ট
+import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../../DashboardLayout"; 
 
 export default function ManagerUsersDirectoryPage() {
-  const router = useRouter(); // 💥 রাউটার ইনিশিয়ালাইজ
+  const router = useRouter(); 
 
   const [role, setRole] = useState("user");
   const [userEmail, setUserEmail] = useState("");
@@ -54,7 +54,6 @@ export default function ManagerUsersDirectoryPage() {
       .then(res => res.json())
       .then(data => {
         if (data?.users && Array.isArray(data.users)) {
-          // 💥 NEWEST FIRST SORT LOGIC ADDED HERE (কোডের আর কোথাও হাত দেওয়া হয়নি) 💥
           const sortedUsers = [...data.users].sort((a, b) => {
             const valA = a.createdAt ? new Date(a.createdAt).getTime() : (a._id ? a._id.toString() : "");
             const valB = b.createdAt ? new Date(b.createdAt).getTime() : (b._id ? b._id.toString() : "");
@@ -64,11 +63,18 @@ export default function ManagerUsersDirectoryPage() {
           });
           setMyUsers(sortedUsers);
         }
+        
         if (data?.pagination) {
           setTotalPages(data.pagination.totalPages);
-          setTotalUsersCount(data.pagination.total);
+          // 💥 FIXED: We removed setTotalUsersCount from here so it doesn't break during search
         }
-        if (data?.stats) setStats(data.stats);
+
+        if (data?.stats) {
+          setStats(data.stats);
+          // 💥 FIXED: Total Users will always show the actual Global Total, even when searching! 💥
+          setTotalUsersCount(data.stats.globalTotal || 0); 
+        }
+
         if (data?.maxLimit) setAgentMaxLimit(Number(data.maxLimit)); 
         if (data?.agentRate) setAgentRate(Number(data.agentRate));
         setLoading(false);
@@ -82,7 +88,6 @@ export default function ManagerUsersDirectoryPage() {
       try {
         const parsedUser = JSON.parse(storedUser);
         
-        // 💥 SMART REDIRECT 💥
         if (parsedUser.role === "admin") { router.push("/admin/users"); return; }
         if (parsedUser.role !== "agent") { router.push("/dashboard"); return; }
 

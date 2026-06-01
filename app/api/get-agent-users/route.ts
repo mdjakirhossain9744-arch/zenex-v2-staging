@@ -5,7 +5,6 @@ import connectToDatabase from "../../lib/mongodb";
 import User from "../../../models/User"; 
 import Order from "../../../models/Order";
 
-// 🌍 UTC Timezone Converter (Fixed from Asia/Dhaka)
 const getUTCDateString = (dateObj: any = new Date()) => {
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dateObj));
@@ -20,51 +19,53 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     
     const body = await req.json();
-    // ✅ status প্যারামিটার যোগ করা হয়েছে
     const { agentEmail, page = 1, limit = 40, search = "", status = "all" } = body; 
 
     const agent = await User.findOne({
       $or: [{ email: agentEmail }, { customAgentMail: agentEmail }],
-      role: "agent"
+      role: { $in: ["agent", "manager"] }
     });
 
     if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
 
-    // বেস কোয়েরি (এজেন্টের সব ইউজার)
     const agentMatch = { $or: [{ agentEmail: agent.email }, { agentEmail: agent.customAgentMail }] };
     const roleMatch = { role: "user" };
 
-    // 💥 Safe Regex Search (Hacker/Crash proof) 💥
-    let query: any = { ...agentMatch, ...roleMatch };
+    let query: any = { $and: [agentMatch, roleMatch] };
 
+    // 💥 ENHANCED SEARCH LOGIC: Supports Name, Email, and ZX- ID 💥
     if (search) {
       const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      query = {
-        $and: [
-          agentMatch,
-          roleMatch,
-          { $or: [{ fullName: { $regex: safeSearch, $options: "i" } }, { email: { $regex: safeSearch, $options: "i" } }] }
-        ]
-      };
+      const hexSearch = safeSearch.replace(/^ZX-/i, ""); // Remove ZX- if typed
+      
+      let searchOr: any[] = [
+         { fullName: { $regex: safeSearch, $options: "i" } }, 
+         { email: { $regex: safeSearch, $options: "i" } },
+         { zxId: { $regex: safeSearch, $options: "i" } } // If actually saved in DB
+      ];
+
+      // 💥 SUPER HACK: Search by generated ZX- ID (which is the end of _id) 💥
+      if (hexSearch.length > 0) {
+         searchOr.push({
+           $expr: {
+             $regexMatch: { input: { $toString: "$_id" }, regex: hexSearch, options: "i" }
+           }
+         });
+      }
+
+      query.$and.push({ $or: searchOr });
     }
 
-    // ✅ স্ট্যাটাস ফিল্টার লজিক (শুধুমাত্র টেবিলের ডাটার জন্য)
     if (status && status !== "all") {
-      if (query.$and) {
-        query.$and.push({ status: status });
-      } else {
-        query.status = status;
-      }
+      query.$and.push({ status: status });
     }
 
     const skip = (page - 1) * limit;
-    const filteredTotal = await User.countDocuments(query); // পেজিনেশনের জন্য ফিল্টার করা ডাটা
-    
-    // 💥 NEWEST FIRST LOGIC (ALREADY PERFECT) 💥
+    const filteredTotal = await User.countDocuments(query); 
     const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
-    const todayStr = getUTCDateString(); // ✅ Changed to UTC
+    const todayStr = getUTCDateString(); 
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
@@ -83,14 +84,12 @@ export async function POST(req: NextRequest) {
         
         if (finalDateStr === todayStr) {
             const e = (o.userEmail || o.email || "").toLowerCase().trim();
-            
             const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
             const uniqueCodes = new Set();
             msgArray.forEach((msg: string) => {
                 const match = msg.match(/\b\d{4,8}\b/);
                 uniqueCodes.add(match ? match[0] : msg.trim());
             });
-
             const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
             otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         }
@@ -112,8 +111,8 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // ✅ গ্লোবাল স্ট্যাটস (ফিল্টার ধরলেও কার্ডে সবসময় মূল কাউন্ট থাকবে)
-    const globalQuery = { ...agentMatch, ...roleMatch };
+    // ✅ STATS LOGIC: Keeps original totals ignoring the search filter
+    const globalQuery = { $and: [agentMatch, roleMatch] };
     const globalTotal = await User.countDocuments(globalQuery);
     const activeUsers = await User.countDocuments({ ...globalQuery, status: "active" });
     const pendingUsers = await User.countDocuments({ ...globalQuery, status: "pending" });
