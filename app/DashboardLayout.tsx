@@ -333,10 +333,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-2 sm:gap-3">
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center border border-[#3B82F6]/30 shrink-0"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
              
-             {/* 💥 MOBILE LOGO PERFECTLY CENTERED (No margins) 💥 */}
+             {/* 💥 MOBILE LOGO TEXT ALIGNED WITH MT-1 💥 */}
              <Link href={dashboardUrl} className="md:hidden flex items-center gap-1.5 group shrink-0">
-               <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={22} height={22} className="object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
-               <h1 className="text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none">ZENEX</h1>
+               <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-1 bg-[#3B82F6] blur-sm opacity-20 rounded-full"></div>
+                  <Image src="/zenex-logo.png?v=4.0.1" alt="ZENEX" width={22} height={22} className="relative z-10 object-contain drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" priority unoptimized />
+               </div>
+               <h1 className="text-[17px] sm:text-[18px] font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text leading-none mt-1">ZENEX</h1>
              </Link>
 
              <span className={`hidden md:flex px-3 py-1.5 border text-[10px] font-black rounded-md uppercase tracking-widest items-center gap-2 ${role === 'admin' ? 'bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20' : role === 'agent' ? 'bg-[#A855F7]/10 text-[#A855F7] border-[#A855F7]/20' : 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20'}`}>
