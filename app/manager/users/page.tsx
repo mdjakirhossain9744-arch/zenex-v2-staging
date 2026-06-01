@@ -66,12 +66,10 @@ export default function ManagerUsersDirectoryPage() {
         
         if (data?.pagination) {
           setTotalPages(data.pagination.totalPages);
-          // 💥 FIXED: We removed setTotalUsersCount from here so it doesn't break during search
         }
 
         if (data?.stats) {
           setStats(data.stats);
-          // 💥 FIXED: Total Users will always show the actual Global Total, even when searching! 💥
           setTotalUsersCount(data.stats.globalTotal || 0); 
         }
 
@@ -276,7 +274,27 @@ export default function ManagerUsersDirectoryPage() {
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#A855F7] font-bold">Loading Page {currentPage}...</td></tr>
+                // 💥 PREMIUM SKELETON LOADER FOR USERS DIRECTORY 💥
+                Array.from({ length: 7 }).map((_, idx) => (
+                  <tr key={idx} className="bg-transparent border-b border-[#334155]/50">
+                    <td className="p-4 pl-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="h-4 w-32 bg-[#334155] rounded animate-pulse"></div>
+                        <div className="h-4 w-16 bg-[#334155] rounded animate-pulse"></div>
+                      </div>
+                      <div className="h-3 w-40 bg-[#334155] rounded animate-pulse"></div>
+                    </td>
+                    <td className="p-4 text-center">
+                       <div className="h-6 w-8 bg-[#334155] rounded animate-pulse mx-auto"></div>
+                    </td>
+                    <td className="p-4"><div className="h-5 w-16 bg-[#334155] rounded animate-pulse"></div></td>
+                    <td className="p-4"><div className="h-5 w-20 bg-[#334155] rounded animate-pulse"></div></td>
+                    <td className="p-4"><div className="h-5 w-16 bg-[#334155] rounded-md animate-pulse"></div></td>
+                    <td className="p-4 pr-6 text-right">
+                      <div className="h-8 w-24 bg-[#334155] rounded-lg animate-pulse ml-auto"></div>
+                    </td>
+                  </tr>
+                ))
               ) : myUsers.length === 0 ? (
                 <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
               ) : (

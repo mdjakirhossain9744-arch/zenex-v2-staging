@@ -89,9 +89,28 @@ export default function AgentPayments() {
                   <th className="px-6 py-4 tracking-widest">Date & Note</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[#334155]/50">
                 {loading ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-[#3B82F6] animate-pulse font-bold tracking-widest text-xs uppercase">Loading secure data...</td></tr>
+                  // 💥 PREMIUM SKELETON LOADER 💥
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <tr key={idx} className="bg-transparent border-b border-[#334155]/50">
+                      <td className="p-4 pl-6">
+                        <div className="h-4 w-24 bg-[#334155] rounded animate-pulse mb-2"></div>
+                        <div className="h-3 w-32 bg-[#334155] rounded animate-pulse mb-1"></div>
+                        <div className="h-2 w-40 bg-[#334155] rounded animate-pulse"></div>
+                      </td>
+                      <td className="p-4"><div className="h-6 w-20 bg-[#334155] rounded animate-pulse"></div></td>
+                      <td className="p-4">
+                        <div className="h-3 w-16 bg-[#334155] rounded animate-pulse mb-2"></div>
+                        <div className="h-5 w-32 bg-[#334155] rounded animate-pulse"></div>
+                      </td>
+                      <td className="p-4"><div className="h-5 w-16 bg-[#334155] rounded-md animate-pulse"></div></td>
+                      <td className="p-4 min-w-[200px]">
+                        <div className="h-3 w-28 bg-[#334155] rounded animate-pulse mb-2"></div>
+                        <div className="h-8 w-full bg-[#334155] rounded-md animate-pulse"></div>
+                      </td>
+                    </tr>
+                  ))
                 ) : data.length === 0 ? (
                   <tr><td colSpan={5} className="text-center py-12 text-[#64748B] font-medium">No transactions found.</td></tr>
                 ) : (
@@ -103,7 +122,7 @@ export default function AgentPayments() {
                     return (
                       <tr key={idx} className="bg-transparent border-b border-[#334155]/50 hover:bg-[#334155]/20 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="font-mono text-[#3B82F6] font-bold text-xs">{tx.wid || 'WID-PENDING'}</div>
+                          <div className="font-mono text-[#3B82F6] font-bold text-xs">{tx.wid || 'ZX-PENDING'}</div>
                           <div className="text-[#E2E8F0] mt-1 text-xs truncate max-w-[150px] font-medium">{tx.name}</div>
                           <div className="text-[#64748B] text-[10px]">{tx.email}</div>
                         </td>
