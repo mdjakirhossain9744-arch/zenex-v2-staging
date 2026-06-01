@@ -4,20 +4,24 @@ const userSchema = new Schema(
   {
     fullName: { type: String, required: true },
     mobile: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true }, // unique: true এমনিতেই ইনডেক্স তৈরি করে
     telegram: { type: String, required: true },
     country: { type: String, required: true },
-    agentEmail: { type: String, required: true }, 
+    
+    // 💥 INDEX ADDED: এডমিন/ম্যানেজার তার ইউজারদের দ্রুত দেখার জন্য 💥
+    agentEmail: { type: String, required: true, index: true }, 
     password: { type: String, required: true },
     
     // 💥 ম্যাজিক: উইথড্র সিকিউরিটি পিন (ডিফল্ট 1234) 💥
     withdrawPin: { type: String, default: "1234" },
     
-    // 💥 ইউজার আইডি (ZX-ID) 💥
-    zxId: { type: String, default: "" },
+    // 💥 INDEX ADDED: ইউজার আইডি (ZX-ID) দিয়ে সার্চ করার জন্য 💥
+    zxId: { type: String, default: "", index: true },
     
     role: { type: String, default: "user" }, 
-    status: { type: String, default: "pending" }, 
+    
+    // 💥 INDEX ADDED: Active/Pending/Banned ইউজার দ্রুত ফিল্টার করার জন্য 💥
+    status: { type: String, default: "pending", index: true }, 
     
     balance: { type: Number, default: 0 }, 
     otpRate: { type: Number, default: 0 }, // 💥 Magic Fix: Default rate is 0.00
@@ -35,8 +39,8 @@ const userSchema = new Schema(
     activeSessions: { type: [String], default: [] },
 
     // 💥 NEW: Binance Auto-Withdraw Fields 💥
-    isAutoWithdraw: { type: Boolean, default: false }, // অটো উইথড্র চালু আছে কি না
-    binancePayId: { type: String, default: "" },       // ইউজারের সেভ করা বিন্যান্স পে-আইডি বা ইমেইল
+    isAutoWithdraw: { type: Boolean, default: false }, 
+    binancePayId: { type: String, default: "" },       
   },
   { timestamps: true }
 );

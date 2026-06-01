@@ -15,6 +15,9 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
+// 💥 Helper for sorting logic to bring DONE items to Top automatically 💥
+const getSortTime = (item: any) => item.receivedAt || item.updatedAt || item.createdAt;
+
 export default function GetNumber() {
   const [rangeInput, setRangeInput] = useState("");
   const [isNational, setIsNational] = useState(false);
@@ -25,7 +28,9 @@ export default function GetNumber() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState("ALL"); 
   
-  const [toastMessage, setToastMessage] = useState("");
+  // 💥 Updated Toast System: Multi-Toast Stacking (Max 2) 💥
+  const [toasts, setToasts] = useState<{id: number, msg: string}[]>([]);
+  
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [selectedDate, setSelectedDate] = useState(getUTCDateString());
@@ -91,10 +96,19 @@ export default function GetNumber() {
     return dateObj.toLocaleDateString('en-GB', options);
   };
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 3000);
-  };
+  // 💥 Stacked Toast logic (Max 2 Toasts limit) 💥
+  const showToast = useCallback((msg: string) => {
+    const id = Date.now() + Math.random();
+    
+    setToasts((prev) => {
+      const updatedToasts = [...prev, { id, msg }];
+      return updatedToasts.slice(-2); // সর্বোচ্চ ২টি টোস্ট শো করবে
+    });
+
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
+  }, []);
 
   const getTimeAgo = (timestamp: number) => {
     if (!timestamp) return "Just Now";
@@ -155,9 +169,10 @@ export default function GetNumber() {
                  if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) return false; 
                  return true;
               });
-              return combined.sort((a, b) => b.createdAt - a.createdAt);
+              // Sort using getSortTime to keep updated items at top naturally
+              return combined.sort((a, b) => getSortTime(b) - getSortTime(a));
            } else {
-              return Array.from(prevMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+              return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
            }
         });
 
@@ -198,9 +213,11 @@ export default function GetNumber() {
         if (item.searchNumber === searchNumber) {
            if (!isMulti && item.status === "WAIT") {
              setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
+             showToast(`OTP Received: ${cleanOTPDisplay(otp)}`);
              return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
            } else if (isMulti) {
              const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
+             showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
              return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now(), isMulti: true };
            }
         }
@@ -219,7 +236,7 @@ export default function GetNumber() {
        clearInterval(syncInterval);
        clearInterval(timeInterval);
     };
-  }, [fetchDbOrders]);
+  }, [fetchDbOrders, showToast]);
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -242,7 +259,7 @@ export default function GetNumber() {
 
   const fetchNewNumber = async () => {
     if (!rangeInput) {
-      showToast("Please enter a Number Range first!");
+      showToast("Please enter a Range!");
       return;
     }
     setIsLoading(true);
@@ -282,10 +299,10 @@ export default function GetNumber() {
         });
 
       } else {
-        showToast(result.error || "Failed to fetch number!");
+        showToast(result.error || "Failed!");
       }
     } catch (error) {
-      showToast("Something went wrong!");
+      showToast("Error occurred!");
     } finally {
       setIsLoading(false);
     }
@@ -312,12 +329,10 @@ export default function GetNumber() {
       return true;
   });
 
-  // 💥 THE ARCHITECT'S SPLIT ENGINE 💥
   const expandedNumbers: any[] = [];
   deduplicatedNumbers.forEach((item: any) => {
       if (item.status === "DONE" && item.fullMessage && item.fullMessage.includes("_||_")) {
           const msgsArray = item.fullMessage.split("_||_").map((m: string) => m.trim()).filter(Boolean);
-          // 💥 TS Error Fix: msg: string, idx: number 💥
           msgsArray.forEach((msg: string, idx: number) => {
               const extracted = cleanOTPDisplay(msg);
               expandedNumbers.push({
@@ -333,19 +348,24 @@ export default function GetNumber() {
       }
   });
 
-  const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => b.createdAt - a.createdAt);
+  // 💥 Master Sorting: Automatically brings DONE/Updated items to the absolute TOP! 💥
+  const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
   
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   return (
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 font-sans">
-        {toastMessage && (
-          <div className="fixed top-24 right-5 md:right-10 z-[100] bg-[#10B981] text-white px-4 py-2 rounded-lg shadow-lg font-bold text-sm flex items-center gap-2 animate-bounce-in">
-             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-             {toastMessage}
-          </div>
-        )}
+        
+        {/* 💥 Dynamic Stacked Toast Notification Area (Max 2) 💥 */}
+        <div className="fixed top-24 right-5 md:right-10 z-[100] flex flex-col gap-2 pointer-events-none">
+          {toasts.map((toast) => (
+            <div key={toast.id} className="bg-[#10B981] text-white px-4 py-2 rounded-lg shadow-lg font-bold text-sm flex items-center gap-2 animate-bounce-in transition-all pointer-events-auto">
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+               {toast.msg}
+            </div>
+          ))}
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
            <div className="rounded-xl bg-[#1E293B]/50 border border-[#334155] p-3 flex justify-between items-center transition-all hover:border-[#94A3B8]">

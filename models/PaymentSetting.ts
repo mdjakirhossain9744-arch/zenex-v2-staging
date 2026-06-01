@@ -3,12 +3,13 @@ import mongoose, { Schema, models } from "mongoose";
 
 const paymentSettingSchema = new Schema(
   {
-    type: { type: String, default: "global" },
+    // 💥 INDEX ADDED: গ্লোবাল সেটিং দ্রুত ফেচ করার জন্য 💥
+    type: { type: String, default: "global", index: true },
     
     // 💥 ৩ স্তরের সিকিউরিটি গেইট 💥
-    isWithdrawOpen: { type: Boolean, default: true },       // 1. Global Master Switch
-    isManualWithdrawOpen: { type: Boolean, default: true }, // 2. NEW: Manual Gate (bKash, Nagad etc)
-    binanceAutoPayActive: { type: Boolean, default: true }, // 3. Auto-Pay Engine (Binance)
+    isWithdrawOpen: { type: Boolean, default: true },       
+    isManualWithdrawOpen: { type: Boolean, default: true }, 
+    binanceAutoPayActive: { type: Boolean, default: true }, 
     
     methods: {
       bKash: { type: Boolean, default: true },
