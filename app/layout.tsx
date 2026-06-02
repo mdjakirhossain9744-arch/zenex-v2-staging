@@ -13,32 +13,26 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 💥 Advanced SEO Metadata & Telegram Cache Fix 💥
+// 💥 Advanced SEO Metadata & Preview Image Removed 💥
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.zenexnetwork.com"),
-  title: "ZENEX NETWORK - Free Numbers & Instant Payouts",
+  title: "ZENEX NETWORK",
   description: "Join ZENEX NETWORK. Get free virtual numbers, complete successful OTP tasks, and get paid instantly. Enterprise micro-job platform.",
   keywords: ["ZENEX", "ZENEX NETWORK", "Free OTP", "Bangladesh OTP", "Micro Job", "Virtual Number", "Online Earning", "SMS Verification", "Instant Payout"],
   authors: [{ name: "Zenex Team" }],
   openGraph: {
-    title: "ZENEX NETWORK - Free Numbers & Instant Payouts",
+    title: "ZENEX NETWORK",
     description: "Get free numbers, complete OTP tasks, and earn instant payouts.",
     url: "https://www.zenexnetwork.com",
     siteName: "ZENEX NETWORK",
-    images: [
-      {
-        url: "/zenex-logo.png?v=4.0.1", // 💥 CACHE FIX: forces telegram/socials to fetch new logo 💥
-        width: 800,
-        height: 600,
-      },
-    ],
     locale: "en_US",
     type: "website",
+    // 💥 ছবি অফ করে দেওয়া হয়েছে 💥
   },
   twitter: {
-    card: "summary_large_image",
-    title: "ZENEX NETWORK - Free Numbers & Instant Payouts",
-    images: ["/zenex-logo.png?v=4.0.1"], // 💥 TWITTER CACHE FIX 💥
+    card: "summary", // 💥 large_image সরিয়ে শুধু text summary দেওয়া হয়েছে 💥
+    title: "ZENEX NETWORK",
+    description: "Get free numbers, complete OTP tasks, and earn instant payouts.",
   }
 };
 
