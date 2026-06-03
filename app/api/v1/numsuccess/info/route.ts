@@ -25,7 +25,6 @@ export async function GET(req: Request) {
     const now = Date.now();
     const REAL_API_KEY = "M_7VX25KAJI"; 
     
-    // 💥 Provider Cache Sync 💥
     if (!globalMnetCache || (now - mnetLastFetchTime > MNET_CACHE_TTL)) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000); 
@@ -54,10 +53,9 @@ export async function GET(req: Request) {
     }
 
     const rawOtps = globalMnetCache?.data?.otps;
-    const liveOtps = Array.isArray(rawOtps) ? rawOtps : []; // 💥 SECURITY: Array Checking
+    const liveOtps = Array.isArray(rawOtps) ? rawOtps : []; 
     let userSpecificOtps: any[] = [];
 
-    // 💥 REVERSE SEARCH LOGIC 💥
     if (liveOtps.length > 0) {
         const liveNumbers = liveOtps.map((o: any) => String(o.number).replace(/\D/g, ""));
         
@@ -79,13 +77,18 @@ export async function GET(req: Request) {
             const matchedOtpObj = liveOtps.find((m: any) => String(m.number).replace(/\D/g, "").endsWith(last6));
 
             if (matchedOtpObj) {
-                userSpecificOtps.push(matchedOtpObj);
+                // 💥 BRANDING MAGIC: ক্যাশ ঠিক রেখে ইউজারের কাছে M_ কে ZX_ বানিয়ে পাঠানো হচ্ছে 💥
+                const customOtpObj = {
+                    ...matchedOtpObj,
+                    nid: matchedOtpObj.nid ? matchedOtpObj.nid.replace(/^M_/i, 'ZX_') : matchedOtpObj.nid
+                };
+
+                userSpecificOtps.push(customOtpObj);
 
                 const incomingMsg = (matchedOtpObj.otp || "").trim();
                 const incomingMatch = incomingMsg.match(/\b\d{4,8}\b/);
                 const incomingCode = incomingMatch ? incomingMatch[0] : incomingMsg; 
 
-                // 💥 SECURITY: Duplicate SMS Blocker 💥
                 const existingMsgs = order.fullMessage ? order.fullMessage.split(" _||_ ") : [];
                 const alreadyExists = existingMsgs.some((msg: string) => {
                     const match = msg.match(/\b\d{4,8}\b/);
@@ -101,7 +104,6 @@ export async function GET(req: Request) {
                 let otpCommission = 0;
                 let agentId = null;
 
-                // 💥 SECURITY: Custom Agent Check Included 💥
                 if (!isFreeService && user.agentEmail) {
                    const agent = await User.findOne({ 
                       $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
@@ -117,7 +119,6 @@ export async function GET(req: Request) {
 
                 let regexStr = /^\d+$/.test(incomingCode) ? `\\b${incomingCode}\\b` : incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-                // 💥 ATOMIC DB UPDATE 💥
                 const updatedOrder = await Order.findOneAndUpdate(
                    { _id: order._id, fullMessage: { $not: new RegExp(regexStr) } },
                    { 
@@ -143,7 +144,6 @@ export async function GET(req: Request) {
                       await User.updateOne({ _id: agentId }, { $inc: { agentEarning: otpCommission, balance: otpCommission } });
                    }
 
-                   // 💥 AUTO-PAY BACKGROUND TRIGGER 💥
                    if (updatedUser && updatedUser.autoPayEnabled && updatedUser.balance >= 100) {
                       triggerBinanceAutoPay(updatedUser).catch(err => console.log("AutoPay error:", err));
                    }
@@ -169,7 +169,5 @@ async function triggerBinanceAutoPay(user: any) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user._id })
         });
-    } catch (e) {
-        // Background fail is ignored silently
-    }
+    } catch (e) {}
 }

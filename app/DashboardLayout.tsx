@@ -52,6 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return `${Math.floor(diff / 86400)} days ago`;
   };
 
+  // 💥 HYBRID VISIBILITY SYSTEM (Fixing the UX issue you mentioned) 💥
   useEffect(() => {
     setMounted(true);
     const storedUser = localStorage.getItem("user");
@@ -74,12 +75,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     
     checkActiveSession(); fetchSystemSettings(); fetchRealBalance(); fetchHeaderNotifications();
 
-    const sessionInterval = setInterval(checkActiveSession, 30000); 
-    const maintInterval = setInterval(fetchSystemSettings, 10000); 
-    const balanceInterval = setInterval(fetchRealBalance, 5000); 
-    const notifInterval = setInterval(fetchHeaderNotifications, 30000); 
+    let sessionInterval: NodeJS.Timeout;
+    let maintInterval: NodeJS.Timeout;
+    let balanceInterval: NodeJS.Timeout;
+    let notifInterval: NodeJS.Timeout;
+
+    const startUIUpdates = () => {
+      sessionInterval = setInterval(checkActiveSession, 30000); 
+      maintInterval = setInterval(fetchSystemSettings, 10000); 
+      balanceInterval = setInterval(fetchRealBalance, 5000); 
+      notifInterval = setInterval(fetchHeaderNotifications, 30000); 
+    };
+
+    const stopUIUpdates = () => {
+      clearInterval(sessionInterval);
+      clearInterval(maintInterval);
+      clearInterval(balanceInterval);
+      clearInterval(notifInterval);
+    };
+
+    startUIUpdates();
+
+    // শুধুমাত্র ব্যালেন্স এবং নোটিফিকেশন চেক অফ হবে, OTP চেক চলতে থাকবে।
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopUIUpdates();
+      } else {
+        fetchRealBalance();
+        startUIUpdates();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     
-    return () => { clearInterval(sessionInterval); clearInterval(maintInterval); clearInterval(balanceInterval); clearInterval(notifInterval); window.removeEventListener("storage", syncLogout); }
+    return () => { 
+      stopUIUpdates(); 
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("storage", syncLogout); 
+    };
   }, [router, handleLogout]);
 
   useEffect(() => {
@@ -206,7 +239,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const blob = new Blob([workerCode], { type: 'application/javascript' });
     const worker = new Worker(URL.createObjectURL(blob));
 
-    worker.onmessage = (e) => { if (e.data === 'tick3') checkGlobalOtps(); if (e.data === 'tick10') fetchPendingOrders(); };
+    // 💥 OTP WEB WORKER (RUNS ALWAYS, EVEN IN BACKGROUND) 💥
+    worker.onmessage = (e) => { 
+       // No hidden checks here, it always fires ensuring real-time OTP updates and sounds!
+       if (e.data === 'tick3') checkGlobalOtps(); 
+       if (e.data === 'tick10') fetchPendingOrders(); 
+    };
     worker.postMessage('start');
 
     return () => { worker.postMessage('stop'); worker.terminate(); };
@@ -385,7 +423,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        {/* 💥 STICKY FOOTER FIX IMPLEMENTED HERE 💥 */}
         <div className="flex-1 overflow-y-auto custom-scrollbar w-full relative z-[10] flex flex-col">
            <div className="w-full flex-1 flex flex-col">
              {children}

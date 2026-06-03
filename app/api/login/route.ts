@@ -58,11 +58,11 @@ export async function POST(req: Request) {
     user.activeSessions = currentSessions;
     await user.save();
 
-    // 💥 ১. JWT টোকেন তৈরি (১২ ঘণ্টার মেয়াদ এবং sessionId সহ) 💥
+    // 💥 ১. JWT টোকেন তৈরি (২৪ ঘণ্টার মেয়াদ এবং sessionId সহ) - UPDATED 💥
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role, sessionId: sessionId },
       JWT_SECRET,
-      { expiresIn: "12h" }
+      { expiresIn: "24h" } // 💥 12h থেকে 24h করা হলো
     );
 
     const response = NextResponse.json({ 
@@ -83,12 +83,12 @@ export async function POST(req: Request) {
       }
     }, { status: 200 });
 
-    // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে 💥
+    // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে - UPDATED 💥
     response.cookies.set("zenex_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 12 * 60 * 60, // 12 ঘণ্টা
+      maxAge: 24 * 60 * 60, // 💥 12 থেকে 24 ঘণ্টা করা হলো (24 * 60 * 60)
       path: "/",
     });
 
