@@ -129,7 +129,6 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
-  // 💥 FIXED: Top 15 Ranges Logic 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
     
@@ -157,7 +156,6 @@ export default function Console() {
 
     let finalRanges = [...recentSorted];
 
-    // Ensure up to 15 unique ranges are processed
     if (finalRanges.length < 15) {
       for (const oldItem of olderSorted) {
         if (!finalRanges.find(r => r[0] === oldItem[0])) {
@@ -177,18 +175,21 @@ export default function Console() {
   const topData = getTopRangesData();
   const badgeText = topData.recentCount >= 4 ? 'Last 30m' : (topData.recentCount > 0 ? 'Live & Recent' : 'Recent Hits');
 
-  // 💥 NEW: Graph Data Processing & Dynamic Width Logic 💥
+  // 💥 NEW: Dynamic Width, Spacing & Layout Calculation 💥
   const processedGraphData = [...graphData]
-    .sort((a, b) => b.value - a.value) // Sort Highest to Lowest
-    .slice(0, 10); // Show Top 10 Only
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10); 
 
   const totalApps = processedGraphData.length;
-  let dynamicBarWidth = 30;
-  if (totalApps <= 3) {
-    dynamicBarWidth = 60;
-  } else if (totalApps <= 5) {
-    dynamicBarWidth = 45;
-  }
+  
+  let dynamicMaxBarWidth = 30;
+  if (totalApps === 1) dynamicMaxBarWidth = 60; // 1 App: Large & Centered
+  else if (totalApps <= 3) dynamicMaxBarWidth = 50; // 2-3 Apps: Balanced Left/Right/Center
+  else if (totalApps <= 5) dynamicMaxBarWidth = 40; // 4-5 Apps: Evenly spread
+  else dynamicMaxBarWidth = 25; // 6-10 Apps: Scaled beautifully
+  
+  // Dynamic Axis Padding to precisely balance edges based on app count
+  const xAxisPadding = totalApps <= 3 ? { left: 40, right: 40 } : { left: 15, right: 15 };
 
   return (
     <>
@@ -209,7 +210,7 @@ export default function Console() {
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
              
-             {/* 💥 FIXED: Top Apps Chart - Fully Optimized & Responsive 💥 */}
+             {/* 💥 FIXED: Perfectly Balanced Dynamic Top Apps Chart 💥 */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
                 <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-1">
@@ -218,9 +219,9 @@ export default function Console() {
                 </h3>
                 
                 <div className="flex-1 mt-2 relative w-full overflow-x-auto custom-scrollbar">
-                  <div style={{ minWidth: totalApps > 5 ? '400px' : '100%', height: '100%', minHeight: '180px' }}>
+                  <div style={{ minWidth: totalApps > 6 ? '400px' : '100%', height: '100%', minHeight: '180px' }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={processedGraphData} margin={{ top: 20, right: 10, left: -20, bottom: 25 }} barCategoryGap="15%">
+                      <BarChart data={processedGraphData} margin={{ top: 20, right: 0, left: -25, bottom: 25 }}>
                         <XAxis 
                            dataKey="name" 
                            stroke="#64748B" 
@@ -229,11 +230,12 @@ export default function Console() {
                            axisLine={false} 
                            interval={0} 
                            angle={-35} 
-                           textAnchor="end" 
+                           textAnchor="end"
+                           padding={xAxisPadding}
                         />
                         <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                         <Tooltip cursor={{fill: '#334155', opacity: 0.2}} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(val: any) => val > 0 ? [val, 'OTPs'] : []} />
-                        <Bar dataKey="value" barSize={dynamicBarWidth} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                        <Bar dataKey="value" maxBarSize={dynamicMaxBarWidth} radius={[4, 4, 0, 0]} isAnimationActive={false}>
                           <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={10} fontWeight="bold" formatter={(val: any) => val > 0 ? `${val}` : ''} />
                           {processedGraphData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
@@ -354,7 +356,7 @@ export default function Console() {
              </div>
           </div>
 
-          {/* Live Logs Feed (Strictly 50 Items) */}
+          {/* Live Logs Feed */}
           <div className="flex flex-col gap-2 w-full pb-10">
              {loading && liveLogs.length === 0 ? (
                 <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
