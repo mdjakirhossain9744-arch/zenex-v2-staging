@@ -37,6 +37,8 @@ export default function UserWithdrawal() {
     { id: "Binance", type: "Binance", icon: "⚡", color: "text-[#FCD535]" },
   ];
 
+  const minWithdrawAmount = selectedMethod === "Binance" ? 50 : 100;
+
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
@@ -123,7 +125,7 @@ export default function UserWithdrawal() {
     if (!accountNumber.trim()) return showToast(`Please enter your ${selectedMethod} Account/Address.`);
     
     const amount = parseFloat(withdrawAmount);
-    if (!amount || amount < 100) return showToast("Minimum withdraw is ৳ 100.00");
+    if (!amount || amount < minWithdrawAmount) return showToast(`Minimum withdraw is ৳ ${minWithdrawAmount}`);
     if (amount > parseFloat(balance)) return showToast("Insufficient balance!");
     if (!withdrawPin.trim()) return showToast("Please enter your 4-digit Withdraw PIN.");
 
@@ -182,7 +184,7 @@ export default function UserWithdrawal() {
                        <div className="bg-[#F59E0B] p-2 rounded-lg"><svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0l-3.33 5.77h6.66L12 0zm-4.7 8.16L4 13.88l3.3 5.76h6.66l3.3-5.76-3.3-5.72H7.3zm4.7 2.3l1.83 3.16h-3.66L12 10.46zM20 13.88l-3.3 5.76h6.66l-3.3-5.76zm-8 10.12l3.33-5.77h-6.66L12 24z"/></svg></div>
                        <div>
                           <h3 className="text-lg font-black text-white">Binance Auto-Pay</h3>
-                          <p className="text-[10px] text-[#94A3B8] uppercase tracking-widest">Get paid instantly at 100 TK</p>
+                          <p className="text-[10px] text-[#94A3B8] uppercase tracking-widest">Get paid instantly at 150 TK</p>
                        </div>
                     </div>
                  </div>
@@ -199,7 +201,7 @@ export default function UserWithdrawal() {
                      </div>
 
                      <div className="flex items-center justify-between mb-4 bg-[#0F172A] p-3 rounded-xl border border-[#334155]">
-                        <span className="text-xs font-bold text-[#E2E8F0]">Auto-Withdraw at 100 TK</span>
+                        <span className="text-xs font-bold text-[#E2E8F0]">Auto-Withdraw at 150 TK</span>
                         <button onClick={() => setIsAutoWithdrawOn(!isAutoWithdrawOn)} className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${isAutoWithdrawOn ? 'bg-[#10B981]' : 'bg-[#334155]'}`}>
                           <div className={`w-4 h-4 bg-white rounded-full transition-transform ${isAutoWithdrawOn ? 'translate-x-6' : 'translate-x-0'}`}></div>
                         </button>
@@ -239,14 +241,32 @@ export default function UserWithdrawal() {
                  )}
 
                  <div className={`${!isManualWithdrawOpen ? 'opacity-40 pointer-events-none select-none' : ''} transition-all duration-500`}>
-                     <h3 className="text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-4">Manual Withdraw</h3>
+                     <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-black text-[#94A3B8] uppercase tracking-widest">Manual Withdraw</h3>
+                        <span className="text-[10px] bg-[#1E293B] border border-[#334155] text-[#10B981] px-2 py-1 rounded font-bold">1 Hr Cooldown Active</span>
+                     </div>
                      
                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                       {paymentOptions.filter(m => methodConfig[m.id as keyof typeof methodConfig]).map(method => (
-                          <div key={method.id} onClick={() => setSelectedMethod(method.id)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col items-center justify-center gap-1 ${selectedMethod === method.id ? 'border-[#3B82F6] bg-[#3B82F6]/10' : 'border-[#334155] bg-[#0F172A] hover:border-[#64748B]'}`}>
-                             <span className="text-[10px] font-bold text-white uppercase">{method.type}</span>
-                          </div>
-                       ))}
+                       {paymentOptions.map(method => {
+                          const isActive = methodConfig[method.id as keyof typeof methodConfig];
+                          
+                          return (
+                            <div 
+                              key={method.id} 
+                              onClick={() => {
+                                 if (isActive) setSelectedMethod(method.id);
+                                 else showToast(`⚠️ ${method.type} is currently Offline by Admin.`);
+                              }} 
+                              className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 
+                                ${isActive ? 'cursor-pointer' : 'cursor-not-allowed opacity-40 grayscale'} 
+                                ${selectedMethod === method.id ? 'border-[#3B82F6] bg-[#3B82F6]/10' : 'border-[#334155] bg-[#0F172A] hover:border-[#64748B]'}`
+                              }
+                            >
+                               <span className="text-[10px] font-bold text-white uppercase">{method.type}</span>
+                               {!isActive && <span className="text-[8px] font-black text-[#F43F5E] tracking-widest mt-0.5">OFFLINE</span>}
+                            </div>
+                          );
+                       })}
                      </div>
 
                      {selectedMethod && (
@@ -258,11 +278,11 @@ export default function UserWithdrawal() {
 
                      <div className="mb-6">
                         <label className="flex justify-between text-xs font-black text-[#94A3B8] uppercase tracking-widest mb-2">
-                          <span>Withdraw Amount</span> <span className="text-[#F43F5E]">Min: ৳ 100</span>
+                          <span>Withdraw Amount</span> <span className="text-[#F43F5E]">Min: ৳ {minWithdrawAmount}</span>
                         </label>
                         <div className="relative">
                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-black text-[#64748B]">৳</span>
-                          <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder="100.00" className="w-full bg-[#0F172A] border border-[#334155] rounded-xl pl-10 pr-20 py-4 text-white text-xl font-black focus:outline-none focus:border-[#10B981] transition-all" />
+                          <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder={`${minWithdrawAmount}.00`} className="w-full bg-[#0F172A] border border-[#334155] rounded-xl pl-10 pr-20 py-4 text-white text-xl font-black focus:outline-none focus:border-[#10B981] transition-all" />
                           <button onClick={() => setWithdrawAmount(balance)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#334155] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-[#3B82F6] transition-colors">MAX</button>
                         </div>
                      </div>
@@ -279,7 +299,7 @@ export default function UserWithdrawal() {
                         />
                      </div>
 
-                     <button onClick={handleWithdrawSubmit} disabled={!selectedMethod || parseFloat(withdrawAmount) < 100 || !withdrawPin} className="w-full bg-[#3B82F6] hover:bg-[#2563EB] text-white font-black text-sm py-4 rounded-xl transition-all disabled:opacity-50 shadow-[0_0_15px_rgba(59,130,246,0.3)] tracking-widest">
+                     <button onClick={handleWithdrawSubmit} disabled={!selectedMethod || parseFloat(withdrawAmount) < minWithdrawAmount || !withdrawPin} className="w-full bg-[#3B82F6] hover:bg-[#2563EB] text-white font-black text-sm py-4 rounded-xl transition-all disabled:opacity-50 shadow-[0_0_15px_rgba(59,130,246,0.3)] tracking-widest">
                        SUBMIT MANUAL REQUEST
                      </button>
                  </div>

@@ -4,7 +4,7 @@ const BINANCE_API_KEY = process.env.BINANCE_API_KEY || "";
 const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY || "";
 const BINANCE_API_BASE_URL = "https://api.binance.com"; 
 
-// 💥 THE MAGIC: Smart Average P2P Rate Fetcher (Middle Rate) 💥
+// 💥 THE MAGIC: Smart Average P2P Rate Fetcher (BUY Rate + 1 BDT Admin Margin) 💥
 export const getLiveUsdtRate = async () => {
     try {
         const response = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
@@ -14,7 +14,7 @@ export const getLiveUsdtRate = async () => {
                 fiat: "BDT", 
                 page: 1, 
                 rows: 5, 
-                tradeType: "BUY", 
+                tradeType: "BUY", // চড়া দাম (BUY Rate)
                 asset: "USDT",
                 countries: [], 
                 proMerchantAds: false, 
@@ -26,7 +26,7 @@ export const getLiveUsdtRate = async () => {
                 payTypes: [], 
                 classifies: ["mass", "profession", "user"]
             }),
-            next: { revalidate: 60 } 
+            next: { revalidate: 60 } // 60 Seconds Micro-Caching (Zero API Load)
         });
 
         const data = await response.json();
@@ -39,17 +39,24 @@ export const getLiveUsdtRate = async () => {
                 totalPrice += parseFloat(item.adv.price);
             });
 
-            const averagePrice = totalPrice / totalMerchants;
-            return parseFloat(averagePrice.toFixed(2)); 
+            const averageBuyPrice = totalPrice / totalMerchants;
+            
+            // 💥 MASTER UPDATE: BUY Rate + 1 BDT PROFIT MARGIN 💥
+            // এতে ইউজাররা রেট ভালো পাবে, এবং আপনারও লস হবে না।
+            const finalRateWithMargin = averageBuyPrice + 1.00; 
+
+            return parseFloat(finalRateWithMargin.toFixed(2)); 
         }
 
-        return 120.00; 
+        // 💥 Fallback Rate 💥
+        return 127.00; 
     } catch (error) {
-        return 120.00; 
+        // 💥 Fallback Rate 💥
+        return 127.00; 
     }
 };
 
-// 💥 Binance Standard Crypto Withdrawal (SOL Network - Zero Admin Loss) 💥
+// 💥 Binance Standard Crypto Withdrawal (SOL Network) 💥
 export const sendBinancePay = async (address: string, amountUsdt: number, idempotencyKey: string) => {
     if (!BINANCE_API_KEY || !BINANCE_SECRET_KEY) {
         return { success: false, message: "Binance API keys missing in server!" };
@@ -58,7 +65,7 @@ export const sendBinancePay = async (address: string, amountUsdt: number, idempo
     try {
         const timestamp = Date.now();
         
-        // 💥 MAGIC FLAG: transactionFeeFlag=true (ফি ইউজারের টাকা থেকে কাটবে, এডমিনের পকেট থেকে নয়!) 💥
+        // 💥 MAGIC FLAG: transactionFeeFlag=true (ফি ইউজারের টাকা থেকে কাটবে) 💥
         const queryString = `coin=USDT&network=SOL&address=${address.trim()}&amount=${amountUsdt}&transactionFeeFlag=true&withdrawOrderId=${idempotencyKey}&timestamp=${timestamp}`;
         
         const signature = crypto.createHmac("sha256", BINANCE_SECRET_KEY).update(queryString).digest("hex");

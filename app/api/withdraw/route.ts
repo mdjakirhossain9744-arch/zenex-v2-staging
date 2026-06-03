@@ -17,11 +17,27 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
-    // 💥 1. CREATE CUSTOM WITHDRAW 💥
+    // 💥 1. CREATE CUSTOM WITHDRAW (With 1 Hour Cooldown & 50TK Min Logic) 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
-      if (!safeAmount || isNaN(safeAmount) || safeAmount < 100) return NextResponse.json({ success: false, message: "Invalid amount. Minimum is ৳ 100." }, { status: 400 });
+      const minRequired = method === "Binance" ? 50 : 100;
+
+      if (!safeAmount || isNaN(safeAmount) || safeAmount < minRequired) {
+        return NextResponse.json({ success: false, message: `Invalid amount. Minimum for ${method} is ৳ ${minRequired}.` }, { status: 400 });
+      }
       if (!withdrawPin) return NextResponse.json({ success: false, message: "Security PIN is required!" }, { status: 400 });
+
+      // 💥 Zero DB Load: 1 Hour Cooldown Check 💥
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentWithdraw = await Withdraw.findOne({
+          email: email,
+          createdAt: { $gte: oneHourAgo },
+          status: { $ne: "REJECTED" } // Rejected withdrawal doesn't block the user
+      }).lean();
+
+      if (recentWithdraw) {
+          return NextResponse.json({ success: false, message: "⏳ Please wait 1 hour before making another withdrawal." }, { status: 429 });
+      }
 
       const user = await User.findOne({ email });
       if (!user) return NextResponse.json({ success: false, message: "User not found!" }, { status: 404 });
@@ -95,7 +111,6 @@ export async function POST(req: Request) {
                   await lockedReq.save();
                   await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
                   
-                  // 💥 FIXED: Detailed Notification Title & Description 💥
                   await Notification.create({ 
                       userEmail: request.email, 
                       title: "Payment Rejected & Auto-Pay Disabled 🔴", 
@@ -170,7 +185,6 @@ export async function POST(req: Request) {
                          await request.save();
                          await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
                          
-                         // 💥 FIXED: Detailed Notification Title & Description 💥
                          await Notification.create({ 
                              userEmail: request.email, 
                              title: "Payment Rejected & Auto-Pay Disabled 🔴", 
@@ -214,7 +228,6 @@ export async function POST(req: Request) {
                $set: { isAutoWithdraw: false } 
             }
          );
-         // 💥 FIXED: Manual Reject Notification Details 💥
          await Notification.create({ 
             userEmail: request.email, 
             title: "Withdrawal Rejected & Auto-Pay Off 🔴", 
