@@ -9,9 +9,6 @@ export default function Console() {
   const [graphData, setGraphData] = useState<any[]>([]);
   const [carrierData, setCarrierData] = useState<any[]>([]);
   
-  // 💥 NEW: Smart Historical Memory Tracker 💥
-  const [historicalRanges, setHistoricalRanges] = useState<Record<string, any>>({});
-  
   const [searchQuery, setSearchQuery] = useState("");
   const [countdown, setCountdown] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -38,54 +35,19 @@ export default function Console() {
                  if (part.trim()) {
                    expandedLogs.push({
                       ...log,
-                      id: `${log.id || log._id}_multi_${idx}`,
+                      id: `${log.id}_multi_${idx}`,
                       otp: part.trim() 
                    });
                  }
               });
            } else {
-              expandedLogs.push({ ...log, id: log.id || log._id });
+              expandedLogs.push(log);
            }
         });
 
         setLiveLogs(expandedLogs); 
         setGraphData(data.graph || []); 
         setCarrierData(data.carrier || []);
-
-        // 💥 MASTER UPDATE: Accumulating History in Memory 💥
-        setHistoricalRanges(prev => {
-           const nextState = { ...prev };
-           expandedLogs.forEach(log => {
-              const range = extractTargetRange(log.number);
-              if (range === "Unknown") return;
-              
-              const fbData = analyzeOTP(log.service, log.otp);
-              const key = `${range}|${log.service}|${fbData ? fbData.tag : 'General'}`;
-              const logTime = new Date(log.createdAt).getTime();
-
-              if (!nextState[key]) {
-                 nextState[key] = { 
-                    count: 1, 
-                    platform: log.service, 
-                    fbTag: fbData ? fbData.tag : null, 
-                    lastSeen: logTime,
-                    processedIds: [log.id]
-                 };
-              } else {
-                 if (!nextState[key].processedIds.includes(log.id)) {
-                    nextState[key].count += 1;
-                    nextState[key].lastSeen = Math.max(nextState[key].lastSeen, logTime);
-                    nextState[key].processedIds.push(log.id);
-                    // Keep array small to save memory
-                    if (nextState[key].processedIds.length > 50) {
-                       nextState[key].processedIds.shift();
-                    }
-                 }
-              }
-           });
-           return nextState;
-        });
-
       }
     } catch (error) {
       console.error("Failed to fetch live console data");
@@ -166,44 +128,55 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
-  // 💥 NEW: Safely returning from Memory State (Never empty!) 💥
+  // 💥 আপনার অরিজিনাল লজিক, শুধু ৬ থেকে ১৫ করা হয়েছে 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
-    const allRanges = Object.entries(historicalRanges);
+    
+    const recentCounts: Record<string, any> = {};
+    const olderCounts: Record<string, any> = {};
 
-    const recent = allRanges.filter(r => r[1].lastSeen >= thirtyMinsAgo);
-    const older = allRanges.filter(r => r[1].lastSeen < thirtyMinsAgo);
+    liveLogs.forEach(log => {
+      const range = extractTargetRange(log.number);
+      if (range === "Unknown") return;
 
-    recent.sort((a, b) => b[1].count - a[1].count);
-    older.sort((a, b) => b[1].count - a[1].count);
+      const fbData = analyzeOTP(log.service, log.otp);
+      const key = `${range}|${log.service}|${fbData ? fbData.tag : 'General'}`;
 
-    let finalRanges = [...recent];
+      if (log.createdAt >= thirtyMinsAgo) {
+        if (!recentCounts[key]) recentCounts[key] = { count: 0, platform: log.service, fbTag: fbData ? fbData.tag : null, isRecent: true };
+        recentCounts[key].count += 1;
+      } else {
+        if (!olderCounts[key]) olderCounts[key] = { count: 0, platform: log.service, fbTag: fbData ? fbData.tag : null, isRecent: false };
+        olderCounts[key].count += 1;
+      }
+    });
 
-    // Fill with older history if active ones are less than 15
+    const recentSorted = Object.entries(recentCounts).sort((a, b) => b[1].count - a[1].count);
+    const olderSorted = Object.entries(olderCounts).sort((a, b) => b[1].count - a[1].count);
+
+    let finalRanges = [...recentSorted];
+
+    // 💥 Updated limit: 6 -> 15 💥
     if (finalRanges.length < 15) {
-      for (const old of older) {
-        if (!finalRanges.find(r => r[0] === old[0])) {
-          finalRanges.push(old);
+      for (const oldItem of olderSorted) {
+        if (!finalRanges.find(r => r[0] === oldItem[0])) {
+          finalRanges.push(oldItem);
         }
         if (finalRanges.length >= 15) break;
       }
     }
 
-    const formattedRanges = finalRanges.slice(0, 15).map(r => [
-      r[0], 
-      { ...r[1], isRecent: r[1].lastSeen >= thirtyMinsAgo }
-    ]);
-
     return { 
-      ranges: formattedRanges, 
-      isFresh: recent.length > 0,
-      recentCount: recent.length
+      ranges: finalRanges.slice(0, 15), 
+      isFresh: recentSorted.length > 0,
+      recentCount: recentSorted.length
     };
   };
 
   const topData = getTopRangesData();
   const badgeText = topData.recentCount >= 4 ? 'Last 30m' : (topData.recentCount > 0 ? 'Live & Recent' : 'Recent Hits');
 
+  // 💥 Top Apps Calculation (Glitch/Scrollbar Fixed) 💥
   const processedGraphData = [...graphData]
     .filter(item => item.value > 0)
     .sort((a, b) => b.value - a.value)
@@ -237,7 +210,7 @@ export default function Console() {
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
              
-             {/* Top Apps Chart - Fully Solid & Glitch Free */}
+             {/* 💥 FIXED: Top Apps Chart - No Scrollbars, No Glitch 💥 */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
                 <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-1 shrink-0">
@@ -245,7 +218,7 @@ export default function Console() {
                    <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#10B981] animate-pulse">Live</span>
                 </h3>
                 
-                <div className="flex-1 w-full mt-4 min-h-[180px]">
+                <div className="flex-1 w-full mt-4 min-h-[180px] overflow-hidden">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={processedGraphData} margin={{ top: 20, right: 10, left: -25, bottom: 25 }}>
                       <XAxis 
@@ -280,7 +253,7 @@ export default function Console() {
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
                 <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-2 shrink-0">Carrier Dist.</h3>
                 {carrierData.length > 0 ? (
-                  <div className="flex-1 w-full min-h-[160px]">
+                  <div className="flex-1 w-full min-h-[160px] overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie data={carrierData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none" isAnimationActive={false}>
@@ -305,7 +278,7 @@ export default function Console() {
                 </div>
              </div>
 
-             {/* Top Hit Ranges Card (Smart History Mode) */}
+             {/* Top Hit Ranges Card */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-full h-1 bg-gradient-to-r ${topData.isFresh ? 'from-[#10B981] to-[#F43F5E]' : 'from-[#EAB308] to-[#F59E0B]'}`}></div>
                 
@@ -327,7 +300,7 @@ export default function Console() {
                 </div>
 
                 <div className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 pb-2">
-                   {topData.ranges.length > 0 ? topData.ranges.map(([key, data]: any, idx) => {
+                   {topData.ranges.length > 0 ? topData.ranges.map(([key, data], idx) => {
                       const range = key.split('|')[0];
                       return (
                         <button 
@@ -336,7 +309,7 @@ export default function Console() {
                            className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn shrink-0"
                         >
                            <div className="flex flex-col items-start gap-1 relative pl-3">
-                              {/* 💥 Green Dot for Active, Gray for History 💥 */}
+                              {/* 💥 Green/Gray Dot Logic is back exactly as you designed 💥 */}
                               <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#10B981] shadow-[0_0_5px_#10B981]' : 'bg-[#475569]'}`}></div>
                               
                               <span className="text-sm font-black text-white font-mono group-hover/btn:text-[#3B82F6] transition-colors">{range}</span>
@@ -360,7 +333,7 @@ export default function Console() {
                    }) : (
                       <div className="text-center text-[#64748B] text-xs h-full flex flex-col items-center justify-center gap-2">
                          <svg className="w-6 h-6 text-[#334155]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                         Loading Traffic History...
+                         Waiting for Data...
                       </div>
                    )}
                 </div>
@@ -389,81 +362,81 @@ export default function Console() {
           {/* Live Logs Feed */}
           <div className="flex flex-col gap-2 w-full pb-10">
              {loading && liveLogs.length === 0 ? (
-                 <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
-                    <div className="w-6 h-6 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <h3 className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Connecting Live Stream...</h3>
-                 </div>
-              ) : filteredLogs.length === 0 ? (
-                 <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
-                    <h3 className="text-sm font-black text-[#F8FAFC]">No Live Data Found</h3>
-                 </div>
-              ) : (
-                 filteredLogs.slice(0, 50).map((log, index) => {
-                   const time = formatTime(log.createdAt); 
-                   const targetRange = extractTargetRange(log.number);
-                   const bigMaskedNumber = maskNumber(log.number);
+                <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
+                   <div className="w-6 h-6 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin mb-3"></div>
+                   <h3 className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Connecting Live Stream...</h3>
+                </div>
+             ) : filteredLogs.length === 0 ? (
+                <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
+                   <h3 className="text-sm font-black text-[#F8FAFC]">No Live Data Found</h3>
+                </div>
+             ) : (
+                filteredLogs.slice(0, 50).map((log, index) => {
+                  const time = formatTime(log.createdAt); 
+                  const targetRange = extractTargetRange(log.number);
+                  const bigMaskedNumber = maskNumber(log.number);
 
-                   return (
-                    <div key={log.id || index} className="bg-[#0B0F1A]/80 border border-[#334155] p-3 md:p-4 rounded-lg flex flex-col gap-2 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
-                       <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
-                       
-                       <div className="flex flex-wrap justify-between items-center ml-2 border-b border-[#334155]/50 pb-2 gap-2">
-                         <div className="flex flex-wrap items-center gap-2 md:gap-3">
-                           <span className="text-[10px] md:text-xs font-black text-[#F59E0B] tracking-widest">{time}</span>
-                           <span className="text-[10px] md:text-xs font-bold text-[#94A3B8]">{log.operator || "Carrier"}</span>
-                           <span className="text-[10px] text-[#475569]">|</span>
-                           <span className="text-[10px] md:text-xs font-black text-[#10B981] flex items-center gap-1">
-                             🌍 {String(log.country || "Global").toUpperCase()}
+                  return (
+                   <div key={log.id || index} className="bg-[#0B0F1A]/80 border border-[#334155] p-3 md:p-4 rounded-lg flex flex-col gap-2 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
+                      <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
+                      
+                      <div className="flex flex-wrap justify-between items-center ml-2 border-b border-[#334155]/50 pb-2 gap-2">
+                        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                          <span className="text-[10px] md:text-xs font-black text-[#F59E0B] tracking-widest">{time}</span>
+                          <span className="text-[10px] md:text-xs font-bold text-[#94A3B8]">{log.operator || "Carrier"}</span>
+                          <span className="text-[10px] text-[#475569]">|</span>
+                          <span className="text-[10px] md:text-xs font-black text-[#10B981] flex items-center gap-1">
+                            🌍 {String(log.country || "Global").toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                           <span className={`text-[9px] md:text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest ${
+                             log.service === 'FACEBOOK' ? 'bg-[#1877F2]/15 text-[#1877F2]' : 
+                             log.service === 'WHATSAPP' ? 'bg-[#25D366]/15 text-[#25D366]' : 
+                             log.service === 'INSTAGRAM' ? 'bg-[#E1306C]/15 text-[#E1306C]' : 
+                             log.service === 'GOOGLE' ? 'bg-[#EA4335]/15 text-[#EA4335]' : 
+                             log.service === 'PAYPAL' ? 'bg-[#00457C]/20 text-[#0079C1]' : 
+                             log.service === 'OTHER' ? 'bg-[#64748B]/15 text-[#64748B]' : 
+                             'bg-[#3B82F6]/15 text-[#3B82F6]'
+                           }`}>
+                             {log.service}
                            </span>
-                         </div>
+                        </div>
+                      </div>
+                      
+                      <div className="ml-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-4 font-mono mt-1">
+                        
+                        <div 
+                           onClick={() => handleCopy(bigMaskedNumber)}
+                           className="flex items-center gap-2 text-white min-w-[140px] cursor-pointer hover:text-[#10B981] transition-colors group/bignum"
+                           title="Click to copy this number range"
+                        >
+                          <span className="text-sm md:text-base font-bold tracking-wider text-[#E2E8F0] group-hover/bignum:text-[#10B981]">{bigMaskedNumber}</span>
+                        </div>
+                        
+                        <button 
+                          onClick={() => handleCopy(targetRange)}
+                          className="flex items-center gap-1.5 bg-[#0F172A] border border-[#334155] hover:border-[#10B981] px-2.5 py-1 rounded cursor-pointer transition-all group/range w-fit shadow-[0_2px_4px_rgba(0,0,0,0.2)]"
+                          title="Copy Network Block to Buy Number"
+                        >
+                           <span className="text-[10px] md:text-xs font-black text-[#3B82F6] group-hover/range:text-[#10B981] transition-colors">{targetRange}</span>
+                           <svg className="w-3 h-3 text-[#64748B] group-hover/range:text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
 
-                         <div className="flex items-center gap-2">
-                            <span className={`text-[9px] md:text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest ${
-                              log.service === 'FACEBOOK' ? 'bg-[#1877F2]/15 text-[#1877F2]' : 
-                              log.service === 'WHATSAPP' ? 'bg-[#25D366]/15 text-[#25D366]' : 
-                              log.service === 'INSTAGRAM' ? 'bg-[#E1306C]/15 text-[#E1306C]' : 
-                              log.service === 'GOOGLE' ? 'bg-[#EA4335]/15 text-[#EA4335]' : 
-                              log.service === 'PAYPAL' ? 'bg-[#00457C]/20 text-[#0079C1]' : 
-                              log.service === 'OTHER' ? 'bg-[#64748B]/15 text-[#64748B]' : 
-                              'bg-[#3B82F6]/15 text-[#3B82F6]'
-                            }`}>
-                              {log.service}
-                            </span>
-                         </div>
-                       </div>
-                       
-                       <div className="ml-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-4 font-mono mt-1">
-                         
-                         <div 
-                            onClick={() => handleCopy(bigMaskedNumber)}
-                            className="flex items-center gap-2 text-white min-w-[140px] cursor-pointer hover:text-[#10B981] transition-colors group/bignum"
-                            title="Click to copy this number range"
-                         >
-                           <span className="text-sm md:text-base font-bold tracking-wider text-[#E2E8F0] group-hover/bignum:text-[#10B981]">{bigMaskedNumber}</span>
-                         </div>
-                         
-                         <button 
-                           onClick={() => handleCopy(targetRange)}
-                           className="flex items-center gap-1.5 bg-[#0F172A] border border-[#334155] hover:border-[#10B981] px-2.5 py-1 rounded cursor-pointer transition-all group/range w-fit shadow-[0_2px_4px_rgba(0,0,0,0.2)]"
-                           title="Copy Network Block to Buy Number"
-                         >
-                            <span className="text-[10px] md:text-xs font-black text-[#3B82F6] group-hover/range:text-[#10B981] transition-colors">{targetRange}</span>
-                            <svg className="w-3 h-3 text-[#64748B] group-hover/range:text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                         </button>
+                        <span className="hidden md:inline text-[#334155] font-black text-xs">➜</span>
+                        
+                        <div className="text-[11px] md:text-xs text-[#94A3B8] leading-relaxed flex-1 break-words">
+                          <span className="text-[#10B981] font-black mr-1.5 md:hidden">↳</span>
+                          <span className="text-[#10B981] font-black mr-1">&lt;#&gt;</span>
+                          {maskFullMessage(log.otp)}
+                        </div>
 
-                         <span className="hidden md:inline text-[#334155] font-black text-xs">➜</span>
-                         
-                         <div className="text-[11px] md:text-xs text-[#94A3B8] leading-relaxed flex-1 break-words">
-                           <span className="text-[#10B981] font-black mr-1.5 md:hidden">↳</span>
-                           <span className="text-[#10B981] font-black mr-1">&lt;#&gt;</span>
-                           {maskFullMessage(log.otp)}
-                         </div>
-
-                       </div>
-                    </div>
-                   );
-                 })
-              )}
+                      </div>
+                   </div>
+                  );
+                })
+             )}
           </div>
 
         </div>
