@@ -85,9 +85,9 @@ export default function ApiDocumentation() {
       {
         "nid": "ZX_9A8B7C6D5E",
         "number": "447384561029",
-        "otp": "Telegram code: 849302. You can also tap on this link to log in: https://t.me/login/849302",
+        "otp": "otp": "849302 is your Instagram code. Don't share it with anyone.",
         "country": "United Kingdom",
-        "operator": "Vodafone",
+        "operator": "T-Mobile",
         "created_at": "2024-05-18 14:45:12"
       }
     ]
