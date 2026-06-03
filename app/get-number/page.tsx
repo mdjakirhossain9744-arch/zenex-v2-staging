@@ -519,8 +519,9 @@ export default function GetNumber() {
                                  <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
+                                   {/* 💥 FIX: OTP Copy Button now removes ALL spaces and hyphens before copying 💥 */}
                                    <button 
-                                      onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp)); showToast("OTP Copied!"); }} 
+                                      onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-2 py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
                                    >
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
