@@ -14,18 +14,10 @@ export default function Console() {
   const [loading, setLoading] = useState(true);
   const [copiedText, setCopiedText] = useState("");
 
-  // 💥 NEW: Simple, Clean & Premium Minimalist Color Palette for Enterprise Vibe 💥
+  // Simple, Clean & Premium Minimalist Color Palette
   const BAR_COLORS = [
-    '#3B82F6', // Primary Blue
-    '#0EA5E9', // Sky Blue
-    '#06B6D4', // Cyan
-    '#14B8A6', // Teal
-    '#10B981', // Emerald
-    '#6366F1', // Indigo
-    '#8B5CF6', // Violet
-    '#A855F7', // Purple
-    '#F43F5E', // Rose (for variety)
-    '#64748B'  // Clean Slate
+    '#3B82F6', '#0EA5E9', '#06B6D4', '#14B8A6', '#10B981', 
+    '#6366F1', '#8B5CF6', '#A855F7', '#F43F5E', '#64748B'
   ];
 
   const fetchGlobalData = async () => {
@@ -97,12 +89,10 @@ export default function Console() {
 
   const analyzeOTP = (service: string, fullMessage: string) => {
     if (service?.toUpperCase() !== "FACEBOOK") return null;
-
     const match = fullMessage?.match(/\b\d{4,8}\b/);
     if (!match) return null;
     
     const code = match[0];
-    
     if (code.length === 6 || code.length === 8) {
       return { tag: "Fb Clone 🔥", color: "text-[#F43F5E]", bg: "bg-[#F43F5E]/10 border-[#F43F5E]/30" };
     }
@@ -139,6 +129,7 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
+  // 💥 FIXED: Top 15 Ranges Logic 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
     
@@ -166,18 +157,18 @@ export default function Console() {
 
     let finalRanges = [...recentSorted];
 
-    // 💥 UPDATED: Increased Top Hit Ranges Limit from 6 to 12 💥
-    if (finalRanges.length < 12) {
+    // Ensure up to 15 unique ranges are processed
+    if (finalRanges.length < 15) {
       for (const oldItem of olderSorted) {
         if (!finalRanges.find(r => r[0] === oldItem[0])) {
           finalRanges.push(oldItem);
         }
-        if (finalRanges.length >= 12) break;
+        if (finalRanges.length >= 15) break;
       }
     }
 
     return { 
-      ranges: finalRanges.slice(0, 12), 
+      ranges: finalRanges.slice(0, 15), 
       isFresh: recentSorted.length > 0,
       recentCount: recentSorted.length
     };
@@ -185,6 +176,19 @@ export default function Console() {
 
   const topData = getTopRangesData();
   const badgeText = topData.recentCount >= 4 ? 'Last 30m' : (topData.recentCount > 0 ? 'Live & Recent' : 'Recent Hits');
+
+  // 💥 NEW: Graph Data Processing & Dynamic Width Logic 💥
+  const processedGraphData = [...graphData]
+    .sort((a, b) => b.value - a.value) // Sort Highest to Lowest
+    .slice(0, 10); // Show Top 10 Only
+
+  const totalApps = processedGraphData.length;
+  let dynamicBarWidth = 30;
+  if (totalApps <= 3) {
+    dynamicBarWidth = 60;
+  } else if (totalApps <= 5) {
+    dynamicBarWidth = 45;
+  }
 
   return (
     <>
@@ -205,27 +209,39 @@ export default function Console() {
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
              
-             {/* Top Apps Chart */}
+             {/* 💥 FIXED: Top Apps Chart - Fully Optimized & Responsive 💥 */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
-                <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-2 md:mb-4">
+                <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-1">
                    Top Apps
                    <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#10B981] animate-pulse">Live</span>
                 </h3>
-                <div style={{ width: '100%', height: '200px' }} className="flex-1 mt-4 relative">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
-                    <BarChart data={graphData} margin={{ top: 20, right: 10, left: -20, bottom: 20 }}>
-                      <XAxis dataKey="name" stroke="#64748B" fontSize={9} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" />
-                      <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip cursor={{fill: '#334155', opacity: 0.2}} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(val: any) => val > 0 ? [val, 'OTPs'] : []} />
-                      <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false}>
-                        <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={10} fontWeight="bold" formatter={(val: any) => val > 0 ? `${val}` : ''} />
-                        {graphData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                
+                <div className="flex-1 mt-2 relative w-full overflow-x-auto custom-scrollbar">
+                  <div style={{ minWidth: totalApps > 5 ? '400px' : '100%', height: '100%', minHeight: '180px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={processedGraphData} margin={{ top: 20, right: 10, left: -20, bottom: 25 }} barCategoryGap="15%">
+                        <XAxis 
+                           dataKey="name" 
+                           stroke="#64748B" 
+                           fontSize={10} 
+                           tickLine={false} 
+                           axisLine={false} 
+                           interval={0} 
+                           angle={-35} 
+                           textAnchor="end" 
+                        />
+                        <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip cursor={{fill: '#334155', opacity: 0.2}} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(val: any) => val > 0 ? [val, 'OTPs'] : []} />
+                        <Bar dataKey="value" barSize={dynamicBarWidth} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                          <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={10} fontWeight="bold" formatter={(val: any) => val > 0 ? `${val}` : ''} />
+                          {processedGraphData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
              </div>
 
@@ -258,7 +274,7 @@ export default function Console() {
                 </div>
              </div>
 
-             {/* Top Hit Ranges Card */}
+             {/* Top Hit Ranges Card (15 Ranges Limit) */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-full h-1 bg-gradient-to-r ${topData.isFresh ? 'from-[#10B981] to-[#F43F5E]' : 'from-[#EAB308] to-[#F59E0B]'}`}></div>
                 
