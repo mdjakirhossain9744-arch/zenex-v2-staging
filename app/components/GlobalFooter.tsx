@@ -27,7 +27,7 @@ export default function GlobalFooter() {
          <p className="text-[11px] text-[#64748B] font-bold tracking-widest uppercase text-center md:text-left">
            © 2026 ZENEX NETWORK. ALL RIGHTS RESERVED.
          </p>
-         <div className="flex items-center justify-center gap-4 text-[11px] font-black tracking-widest uppercase">
+         <div className="flex items-center justify-center gap-3 md:gap-4 text-[10px] md:text-[11px] font-black tracking-widest uppercase">
             <a href={supportLink} target="_blank" rel="noopener noreferrer" className="text-[#94A3B8] hover:text-[#3B82F6] transition-colors">
               Support
             </a>
@@ -38,6 +38,11 @@ export default function GlobalFooter() {
             <span className="text-[#334155]">|</span>
             <Link href="/faq" className="text-[#94A3B8] hover:text-[#A855F7] transition-colors">
               FAQ
+            </Link>
+            <span className="text-[#334155]">|</span>
+            {/* 💥 Simple Legal Link 💥 */}
+            <Link href="/terms" className="text-[#F43F5E] hover:text-white transition-colors">
+              Legal & Terms
             </Link>
          </div>
       </div>

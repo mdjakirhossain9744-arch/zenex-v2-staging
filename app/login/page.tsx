@@ -14,7 +14,6 @@ export default function LoginPage() {
 
   const [formData, setFormData] = useState({ emailOrPhone: "", password: "" });
 
-  // 💥 Loop Protection 💥
   useEffect(() => {
     const verifySession = async () => {
       const userStr = localStorage.getItem("user");
@@ -33,7 +32,6 @@ export default function LoginPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    // লগিন করার সময়ও ইমেইল/ফোনে কোনো স্পেস থাকলে তা কেটে দেবে
     if (name === "emailOrPhone") {
       setFormData({ ...formData, [name]: value.replace(/\s/g, "") });
     } else {
@@ -73,7 +71,6 @@ export default function LoginPage() {
           window.location.href = "/"; 
         }, 1500);
       } else {
-        // ডাটাবেস থেকে আসা মেসেজ যদি থাকে, না হলে ডিফল্ট ট্রান্সলেশন মেসেজ
         showToast(data.message || (lang === "EN" ? "Login Failed!" : "লগিন ব্যর্থ হয়েছে!"), "error");
       }
     } catch (error) {
@@ -93,14 +90,15 @@ export default function LoginPage() {
     noAccount: lang === "EN" ? "Don't have an account?" : "একাউন্ট নেই?",
     register: lang === "EN" ? "Register here" : "রেজিস্টার করুন",
     modalTitle: lang === "EN" ? "Reset Password or PIN" : "পাসওয়ার্ড বা পিন রিসেট করুন",
-    modalDesc: lang === "EN" ? "To reset your withdrawal PIN or change your account password, please contact the agent or manager whose referral email you used to register. Their contact info is available on your profile." : "আপনার উইথড্র পিন বা পাসওয়ার্ড পরিবর্তন করতে, অনুগ্রহ করে সেই এজেন্টের সাথে যোগাযোগ করুন যার রেফারেল ইমেইল ব্যবহার করে আপনি অ্যাকাউন্ট খুলেছেন। তাদের যোগাযোগের তথ্য আপনার প্রোফাইলে দেওয়া আছে।",
-    closeBtn: lang === "EN" ? "Close" : "বন্ধ করুন"
+    modalDesc: lang === "EN" ? "To reset your withdrawal PIN or change your account password, please contact the agent or manager whose referral email you used to register. Their contact info is available on your profile." : "আপনার উইথড্র পিন বা পাসওয়ার্ড পরিবর্তন করতে, অনুগ্রহ করে সেই এজেন্টের সাথে যোগাযোগ করুন যার রেফারেল ইমেইল ব্যবহার করে আপনি অ্যাকাউন্ট খুলেছেন।",
+    closeBtn: lang === "EN" ? "Close" : "বন্ধ করুন",
+    termsText: lang === "EN" ? "By continuing, you agree to our" : "লগিন করার মাধ্যমে আপনি আমাদের",
+    termsLink: lang === "EN" ? "Terms & Conditions" : "শর্তাবলী মেনে নিচ্ছেন"
   };
 
   return (
     <div className="bg-[#0B0F1A] text-slate-200 font-sans relative overflow-x-hidden">
       
-      {/* 💥 Mobile Friendly Toast for Login Page 💥 */}
       <div className={`fixed top-5 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-sm transform transition-all duration-500 ease-out ${toast.show ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0 pointer-events-none"}`}>
         <div className={`px-4 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
           <div className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>
@@ -108,7 +106,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-[#111827] border border-slate-700/50 p-6 md:p-8 rounded-2xl shadow-2xl max-w-md w-full relative transform scale-100 animate-[fadeIn_0.3s_ease-out]">
@@ -158,12 +155,18 @@ export default function LoginPage() {
             <div className="flex justify-end">
               <span onClick={() => setShowForgotModal(true)} className="text-xs text-cyan-400 cursor-pointer hover:underline">{t.forgot}</span>
             </div>
-            <button type="submit" disabled={loading} className={`w-full text-white font-medium py-3 rounded-lg shadow-lg transition-all mt-2 ${loading ? 'bg-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500'}`}>
+
+            {/* 💥 Terms Text Moved Above the Button 💥 */}
+            <p className="text-center text-[11px] text-slate-500 pt-2 pb-1">
+              {t.termsText} <Link href="/terms" target="_blank" className="text-cyan-400 hover:text-cyan-300 hover:underline transition-colors">{t.termsLink}</Link>.
+            </p>
+
+            <button type="submit" disabled={loading} className={`w-full text-white font-medium py-3 rounded-lg shadow-lg transition-all ${loading ? 'bg-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500'}`}>
               {loading ? t.loadingBtn : t.btn}
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-400 mt-6">
+          <p className="text-center text-sm text-slate-400 mt-6 pt-6 border-t border-slate-700/50">
             {t.noAccount} <Link href="/register" className="text-cyan-400 hover:underline">{t.register}</Link>
           </p>
         </div>

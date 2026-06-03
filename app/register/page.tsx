@@ -150,13 +150,14 @@ export default function RegisterPage() {
     loadingBtn: lang === "EN" ? "Creating Account..." : "একাউন্ট তৈরি হচ্ছে...",
     already: lang === "EN" ? "Already have an account?" : "আগে থেকেই একাউন্ট আছে?",
     login: lang === "EN" ? "Login here" : "লগিন করুন",
-    prof: lang === "EN" ? "Profile Completion" : "প্রোফাইল কমপ্লিশন"
+    prof: lang === "EN" ? "Profile Completion" : "প্রোফাইল কমপ্লিশন",
+    termsText1: lang === "EN" ? "I have read and agree to the " : "আমি পড়েছি এবং একমত পোষণ করছি ",
+    termsLink: lang === "EN" ? "Terms & Conditions" : "শর্তাবলীর সাথে"
   };
 
   return (
     <div className="bg-[#0B0F1A] text-slate-200 font-sans relative overflow-x-hidden">
       
-      {/* 💥 Mobile Fixed Toast 💥 */}
       <div className={`fixed top-5 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-sm transform transition-all duration-500 ease-out ${toast.show ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0 pointer-events-none"}`}>
         <div className={`px-4 py-3 rounded-lg shadow-2xl border backdrop-blur-md flex items-center space-x-3 ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'bg-red-500/20 border-red-500/50 text-red-400'}`}>
           <div className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${toast.type === 'success' ? 'bg-green-400' : 'bg-red-400'}`}></div>
@@ -235,7 +236,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Password & Security PIN */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-slate-400 mb-1">{t.password}</label>
@@ -295,12 +295,23 @@ export default function RegisterPage() {
               <input type="number" name="captcha" onChange={handleChange} placeholder={t.result} className="w-20 bg-[#0B0F1A] border border-slate-600 rounded px-2 py-1.5 text-center text-sm focus:outline-none focus:border-cyan-400 text-white" required />
             </div>
 
+            {/* 💥 Clean Legal Checkbox 💥 */}
+            <div className="flex items-center gap-2 mt-4">
+              <input type="checkbox" required className="w-4 h-4 accent-cyan-500 bg-[#0F172A] border-slate-600 rounded cursor-pointer shrink-0" />
+              <p className="text-xs text-slate-400">
+                {t.termsText1} 
+                <Link href="/terms" target="_blank" className="text-cyan-400 hover:text-cyan-300 hover:underline transition-colors ml-1">
+                  {t.termsLink}
+                </Link>.
+              </p>
+            </div>
+
             <button type="submit" disabled={loading} className={`w-full text-white font-medium py-3 rounded-lg shadow-lg transition-all mt-4 ${loading ? 'bg-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 hover:shadow-[0_0_20px_rgba(34,211,238,0.3)]'}`}>
               {loading ? t.loadingBtn : t.btn}
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-400 mt-6">
+          <p className="text-center text-sm text-slate-400 mt-6 pt-6 border-t border-slate-700/50">
             {t.already} <Link href="/login" className="text-cyan-400 hover:underline">{t.login}</Link>
           </p>
         </div>
