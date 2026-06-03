@@ -31,22 +31,19 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
+    // 🔥 FIX 1: Strictly check against customAgentMail ONLY (Personal email blocked) 🔥
     const validAgent = await User.findOne({ 
-      $or: [{ customAgentMail: agentEmail }, { email: agentEmail }],
+      customAgentMail: agentEmail,
       role: "agent" 
     });
 
     if (!validAgent) {
-      return NextResponse.json({ message: "Invalid Agent Email! Please contact an authorized agent." }, { status: 400 });
+      return NextResponse.json({ message: "Invalid Agent Email! Please strictly use the official Agent Mail (e.g., @zenexnetwork.com)." }, { status: 400 });
     }
 
-    // 🔥 এই অংশটি আপডেট করা হয়েছে 🔥
     // এখন থেকে শুধুমাত্র "active" স্ট্যাটাসের ইউজাররা সিট কাউন্ট করবে, "pending" কাউন্ট করবে না।
     const totalAgentUsers = await User.countDocuments({
-      $or: [
-        { agentEmail: validAgent.email }, 
-        { agentEmail: validAgent.customAgentMail }
-      ],
+      agentEmail: validAgent.customAgentMail, // 🔥 Updated to match strictly
       role: "user",
       status: "active" 
     });
@@ -55,7 +52,7 @@ export async function POST(req: Request) {
     
     if (totalAgentUsers >= maxLimit) {
       return NextResponse.json({ 
-        message: `দুঃখিত! এই এজেন্টের সিট ফুল হয়ে গেছে (${maxLimit}/${maxLimit})। নতুন কেউ জয়েন করতে পারবেবিধা নেই।` 
+        message: `দুঃখিত! এই এজেন্টের সিট ফুল হয়ে গেছে (${maxLimit}/${maxLimit})। নতুন কেউ জয়েন করতে পারবে না।` 
       }, { status: 400 });
     }
 

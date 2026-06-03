@@ -311,7 +311,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                <Link href="/withdraw" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/withdraw' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>Withdraw</Link>
             )}
 
-            {/* 🔥 NEW MASTER RANGE MENU ITEM 🔥 */}
             <Link href="/master-range" className={`flex items-center gap-3 px-4 py-3 transition-all ${pathname === '/master-range' ? activeBlue : inactive}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
               Master Range
@@ -386,9 +385,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
+        {/* 💥 STICKY FOOTER FIX IMPLEMENTED HERE 💥 */}
         <div className="flex-1 overflow-y-auto custom-scrollbar w-full relative z-[10] flex flex-col">
-           <div className="w-full min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)] flex-shrink-0">{children}</div>
-           <GlobalFooter />
+           <div className="w-full flex-1 flex flex-col">
+             {children}
+           </div>
+           <div className="w-full shrink-0 mt-auto">
+             <GlobalFooter />
+           </div>
         </div>
       </main>
 

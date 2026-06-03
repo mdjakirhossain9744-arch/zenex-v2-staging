@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import User from "../../../models/User"; 
+import crypto from "crypto"; // 💥 Crypto module added for Secure API Key Generation
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,8 +36,9 @@ export async function POST(req: NextRequest) {
     const { 
       userId, newPassword, newPin, newRate, newStatus, newRole, 
       customMail, contactLink, maxLimit, isApiActive,
-      newAgentEmail, // For moving a normal user to a new agent
-      handoverToEmail // For transferring agent ownership to a normal user
+      newAgentEmail, 
+      handoverToEmail,
+      generateNewKey // 💥 New parameter added to catch key generation requests
     } = body;
 
     const targetUser = await User.findById(userId);
@@ -46,6 +48,16 @@ export async function POST(req: NextRequest) {
 
     const isTargetAgent = newRole === "agent" || targetUser.role === "agent";
     let updateData: any = {};
+
+    // 💥 GENERATE NEW API KEY LOGIC 💥
+    if (generateNewKey) {
+      if (realRequesterRole !== "admin") {
+         return NextResponse.json({ message: "🔴 SECURITY: Only Admins can generate API keys!" }, { status: 403 });
+      }
+      // Generate a new 24 character secure random hex key
+      const newApiKey = "ZNX_" + crypto.randomBytes(16).toString("hex").toUpperCase();
+      updateData.apiKey = newApiKey;
+    }
 
     // 💥 AGENT OWNERSHIP HANDOVER LOGIC (Agent -> New Owner) 💥
     if (handoverToEmail && targetUser.role === "agent" && newRole === "user") {

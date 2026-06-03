@@ -154,6 +154,28 @@ export default function AdminUsersManagementPage() {
     } else alert(data.message);
   };
 
+  // 💥 BRAND NEW: Generate API Key Manually (AJAX) 💥
+  const handleGenerateNewKey = async () => {
+    if (!confirm("⚠️ DANGER: Are you sure you want to generate a new API key? The old key will immediately stop working!")) return;
+    
+    const res = await fetch("/api/update-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: selectedUser.id,
+        generateNewKey: true // Sends trigger to backend
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert("✅ Success! A new API Key has been generated and saved.");
+      fetchUsers(true);
+      setIsModalOpen(false); // Close modal to refresh data on next open
+    } else {
+      alert(data.message);
+    }
+  };
+
   const handleQuickUnban = async (user: any) => {
     if (!confirm(`Are you sure you want to UNBAN ${user.name || "this user"}?`)) return;
     
@@ -267,6 +289,7 @@ export default function AdminUsersManagementPage() {
           </div>
         </div>
 
+        {/* 💥 AGENT FILTER: When selected, it automatically filters users for that agent 💥 */}
         <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#1E293B]/50 border border-[#334155] p-4 rounded-xl">
           <div>
             <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Status</label>
@@ -282,7 +305,7 @@ export default function AdminUsersManagementPage() {
             </select>
           </div>
           <div>
-            <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Agent</label>
+            <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Agent (View Network)</label>
             <select 
               value={agentFilter} 
               onChange={(e) => { setAgentFilter(e.target.value); setCurrentPage(1); }}
@@ -311,7 +334,6 @@ export default function AdminUsersManagementPage() {
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                // 💥 SMOOTH SKELETON ANIMATION 💥
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
                     <td className="p-4 pl-6"><div className="h-4 bg-[#334155] rounded w-3/4 mb-2"></div><div className="h-3 bg-[#334155]/50 rounded w-1/2"></div></td>
@@ -355,9 +377,18 @@ export default function AdminUsersManagementPage() {
                         {u.status || "Unknown"}
                       </span>
                     </td>
-                    <td className="p-4 pr-6 text-right">
+                    <td className="p-4 pr-6 text-right flex justify-end gap-2">
+                      {/* 💥 NEW BUTTON: View Network (Shortcut to see agent's users) 💥 */}
+                      {u.role === 'agent' && (
+                         <button 
+                           onClick={() => { setAgentFilter(u.customAgentMail || u.email); setCurrentPage(1); }} 
+                           className="bg-[#8B5CF6]/10 hover:bg-[#8B5CF6] text-[#8B5CF6] hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors border border-[#8B5CF6]/30 shadow-sm"
+                         >
+                           👁️ View Team
+                         </button>
+                      )}
                       {u.status?.toLowerCase() === 'banned' && (
-                        <button onClick={() => handleQuickUnban(u)} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg mr-2 text-xs font-black transition-colors border border-red-500/30">
+                        <button onClick={() => handleQuickUnban(u)} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors border border-red-500/30">
                           Unban
                         </button>
                       )}
@@ -402,18 +433,36 @@ export default function AdminUsersManagementPage() {
                  </div>
               </div>
               
-              <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex items-center justify-between">
-                 <div>
-                   <p className="text-sm font-black text-purple-400">Developer API Access</p>
-                   <p className="text-[9px] text-[#64748B] mt-1 font-bold">Allow user to generate numbers via bot/software</p>
+              {/* 💥 API ACCESS & GENERATE KEY SECTION 💥 */}
+              <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex flex-col gap-3">
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <p className="text-sm font-black text-purple-400">Developer API Access</p>
+                     <p className="text-[9px] text-[#64748B] mt-1 font-bold">Allow user to generate numbers via API</p>
+                   </div>
+                   <button 
+                     type="button"
+                     onClick={() => setNewApiStatus(!newApiStatus)} 
+                     className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${newApiStatus ? 'bg-[#10B981]' : 'bg-[#334155]'}`}
+                   >
+                     <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-md ${newApiStatus ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                   </button>
                  </div>
-                 <button 
-                   type="button"
-                   onClick={() => setNewApiStatus(!newApiStatus)} 
-                   className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${newApiStatus ? 'bg-[#10B981]' : 'bg-[#334155]'}`}
-                 >
-                   <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-md ${newApiStatus ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                 </button>
+                 
+                 {/* 💥 NEW GENERATE KEY BUTTON 💥 */}
+                 {selectedUser.role !== 'agent' && (
+                    <div className="border-t border-[#334155] pt-3 mt-1 flex justify-between items-center">
+                      <span className="text-[10px] text-[#64748B] font-bold">Compromised Key?</span>
+                      <button 
+                        type="button"
+                        onClick={handleGenerateNewKey}
+                        className="bg-[#3B82F6]/10 hover:bg-[#3B82F6]/20 border border-[#3B82F6] text-[#3B82F6] px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        Generate New Key
+                      </button>
+                    </div>
+                 )}
               </div>
               
               {selectedUser.role === 'user' && !isMakingAgent && (
