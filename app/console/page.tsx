@@ -14,7 +14,6 @@ export default function Console() {
   const [loading, setLoading] = useState(true);
   const [copiedText, setCopiedText] = useState("");
 
-  // Simple, Clean & Premium Minimalist Color Palette
   const BAR_COLORS = [
     '#3B82F6', '#0EA5E9', '#06B6D4', '#14B8A6', '#10B981', 
     '#6366F1', '#8B5CF6', '#A855F7', '#F43F5E', '#64748B'
@@ -175,15 +174,13 @@ export default function Console() {
   const topData = getTopRangesData();
   const badgeText = topData.recentCount >= 4 ? 'Last 30m' : (topData.recentCount > 0 ? 'Live & Recent' : 'Recent Hits');
 
-  // 💥 FIXED: The Real Reason Behind Empty Spaces (Filtering out ZERO values) 💥
   const processedGraphData = [...graphData]
-    .filter(item => item.value > 0) // Only keep services with actual hits!
+    .filter(item => item.value > 0)
     .sort((a, b) => b.value - a.value)
     .slice(0, 10); 
 
   const totalApps = processedGraphData.length;
   
-  // Dynamic Max Width based on EXACT active apps
   let dynamicMaxBarWidth = 30;
   if (totalApps === 1) dynamicMaxBarWidth = 80;
   else if (totalApps === 2) dynamicMaxBarWidth = 60;
@@ -210,62 +207,66 @@ export default function Console() {
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
              
-             {/* 💥 Perfectly Balanced & Evenly Spaced Top Apps Chart 💥 */}
+             {/* 💥 FIXED: Top Apps Chart - Solid & Bug Free (No Flickering) 💥 */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
-                <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-1">
+                <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-1 shrink-0">
                    Top Apps
                    <span className="text-[8px] md:text-[9px] bg-[#0F172A] px-2 py-1 rounded border border-[#334155] text-[#10B981] animate-pulse">Live</span>
                 </h3>
                 
-                <div className="flex-1 mt-2 relative w-full overflow-x-auto custom-scrollbar">
-                  <div style={{ minWidth: totalApps > 6 ? '400px' : '100%', height: '100%', minHeight: '180px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={processedGraphData} margin={{ top: 20, right: 10, left: -25, bottom: 25 }}>
-                        <XAxis 
-                           dataKey="name" 
-                           stroke="#64748B" 
-                           fontSize={10} 
-                           tickLine={false} 
-                           axisLine={false} 
-                           interval={0} 
-                           angle={-35} 
-                           textAnchor="end"
-                        />
-                        <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                        <Tooltip cursor={{fill: '#334155', opacity: 0.2}} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} formatter={(val: any) => val > 0 ? [val, 'OTPs'] : []} />
-                        <Bar dataKey="value" maxBarSize={dynamicMaxBarWidth} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                          <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={10} fontWeight="bold" formatter={(val: any) => val > 0 ? `${val}` : ''} />
-                          {processedGraphData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                {/* 💥 FIX: Removed Absolute Inset, Used standard sizing to stop resizing loop 💥 */}
+                <div className="flex-1 w-full mt-4 min-h-[180px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={processedGraphData} margin={{ top: 20, right: 10, left: -25, bottom: 25 }}>
+                      <XAxis 
+                         dataKey="name" 
+                         stroke="#64748B" 
+                         fontSize={10} 
+                         tickLine={false} 
+                         axisLine={false} 
+                         interval={0} 
+                         angle={-35} 
+                         textAnchor="end"
+                      />
+                      <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip 
+                         isAnimationActive={false} // 💥 Stops Hover Glitch 💥
+                         cursor={{fill: '#334155', opacity: 0.2}} 
+                         contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff'}} 
+                         formatter={(val: any) => val > 0 ? [val, 'OTPs'] : []} 
+                      />
+                      <Bar dataKey="value" maxBarSize={dynamicMaxBarWidth} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                        <LabelList dataKey="value" position="top" fill="#E2E8F0" fontSize={10} fontWeight="bold" formatter={(val: any) => val > 0 ? `${val}` : ''} />
+                        {processedGraphData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
              </div>
 
              {/* Carriers Chart */}
-             <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative">
-                <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-2">Carrier Dist.</h3>
+             <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
+                <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest mb-2 shrink-0">Carrier Dist.</h3>
                 {carrierData.length > 0 ? (
-                  <div style={{ width: '100%', height: '160px' }} className="flex-1 relative">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
+                  <div className="flex-1 w-full min-h-[160px]">
+                    <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie data={carrierData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value" stroke="none" isAnimationActive={false}>
                           {carrierData.map((entry, index) => (
                             <PieCell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', fontSize: '12px'}} />
+                        <Tooltip isAnimationActive={false} contentStyle={{backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', fontSize: '12px'}} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-[#64748B] text-xs md:text-sm">Waiting for data...</div>
                 )}
-                <div className="flex flex-wrap justify-center gap-2 mt-2 custom-scrollbar overflow-y-auto max-h-[60px]">
+                <div className="flex flex-wrap justify-center gap-2 mt-2 custom-scrollbar overflow-y-auto max-h-[60px] shrink-0">
                   {carrierData.map((entry, index) => (
                     <div key={index} className="flex items-center gap-1 text-[9px] md:text-[10px] text-[#E2E8F0] font-bold bg-[#0F172A] px-2 py-1 rounded-md border border-[#334155]">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: BAR_COLORS[index % BAR_COLORS.length] }}></div>
