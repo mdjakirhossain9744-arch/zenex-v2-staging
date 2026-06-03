@@ -14,7 +14,19 @@ export default function Console() {
   const [loading, setLoading] = useState(true);
   const [copiedText, setCopiedText] = useState("");
 
-  const BAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#EAB308', '#F43F5E'];
+  // 💥 NEW: Simple, Clean & Premium Minimalist Color Palette for Enterprise Vibe 💥
+  const BAR_COLORS = [
+    '#3B82F6', // Primary Blue
+    '#0EA5E9', // Sky Blue
+    '#06B6D4', // Cyan
+    '#14B8A6', // Teal
+    '#10B981', // Emerald
+    '#6366F1', // Indigo
+    '#8B5CF6', // Violet
+    '#A855F7', // Purple
+    '#F43F5E', // Rose (for variety)
+    '#64748B'  // Clean Slate
+  ];
 
   const fetchGlobalData = async () => {
     try {
@@ -100,17 +112,12 @@ export default function Console() {
     return null;
   };
 
-  // 💥 ADVANCED MASKING FIX (হাইড করার শক্তিশালী লজিক) 💥
   const maskFullMessage = (message: string) => {
     if (!message) return "";
-    
-    // এই লজিকটি (123456), (360 748), (123-456), এবং (G-123456) সব ধরনের কোড ধরবে
     const otpRegex = /(\b\d{4,8}\b)|(\b\d{3}[\s-]\d{3,4}\b)|(G-\d{6,8})/gi;
-    
     return message.replace(otpRegex, (match) => "*".repeat(match.length));
   };
 
-  // 💥 FIXED: 12-Hour format with AM/PM strictly for BD Time 💥
   const formatTime = (timestamp: any) => {
     if (!timestamp) return "Unknown Time";
     const date = new Date(timestamp);
@@ -119,7 +126,6 @@ export default function Console() {
       : "Time Error";
   };
 
-  // 💥 FIXED: Copies exactly what is clicked (including XXX) 💥
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedText(text);
@@ -160,17 +166,18 @@ export default function Console() {
 
     let finalRanges = [...recentSorted];
 
-    if (finalRanges.length < 6) {
+    // 💥 UPDATED: Increased Top Hit Ranges Limit from 6 to 12 💥
+    if (finalRanges.length < 12) {
       for (const oldItem of olderSorted) {
         if (!finalRanges.find(r => r[0] === oldItem[0])) {
           finalRanges.push(oldItem);
         }
-        if (finalRanges.length >= 6) break;
+        if (finalRanges.length >= 12) break;
       }
     }
 
     return { 
-      ranges: finalRanges.slice(0, 6), 
+      ranges: finalRanges.slice(0, 12), 
       isFresh: recentSorted.length > 0,
       recentCount: recentSorted.length
     };
@@ -255,7 +262,7 @@ export default function Console() {
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-full h-1 bg-gradient-to-r ${topData.isFresh ? 'from-[#10B981] to-[#F43F5E]' : 'from-[#EAB308] to-[#F59E0B]'}`}></div>
                 
-                <div className="flex justify-between items-center mb-4 border-b border-[#334155] pb-3">
+                <div className="flex justify-between items-center mb-4 border-b border-[#334155] pb-3 shrink-0">
                    <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
                       <svg className="w-4 h-4 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                       Top Hit Ranges
@@ -272,14 +279,14 @@ export default function Console() {
                    </div>
                 </div>
 
-                <div className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2">
+                <div className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 pb-2">
                    {topData.ranges.length > 0 ? topData.ranges.map(([key, data], idx) => {
                       const range = key.split('|')[0];
                       return (
                         <button 
                            key={idx} 
                            onClick={() => handleCopy(range)}
-                           className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn"
+                           className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn shrink-0"
                         >
                            <div className="flex flex-col items-start gap-1 relative pl-3">
                               <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#10B981] shadow-[0_0_5px_#10B981]' : 'bg-[#475569]'}`}></div>
