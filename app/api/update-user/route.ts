@@ -47,11 +47,21 @@ export async function POST(req: NextRequest) {
        return NextResponse.json({ message: "🔴 ERROR: Valid User ID is required!" }, { status: 400 });
     }
 
-    const targetUser = await User.findById(userId);
+    // 💥 HYBRID ID RESOLVER: Support both MongoDB _id AND Custom ZX- ID 💥
+    const isValidMongoId = mongoose.Types.ObjectId.isValid(userId);
+    
+    const targetUser = await User.findOne({
+      $or: [
+        ...(isValidMongoId ? [{ _id: userId }] : []),
+        { id: userId }
+      ]
+    });
+
     if (!targetUser) {
       return NextResponse.json({ message: "User not found in database!" }, { status: 404 });
     }
 
+    const realDbId = targetUser._id; // Using the authentic MongoDB _id for updates
     const isTargetAgent = newRole === "agent" || targetUser.role === "agent";
     let updateData: any = {};
 
@@ -232,11 +242,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true, strict: false });
+    // 💥 MASTER FIX: Using realDbId instead of userId to prevent CastError 💥
+    await User.findByIdAndUpdate(realDbId, { $set: updateData }, { new: true, strict: false });
 
     return NextResponse.json({ message: "Account successfully updated!" }, { status: 200 });
 
   } catch (error: any) {
+    console.error("Update User System Error:", error);
     return NextResponse.json({ message: `System Error: ${error.message}` }, { status: 500 });
   }
 }
