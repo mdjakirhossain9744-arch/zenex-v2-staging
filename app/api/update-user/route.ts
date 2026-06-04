@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
       newBalance 
     } = body;
 
+    // 💥 MASTER FIX: Block Undefined CastErrors 💥
+    if (!userId) {
+       return NextResponse.json({ message: "🔴 ERROR: Valid User ID is required!" }, { status: 400 });
+    }
+
     const targetUser = await User.findById(userId);
     if (!targetUser) {
       return NextResponse.json({ message: "User not found in database!" }, { status: 404 });
