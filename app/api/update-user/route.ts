@@ -47,13 +47,14 @@ export async function POST(req: NextRequest) {
        return NextResponse.json({ message: "🔴 ERROR: Valid User ID is required!" }, { status: 400 });
     }
 
-    // 💥 HYBRID ID RESOLVER: Support both MongoDB _id AND Custom ZX- ID 💥
+    // 💥 ULTRA-HYBRID ID RESOLVER: Support exact "zxId" from Schema 💥
     const isValidMongoId = mongoose.Types.ObjectId.isValid(userId);
     
     const targetUser = await User.findOne({
       $or: [
         ...(isValidMongoId ? [{ _id: userId }] : []),
-        { id: userId }
+        { zxId: userId },     // 💥 MASTER FIX: Exact field name from your models/User.ts
+        { email: userId }     // Fallback just in case
       ]
     });
 
