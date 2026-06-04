@@ -369,12 +369,10 @@ export default function ManagerDashboardPage() {
                             if (lastSeenText === "Never") statusColor = "text-red-500";
                             else if (lastSeenText === "New Account") statusColor = "text-emerald-400";
 
-                            // 💥 MASTER FIX: MongoDB Fallback ID & Rollback System 💥
-                            const targetUserId = u._id || u.id; // Corrected ID Extraction
-
-                            const handleUserAction = async (id: string, email: string, action: string) => {
-                                if (!id) {
-                                   alert("Error: User ID not found in database!");
+                            // 💥 MASTER FIX: Using Email instead of dynamic ID 💥
+                            const handleUserAction = async (targetEmail: string, action: string) => {
+                                if (!targetEmail) {
+                                   alert("Error: User Email not found!");
                                    return;
                                 }
 
@@ -383,12 +381,15 @@ export default function ManagerDashboardPage() {
 
                                 // Optimistic UI Update (Save old state for rollback)
                                 const previousUsers = [...inactiveUsers];
-                                setInactiveUsers(prev => prev.filter(user => user.email !== email));
+                                setInactiveUsers(prev => prev.filter(user => user.email !== targetEmail));
 
                                 try {
                                    const res = await fetch("/api/update-user", {
                                       method: "POST", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ userId: id, newStatus: action })
+                                      body: JSON.stringify({ 
+                                        userId: targetEmail, // 🔥 MAGIC: Passing EMAIL directly to backend
+                                        newStatus: action 
+                                      })
                                    });
                                    const data = await res.json();
                                    
@@ -412,7 +413,7 @@ export default function ManagerDashboardPage() {
                                         <div>
                                             <p className="text-sm font-bold text-slate-200">{u.name}</p>
                                             <div className="flex items-center gap-2 mt-0.5">
-                                               <span className="text-[10px] text-slate-500 font-mono">{targetUserId}</span>
+                                               <span className="text-[10px] text-slate-500 font-mono">{u.id || "User"}</span>
                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${statusColor} bg-[#0F172A] border border-[#334155]`}>
                                                    {lastSeenText}
                                                </span>
@@ -420,10 +421,10 @@ export default function ManagerDashboardPage() {
                                         </div>
                                     </div>
                                     
-                                    {/* 💥 Action Buttons using proper targetUserId 💥 */}
+                                    {/* 💥 Action Buttons passing Email 💥 */}
                                     <div className="flex items-center gap-2 self-end sm:self-auto">
                                         <button 
-                                          onClick={() => handleUserAction(targetUserId, u.email, "pending")}
+                                          onClick={() => handleUserAction(u.email, "pending")}
                                           className="flex items-center gap-1 px-3 py-1.5 bg-[#EAB308]/10 text-[#EAB308] border border-[#EAB308]/20 hover:bg-[#EAB308] hover:text-black transition-all rounded-lg text-[10px] font-black uppercase tracking-widest"
                                           title="Set to Pending"
                                         >
@@ -431,7 +432,7 @@ export default function ManagerDashboardPage() {
                                            Pending
                                         </button>
                                         <button 
-                                          onClick={() => handleUserAction(targetUserId, u.email, "banned")}
+                                          onClick={() => handleUserAction(u.email, "banned")}
                                           className="flex items-center gap-1 px-3 py-1.5 bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20 hover:bg-[#F43F5E] hover:text-white transition-all rounded-lg text-[10px] font-black uppercase tracking-widest"
                                           title="Ban User"
                                         >
