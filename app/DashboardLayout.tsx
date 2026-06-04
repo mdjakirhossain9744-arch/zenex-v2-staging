@@ -22,16 +22,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMaintenance, setIsMaintenance] = useState(false);
   
   const [headerNotifs, setHeaderNotifs] = useState<any[]>([]);
-  const [globalToast, setGlobalToast] = useState("");
   const [currentTime, setCurrentTime] = useState("");
 
   const pendingOrdersRef = useRef<any[]>([]);
   const isCheckingOTPRef = useRef(false);
-
-  const showGlobalToast = useCallback((msg: string) => {
-    setGlobalToast(msg);
-    setTimeout(() => setGlobalToast(""), 4000); 
-  }, []);
 
   const handleLogout = useCallback(async () => {
     try { await fetch("/api/logout", { method: "GET" }); } catch (error) {} 
@@ -52,7 +46,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return `${Math.floor(diff / 86400)} days ago`;
   };
 
-  // 💥 HYBRID VISIBILITY SYSTEM (Fixing the UX issue you mentioned) 💥
   useEffect(() => {
     setMounted(true);
     const storedUser = localStorage.getItem("user");
@@ -96,7 +89,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     startUIUpdates();
 
-    // শুধুমাত্র ব্যালেন্স এবং নোটিফিকেশন চেক অফ হবে, OTP চেক চলতে থাকবে।
     const handleVisibilityChange = () => {
       if (document.hidden) {
         stopUIUpdates();
@@ -194,8 +186,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                    const codeMatch = firstMsg.match(/\b\d{4,8}\b/);
                    const finalCode = codeMatch ? codeMatch[0] : firstMsg;
 
+                   // 💥 Custom Event fires normally so "Get Number" page toasts still work, but Global Popup is removed 💥
                    window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: firstMsg, isMulti: false } }));
-                   showGlobalToast(`${finalCode} (New OTP)`);
 
                    await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: firstMsg, receivedAt: matchedObj.realApiTime } }) });
 
@@ -216,7 +208,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                          const finalCode = codeMatch ? codeMatch[0] : newMsg;
 
                          window.dispatchEvent(new CustomEvent('otp-received-instant', { detail: { searchNumber: item.searchNumber, otp: finalCode, fullMessage: newMsg, isMulti: true } }));
-                         showGlobalToast(`${finalCode} (Multi OTP)`);
 
                          await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE", email: user.email, orderData: { searchNumber: item.searchNumber, status: "DONE", otp: finalCode, fullMessage: newMsg, receivedAt: newMatch.realApiTime } }) });
                          
@@ -239,16 +230,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const blob = new Blob([workerCode], { type: 'application/javascript' });
     const worker = new Worker(URL.createObjectURL(blob));
 
-    // 💥 OTP WEB WORKER (RUNS ALWAYS, EVEN IN BACKGROUND) 💥
     worker.onmessage = (e) => { 
-       // No hidden checks here, it always fires ensuring real-time OTP updates and sounds!
        if (e.data === 'tick3') checkGlobalOtps(); 
        if (e.data === 'tick10') fetchPendingOrders(); 
     };
     worker.postMessage('start');
 
     return () => { worker.postMessage('stop'); worker.terminate(); };
-  }, [user?.email, showGlobalToast]);
+  }, [user?.email]);
 
   if (!mounted || !isAuthorized) {
     return (<div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center"><div className="w-10 h-10 border-4 border-[#334155] border-t-[#3B82F6] rounded-full animate-spin mb-4"></div></div>);
@@ -284,13 +273,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen w-full bg-[#0F172A] text-[#E2E8F0] flex font-sans selection:bg-[#3B82F6] selection:text-white relative overflow-hidden">
       
-      {globalToast && (
-        <div className="fixed top-6 md:top-8 left-1/2 -translate-x-1/2 z-[9999] bg-[#1E293B]/80 backdrop-blur-xl text-white px-5 py-2.5 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.5)] font-bold text-xs md:text-sm flex items-center gap-3 animate-bounce-in border border-[#334155]/50 transition-all">
-           <div className="w-5 h-5 rounded-full bg-[#10B981]/20 flex items-center justify-center"><span className="w-2 h-2 bg-[#10B981] rounded-full animate-pulse shadow-[0_0_8px_#10B981]"></span></div>
-           <span className="tracking-wider">{globalToast}</span>
-        </div>
-      )}
-
       {isMaintenance && role === "admin" && (<div className="fixed top-0 left-0 w-full bg-[#F43F5E] text-white text-[10px] font-black uppercase tracking-widest text-center py-1 z-[100] animate-pulse">⚠️ MAINTENANCE MODE IS ACTIVE - ALL USERS ARE BLOCKED ⚠️</div>)}
 
       <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-[#3B82F6] rounded-full blur-[180px] opacity-10 pointer-events-none"></div>

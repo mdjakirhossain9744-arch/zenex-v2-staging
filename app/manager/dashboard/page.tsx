@@ -341,7 +341,7 @@ export default function ManagerDashboardPage() {
                 )}
             </div>
 
-            {/* 💥 UNSEEN USERS BOX (WITH ACTION BUTTONS) 💥 */}
+            {/* 💥 UNSEEN USERS BOX (WITH FIXED ACTION BUTTONS) 💥 */}
             <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl">
                 <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
                    <div>
@@ -369,18 +369,18 @@ export default function ManagerDashboardPage() {
                             if (lastSeenText === "Never") statusColor = "text-red-500";
                             else if (lastSeenText === "New Account") statusColor = "text-emerald-400";
 
-                            // 💥 ACTION FUNCTION 💥
-                            const handleUserAction = async (email: string, action: string) => {
+                            // 💥 MASTER FIX: Linked to correct API (/api/update-user) with correct parameter (userId) 💥
+                            const handleUserAction = async (id: string, email: string, action: string) => {
                                 const confirmAction = window.confirm(`Are you sure you want to ${action.toUpperCase()} this user?`);
                                 if (!confirmAction) return;
 
-                                // Optimistic UI Update (Remove instantly)
+                                // Optimistic UI Update
                                 setInactiveUsers(prev => prev.filter(user => user.email !== email));
 
                                 try {
-                                   await fetch("/api/auth/manage-user", {
+                                   await fetch("/api/update-user", {
                                       method: "POST", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ action: "UPDATE_STATUS", targetEmail: email, newStatus: action })
+                                      body: JSON.stringify({ userId: id, newStatus: action })
                                    });
                                 } catch (e) { console.error("Action Failed"); }
                             };
@@ -402,10 +402,10 @@ export default function ManagerDashboardPage() {
                                         </div>
                                     </div>
                                     
-                                    {/* 💥 QUICK ACTION BUTTONS 💥 */}
+                                    {/* 💥 Action Buttons using proper u.id 💥 */}
                                     <div className="flex items-center gap-2 self-end sm:self-auto">
                                         <button 
-                                          onClick={() => handleUserAction(u.email, "pending")}
+                                          onClick={() => handleUserAction(u.id, u.email, "pending")}
                                           className="flex items-center gap-1 px-3 py-1.5 bg-[#EAB308]/10 text-[#EAB308] border border-[#EAB308]/20 hover:bg-[#EAB308] hover:text-black transition-all rounded-lg text-[10px] font-black uppercase tracking-widest"
                                           title="Set to Pending"
                                         >
@@ -413,7 +413,7 @@ export default function ManagerDashboardPage() {
                                            Pending
                                         </button>
                                         <button 
-                                          onClick={() => handleUserAction(u.email, "banned")}
+                                          onClick={() => handleUserAction(u.id, u.email, "banned")}
                                           className="flex items-center gap-1 px-3 py-1.5 bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20 hover:bg-[#F43F5E] hover:text-white transition-all rounded-lg text-[10px] font-black uppercase tracking-widest"
                                           title="Ban User"
                                         >
