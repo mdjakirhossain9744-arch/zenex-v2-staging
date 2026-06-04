@@ -2,7 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import User from "../../../models/User"; 
-import crypto from "crypto"; // 💥 Crypto module added for Secure API Key Generation
+import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
       customMail, contactLink, maxLimit, isApiActive,
       newAgentEmail, 
       handoverToEmail,
-      generateNewKey // 💥 New parameter added to catch key generation requests
+      generateNewKey,
+      newBalance 
     } = body;
 
     const targetUser = await User.findById(userId);
@@ -49,17 +50,24 @@ export async function POST(req: NextRequest) {
     const isTargetAgent = newRole === "agent" || targetUser.role === "agent";
     let updateData: any = {};
 
-    // 💥 GENERATE NEW API KEY LOGIC 💥
+    // 💥 BALANCE UPDATE FIX (0 is cleanly accepted) 💥
+    if (newBalance !== undefined && newBalance !== null && newBalance !== "") {
+       if (realRequesterRole !== "admin") {
+          return NextResponse.json({ message: "🔴 SECURITY: Only Admins can edit balance directly!" }, { status: 403 });
+       }
+       updateData.balance = parseFloat(newBalance);
+    }
+
+    // 💥 GENERATE NEW API KEY 💥
     if (generateNewKey) {
       if (realRequesterRole !== "admin") {
          return NextResponse.json({ message: "🔴 SECURITY: Only Admins can generate API keys!" }, { status: 403 });
       }
-      // Generate a new 24 character secure random hex key
       const newApiKey = "ZNX_" + crypto.randomBytes(16).toString("hex").toUpperCase();
       updateData.apiKey = newApiKey;
     }
 
-    // 💥 AGENT OWNERSHIP HANDOVER LOGIC (Agent -> New Owner) 💥
+    // 💥 AGENT OWNERSHIP HANDOVER 💥
     if (handoverToEmail && targetUser.role === "agent" && newRole === "user") {
       if (realRequesterRole !== "admin") {
          return NextResponse.json({ message: "🔴 SECURITY: Only Admins can handover agent networks!" }, { status: 403 });
@@ -73,13 +81,11 @@ export async function POST(req: NextRequest) {
          return NextResponse.json({ message: "🔴 Handover Failed: Cannot handover network to an Admin!" }, { status: 400 });
       }
 
-      // Step 1: Move all sub-users under the Old Agent to the New Owner's Email
       await User.updateMany(
          { agentEmail: targetUser.email, role: "user" },
          { $set: { agentEmail: newOwner.email } }
       );
 
-      // Step 2: Promote the New Owner to an Agent (copy configs from old agent)
       await User.findByIdAndUpdate(newOwner._id, {
          $set: {
             role: "agent",
@@ -90,27 +96,39 @@ export async function POST(req: NextRequest) {
          }
       });
 
-      // Step 3: Clear the old agent's configuration (they will become a user below)
       updateData.agentMaxRate = 0;
       updateData.agentMaxUsers = 100;
       updateData.customAgentMail = "";
       updateData.telegramLink = "";
     }
 
-    // 💥 USER NETWORK TRANSFER LOGIC (Normal User -> Different Agent) 💥
+    // 💥 USER NETWORK TRANSFER LOGIC (Unbreakable Link Fix) 💥
     if (newAgentEmail && newAgentEmail !== targetUser.agentEmail && targetUser.role === "user") {
       if (realRequesterRole !== "admin") {
         return NextResponse.json({ message: "🔴 SECURITY: Only Admins can transfer user networks!" }, { status: 403 });
       }
       
-      const newAgent = await User.findOne({ email: newAgentEmail });
+      const newAgent = await User.findOne({ 
+         $or: [
+            { email: newAgentEmail }, 
+            { customAgentMail: newAgentEmail }
+         ] 
+      });
+
       if (!newAgent || (newAgent.role !== "agent" && newAgent.role !== "admin")) {
         return NextResponse.json({ message: "🔴 TRANSFER FAILED: Target Agent not found or invalid!" }, { status: 404 });
       }
 
       if (newAgent.role === "agent") {
-        const currentUsersCount = await User.countDocuments({ agentEmail: newAgentEmail, role: "user" });
+        const currentUsersCount = await User.countDocuments({ 
+            role: "user",
+            $or: [
+                { agentEmail: newAgent.email },
+                { agentEmail: newAgent.customAgentMail }
+            ]
+        });
         const agentSeatLimit = newAgent.agentMaxUsers || 100;
+        
         if (currentUsersCount >= agentSeatLimit) {
           return NextResponse.json({ message: `🔴 TRANSFER FAILED: Target Agent's network is full (Limit: ${agentSeatLimit})!` }, { status: 400 });
         }
@@ -124,7 +142,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      updateData.agentEmail = newAgentEmail;
+      // 💥 MASTER FIX: Always save the Agent's REAL email to create an unbreakable database link! 💥
+      updateData.agentEmail = newAgent.email; 
     }
 
     // Role Security Checks
@@ -181,14 +200,12 @@ export async function POST(req: NextRequest) {
       updateData.isApiActive = isApiActive;
     }
 
-    // 💥 THE NEW SECURE DUPLICATE LOCK FOR CUSTOM AGENT MAIL 💥
     if (isTargetAgent && newRole !== "user") {
       
       if (customMail !== undefined) {
         const trimmedMail = customMail.trim();
         
         if (trimmedMail !== "") {
-          // Check if this mail exists in the DB but doesn't belong to the current user being updated
           const isMailTaken = await User.findOne({ 
              customAgentMail: trimmedMail, 
              _id: { $ne: targetUser._id } 

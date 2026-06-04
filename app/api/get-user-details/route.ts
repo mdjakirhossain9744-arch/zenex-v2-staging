@@ -15,7 +15,6 @@ const generateApiKey = () => {
 
 export async function POST(req: Request) {
   try {
-    // 💥 NEW: withdrawPin added in destructuring
     const { action, email, binancePayId, isAutoWithdraw, withdrawPin } = await req.json();
 
     if (!email) {
@@ -27,7 +26,7 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
-    // 💥 NEW: Auto-Pay Settings Save Logic with strict Security PIN Validation 💥
+    // 💥 Auto-Pay Settings Save Logic with strict Security PIN Validation 💥
     if (action === "UPDATE_AUTO_PAY") {
         if (!withdrawPin) {
            return NextResponse.json({ success: false, message: "Security PIN is required!" }, { status: 400 });
@@ -38,12 +37,10 @@ export async function POST(req: Request) {
            return NextResponse.json({ success: false, message: "User not found!" }, { status: 404 });
         }
 
-        // 💥 Verify PIN before saving (Default "1234" if not set) 💥
         if ((user.withdrawPin || "1234") !== withdrawPin.trim()) {
            return NextResponse.json({ success: false, message: "🔴 Invalid Security PIN! Settings not saved." }, { status: 403 });
         }
 
-        // PIN সঠিক হলে তবেই ডাটাবেস আপডেট হবে
         await User.findOneAndUpdate(
             { email }, 
             { $set: { binancePayId, isAutoWithdraw } }
@@ -51,8 +48,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, message: "Settings Updated Successfully" });
     }
 
-    // 💥 Default Fetch User Logic 💥
-    const user = await User.findOne({ email });
+    // 💥 Fetch User Logic (Zero DB Load via .lean()) 💥
+    const user = await User.findOne({ email }).lean();
 
     if (!user) {
       return NextResponse.json(
@@ -61,21 +58,36 @@ export async function POST(req: Request) {
       );
     }
 
-    // অটো-ফিক্স: যদি পুরোনো ইউজারের API Key না থাকে, তবে নতুন তৈরি করে দাও
+    // অটো-ফিক্স: API Key না থাকলে জেনারেট করে আপডেট করা
     if (!user.apiKey || user.apiKey === "") {
       const newApiKey = generateApiKey();
       user.apiKey = newApiKey;
-      await user.save(); 
+      await User.updateOne({ _id: user._id }, { $set: { apiKey: newApiKey } });
     }
 
-    // ইউজারের আসল এজেন্টের ডাটা খোঁজা
+    // 💥 MASTER PRIVACY LOGIC: Hide Real Agent Email 💥
     let agent = null;
+    let displayAgentEmail = user.agentEmail; // বাই ডিফল্ট যেটা আছে সেটাই থাকবে
+
     if (user.agentEmail) {
-      agent = await User.findOne({
+      // 💥 SECURITY: .select() থেকে 'email' বাদ দেওয়া হয়েছে যাতে নেটওয়ার্ক ট্যাবেও লিক না হয়! 💥
+      const foundAgent = await User.findOne({
         $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
         role: { $in: ["agent", "admin"] }
-      }).select("fullName customAgentMail email telegramLink telegram");
+      }).select("fullName customAgentMail telegramLink telegram").lean();
+
+      if (foundAgent) {
+         agent = foundAgent;
+         
+         // যদি এজেন্টের কাস্টম মেইল থাকে, তবে ইউজারের কাছে আসল মেইলের বদলে কাস্টম মেইল শো করাবে
+         if (foundAgent.customAgentMail && foundAgent.customAgentMail.trim() !== "") {
+             displayAgentEmail = foundAgent.customAgentMail;
+         }
+      }
     }
+
+    // ইউজারের ডাটাতে মেইলটি ওভাররাইড (Override) করা হলো
+    user.agentEmail = displayAgentEmail;
 
     // গ্লোবাল সাপোর্ট লিংক ডাটাবেস থেকে আনা
     let globalSupportLink = "https://t.me/Zenexacademy1";

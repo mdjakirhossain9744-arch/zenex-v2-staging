@@ -250,7 +250,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Race condition locked safely!" });
         }
 
-        // 💥 AUTO-WITHDRAW: Exact Balance with Two Decimals Fix 💥
+        // 💥 AUTO-WITHDRAW: 150 TK Limit + 1 Hour Cooldown Fix 💥
         if (currentOtpCost > 0) {
           const updatedUser = await User.findOneAndUpdate(
              { email }, 
@@ -258,27 +258,39 @@ export async function POST(req: Request) {
              { new: true }
           );
 
-          if (updatedUser && updatedUser.balance >= 100 && updatedUser.isAutoWithdraw === true && updatedUser.binancePayId) {
-             const exactBalance = Number(updatedUser.balance.toFixed(2)); // 💥 FIX: দশমিক ক্লিন করা হলো 💥
+          // 💥 LIMIT CHANGED TO 150 💥
+          if (updatedUser && updatedUser.balance >= 150 && updatedUser.isAutoWithdraw === true && updatedUser.binancePayId) {
              
-             const balanceLock = await User.findOneAndUpdate(
-                { email: updatedUser.email, balance: { $gte: 100 } }, 
-                { $inc: { balance: -exactBalance } }, 
-                { new: true }
-             );
+             // 💥 CHECK 1 HOUR COOLDOWN 💥
+             const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+             const recentWithdraw = await Withdraw.findOne({
+                 email: updatedUser.email,
+                 createdAt: { $gte: oneHourAgo },
+                 status: { $ne: "REJECTED" }
+             }).lean();
 
-             if (balanceLock) {
-                const newWithdraw = new Withdraw({
-                    email: updatedUser.email,
-                    name: updatedUser.fullName || updatedUser.name || updatedUser.email.split('@')[0],
-                    role: updatedUser.role,
-                    amount: exactBalance, 
-                    method: "Binance",
-                    accountNumber: updatedUser.binancePayId,
-                    status: "PROCESSING", 
-                    date: new Date().toLocaleDateString('en-GB')
-                });
-                await newWithdraw.save();
+             if (!recentWithdraw) {
+                 const exactBalance = Number(updatedUser.balance.toFixed(2)); 
+                 
+                 const balanceLock = await User.findOneAndUpdate(
+                    { email: updatedUser.email, balance: { $gte: 150 } }, 
+                    { $inc: { balance: -exactBalance } }, 
+                    { new: true }
+                 );
+
+                 if (balanceLock) {
+                    const newWithdraw = new Withdraw({
+                        email: updatedUser.email,
+                        name: updatedUser.fullName || updatedUser.name || updatedUser.email.split('@')[0],
+                        role: updatedUser.role,
+                        amount: exactBalance, 
+                        method: "Binance",
+                        accountNumber: updatedUser.binancePayId,
+                        status: "PROCESSING", 
+                        date: new Date().toLocaleDateString('en-GB')
+                    });
+                    await newWithdraw.save();
+                 }
              }
           }
         }
@@ -299,14 +311,14 @@ export async function POST(req: Request) {
   }
 }
 
-// 💥 CRON JOB ENGINE 💥
+// 💥 CRON JOB ENGINE (150 TK Limit + 1 Hour Cooldown Fix) 💥
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
 
     const eligibleUsers = await User.find({ 
         isAutoWithdraw: true, 
-        balance: { $gte: 100 },
+        balance: { $gte: 150 }, // 💥 CHANGED TO 150 💥
         binancePayId: { $nin: [null, ""] } 
     });
 
@@ -317,25 +329,35 @@ export async function GET(req: Request) {
     let processedCount = 0;
 
     for (const user of eligibleUsers) {
-        const exactBalance = Number(user.balance.toFixed(2)); // 💥 FIX: দশমিক ক্লিন 💥
-        const updatedUser = await User.findOneAndUpdate(
-            { _id: user._id, balance: { $gte: 100 } },
-            { $inc: { balance: -exactBalance } },
-            { new: true }
-        );
+        // 💥 CHECK 1 HOUR COOLDOWN 💥
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const recentWithdraw = await Withdraw.findOne({
+            email: user.email,
+            createdAt: { $gte: oneHourAgo },
+            status: { $ne: "REJECTED" }
+        }).lean();
 
-        if (updatedUser) {
-            await Withdraw.create({
-                email: user.email,
-                name: user.fullName || user.name || user.email.split('@')[0],
-                role: user.role,
-                amount: exactBalance,
-                method: "Binance",
-                accountNumber: user.binancePayId,
-                status: "PROCESSING",
-                date: new Date().toLocaleDateString('en-GB')
-            });
-            processedCount++;
+        if (!recentWithdraw) {
+            const exactBalance = Number(user.balance.toFixed(2)); 
+            const updatedUser = await User.findOneAndUpdate(
+                { _id: user._id, balance: { $gte: 150 } }, // 💥 CHANGED TO 150 💥
+                { $inc: { balance: -exactBalance } },
+                { new: true }
+            );
+
+            if (updatedUser) {
+                await Withdraw.create({
+                    email: user.email,
+                    name: user.fullName || user.name || user.email.split('@')[0],
+                    role: user.role,
+                    amount: exactBalance,
+                    method: "Binance",
+                    accountNumber: user.binancePayId,
+                    status: "PROCESSING",
+                    date: new Date().toLocaleDateString('en-GB')
+                });
+                processedCount++;
+            }
         }
     }
 
