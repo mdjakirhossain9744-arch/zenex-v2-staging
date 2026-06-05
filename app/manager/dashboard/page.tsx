@@ -218,7 +218,17 @@ export default function ManagerDashboardPage() {
                   <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">No Traffic Data Yet</div>
                 ) : (
                   <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
-                    <defs><linearGradient id="mainLineGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#A855F7" /><stop offset="100%" stopColor="#EC4899" /></linearGradient></defs>
+                    <defs>
+                      <linearGradient id="mainLineGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#A855F7" />
+                        <stop offset="100%" stopColor="#EC4899" />
+                      </linearGradient>
+                      <linearGradient id="mainAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#A855F7" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#EC4899" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path d={`${generateTrafficPath(trafficData)} L ${(trafficData.length - 1) * 160},150 L 0,150 Z`} fill="url(#mainAreaGrad)" />
                     <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#mainLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
@@ -260,7 +270,17 @@ export default function ManagerDashboardPage() {
                     <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">Loading Live Data...</div>
                   ) : (
                     <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
-                      <defs><linearGradient id="globalLineGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#EF4444" /><stop offset="100%" stopColor="#F59E0B" /></linearGradient></defs>
+                      <defs>
+                        <linearGradient id="globalLineGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#EF4444" />
+                          <stop offset="100%" stopColor="#F59E0B" />
+                        </linearGradient>
+                        <linearGradient id="globalAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#EF4444" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+                      <path d={`${generateTrafficPath(globalTrafficData)} L ${(globalTrafficData.length - 1) * 160},150 L 0,150 Z`} fill="url(#globalAreaGrad)" />
                       <path d={generateTrafficPath(globalTrafficData)} fill="none" stroke="url(#globalLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
@@ -369,7 +389,6 @@ export default function ManagerDashboardPage() {
                             if (lastSeenText === "Never") statusColor = "text-red-500";
                             else if (lastSeenText === "New Account") statusColor = "text-emerald-400";
 
-                            // 💥 MASTER FIX: Using Email instead of dynamic ID 💥
                             const handleUserAction = async (targetEmail: string, action: string) => {
                                 if (!targetEmail) {
                                    alert("Error: User Email not found!");
@@ -379,7 +398,6 @@ export default function ManagerDashboardPage() {
                                 const confirmAction = window.confirm(`Are you sure you want to mark this user as ${action.toUpperCase()}?`);
                                 if (!confirmAction) return;
 
-                                // Optimistic UI Update (Save old state for rollback)
                                 const previousUsers = [...inactiveUsers];
                                 setInactiveUsers(prev => prev.filter(user => user.email !== targetEmail));
 
@@ -387,7 +405,7 @@ export default function ManagerDashboardPage() {
                                    const res = await fetch("/api/update-user", {
                                       method: "POST", headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ 
-                                        userId: targetEmail, // 🔥 MAGIC: Passing EMAIL directly to backend
+                                        userId: targetEmail,
                                         newStatus: action 
                                       })
                                    });
@@ -395,12 +413,12 @@ export default function ManagerDashboardPage() {
                                    
                                    if (!res.ok) {
                                       alert(`Failed: ${data.message}`);
-                                      setInactiveUsers(previousUsers); // Rollback on API fail
+                                      setInactiveUsers(previousUsers);
                                    }
                                 } catch (e) { 
                                    console.error("Action Failed", e); 
                                    alert("Network Error! Try again.");
-                                   setInactiveUsers(previousUsers); // Rollback on Network fail
+                                   setInactiveUsers(previousUsers); 
                                 }
                             };
 
@@ -421,7 +439,6 @@ export default function ManagerDashboardPage() {
                                         </div>
                                     </div>
                                     
-                                    {/* 💥 Action Buttons passing Email 💥 */}
                                     <div className="flex items-center gap-2 self-end sm:self-auto">
                                         <button 
                                           onClick={() => handleUserAction(u.email, "pending")}

@@ -83,7 +83,6 @@ export default function UserDashboardPage() {
 
     const fetchUserDashboardData = async () => {
       try {
-        // 💥 OPTIMIZED: এখন শুধু details এবং summary API কল হবে, sync-orders বাদ দিয়েছি! 💥
         const [userDetailsRes, summaryRes] = await Promise.all([
           fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
           fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) }).then(r => r.json())
@@ -95,7 +94,6 @@ export default function UserDashboardPage() {
         }
 
         if (summaryRes && summaryRes.success) {
-           // 💥 BUG FIXED: এখন সরাসরি backend এর ক্যালকুলেট করা ডাটা বসিয়ে দিয়েছি 💥
            setStats(p => ({ 
              ...p, 
              todaySuccess: summaryRes.todaySuccess || 0,
@@ -217,12 +215,17 @@ export default function UserDashboardPage() {
                 ) : (
                   <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
                     <defs>
-                      <linearGradient id="mainLineGrad" x1="0" y1="0" x2="1" y2="0">
+                      <linearGradient id="userLineGrad" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor="#3B82F6" />
                         <stop offset="100%" stopColor="#00C6FF" />
                       </linearGradient>
+                      <linearGradient id="userAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.3" />
+                        <stop offset="100%" stopColor="#00C6FF" stopOpacity="0.0" />
+                      </linearGradient>
                     </defs>
-                    <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#mainLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={`${generateTrafficPath(trafficData)} L ${(trafficData.length - 1) * 160},150 L 0,150 Z`} fill="url(#userAreaGrad)" />
+                    <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#userLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
              </div>
