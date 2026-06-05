@@ -187,13 +187,25 @@ export default function AdminGlobalDashboard() {
                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span> Live Data
                </span>
              </div>
+             
+             {/* 💥 ADMIN GRAPH UPDATE: God-Mode Red-Amber Gradient Area Fill 💥 */}
              <div className="flex-1 w-full h-48 md:h-56 relative z-10">
                 {Math.max(...trafficData) === 0 ? (
                   <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">No Traffic Data Yet</div>
                 ) : (
                   <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
-                    <defs><linearGradient id="mainLineGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#EF4444" /><stop offset="100%" stopColor="#F59E0B" /></linearGradient></defs>
-                    <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#mainLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                    <defs>
+                      <linearGradient id="adminLineGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#EF4444" />
+                        <stop offset="100%" stopColor="#F59E0B" />
+                      </linearGradient>
+                      <linearGradient id="adminAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#EF4444" stopOpacity="0.35" />
+                        <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path d={`${generateTrafficPath(trafficData)} L ${(trafficData.length - 1) * 160},150 L 0,150 Z`} fill="url(#adminAreaGrad)" />
+                    <path d={generateTrafficPath(trafficData)} fill="none" stroke="url(#adminLineGrad)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
              </div>
