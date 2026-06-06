@@ -6,7 +6,10 @@ import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
 import Withdraw from "../../../models/Withdraw"; 
 
+// 💥 NEXT.JS CORE CACHE KILLER 💥
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
@@ -125,7 +128,7 @@ export async function POST(req: Request) {
         orders: finalOrders,
         pagination: { total: totalItems, page, limit, hasMore: hasMoreData },
         stats 
-      });
+      }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
     }
 
     if (action === "CREATE") {
@@ -250,7 +253,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: true, message: "Race condition locked safely!" });
         }
 
-        // 💥 AUTO-WITHDRAW: 150 TK Limit + 1 Hour Cooldown Fix 💥
+        // 💥 AUTO-WITHDRAW 💥
         if (currentOtpCost > 0) {
           const updatedUser = await User.findOneAndUpdate(
              { email }, 
@@ -258,10 +261,7 @@ export async function POST(req: Request) {
              { new: true }
           );
 
-          // 💥 LIMIT CHANGED TO 150 💥
           if (updatedUser && updatedUser.balance >= 150 && updatedUser.isAutoWithdraw === true && updatedUser.binancePayId) {
-             
-             // 💥 CHECK 1 HOUR COOLDOWN 💥
              const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
              const recentWithdraw = await Withdraw.findOne({
                  email: updatedUser.email,
@@ -271,7 +271,6 @@ export async function POST(req: Request) {
 
              if (!recentWithdraw) {
                  const exactBalance = Number(updatedUser.balance.toFixed(2)); 
-                 
                  const balanceLock = await User.findOneAndUpdate(
                     { email: updatedUser.email, balance: { $gte: 150 } }, 
                     { $inc: { balance: -exactBalance } }, 
@@ -311,25 +310,21 @@ export async function POST(req: Request) {
   }
 }
 
-// 💥 CRON JOB ENGINE (150 TK Limit + 1 Hour Cooldown Fix) 💥
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
-
     const eligibleUsers = await User.find({ 
         isAutoWithdraw: true, 
-        balance: { $gte: 150 }, // 💥 CHANGED TO 150 💥
+        balance: { $gte: 150 }, 
         binancePayId: { $nin: [null, ""] } 
     });
 
     if (eligibleUsers.length === 0) {
-        return NextResponse.json({ success: true, message: "No eligible users found." });
+        return NextResponse.json({ success: true, message: "No eligible users found." }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     let processedCount = 0;
-
     for (const user of eligibleUsers) {
-        // 💥 CHECK 1 HOUR COOLDOWN 💥
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
         const recentWithdraw = await Withdraw.findOne({
             email: user.email,
@@ -340,7 +335,7 @@ export async function GET(req: Request) {
         if (!recentWithdraw) {
             const exactBalance = Number(user.balance.toFixed(2)); 
             const updatedUser = await User.findOneAndUpdate(
-                { _id: user._id, balance: { $gte: 150 } }, // 💥 CHANGED TO 150 💥
+                { _id: user._id, balance: { $gte: 150 } }, 
                 { $inc: { balance: -exactBalance } },
                 { new: true }
             );
@@ -364,7 +359,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ 
         success: true, 
         message: `Background Auto-Sync Complete! Processed ${processedCount} withdrawals.` 
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
 
   } catch (error: any) {
     return NextResponse.json({ success: false, message: "Cron Server Error" }, { status: 500 });

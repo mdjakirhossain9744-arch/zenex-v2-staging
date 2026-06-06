@@ -3,21 +3,23 @@ import connectToDatabase from "../../../lib/mongodb";
 import User from "../../../../models/User";
 import Order from "../../../../models/Order";
 
+// 💥 NEXT.JS CORE CACHE KILLER 💥
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
-// 💥 CORS Headers (ব্রাউজার এক্সটেনশন যেন ব্লক না খায় তার জন্য) 💥
+// 💥 CORS & ANTI-CACHE HEADERS 💥
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, mapikey",
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
 };
 
-// 💥 OPTIONS মেথড: ব্রাউজার আগে চেক করবে আপনার API সেফ কিনা 💥
 export async function OPTIONS() {
   return NextResponse.json({}, { status: 200, headers: corsHeaders });
 }
 
-// 💥 PURE UTC TIMEZONE 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
@@ -57,7 +59,8 @@ export async function POST(req: Request) {
             "Content-Type": "application/json",
             "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
             "Accept": "application/json",
-            "Connection": "keep-alive"
+            "Connection": "keep-alive",
+            "Cache-Control": "no-cache"
           },
           body: JSON.stringify(body),
           cache: "no-store",
@@ -71,7 +74,7 @@ export async function POST(req: Request) {
 
     const data = await response.json();
 
-    // 💥 ASYNC BACKGROUND SAVE 💥
+    // 💥 ASYNC BACKGROUND SAVE (Zero DB Load Wait) 💥
     if (data.meta?.status === "success") {
       const todayStr = getUTCDateString();
       
@@ -85,10 +88,10 @@ export async function POST(req: Request) {
         dateString: todayStr,
         expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) 
       });
+      // Background Save (Doesn't block bot response)
       newOrder.save().catch((e:any) => console.error("Order Save Error:", e));
     }
 
-    // রেসপন্সে CORS Header যুক্ত করে দেওয়া হলো
     return NextResponse.json(data, { status: response.status || 200, headers: corsHeaders });
 
   } catch (error: any) {

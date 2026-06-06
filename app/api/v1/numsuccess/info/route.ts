@@ -3,56 +3,61 @@ import connectToDatabase from "../../../../lib/mongodb";
 import User from "../../../../../models/User";
 import Order from "../../../../../models/Order";
 
+// 💥 PERFECT DIRECT TUNNEL (CACHE DESTROYED) 💥
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
-let globalMnetCache: any = null;
-let mnetLastFetchTime = 0;
-const MNET_CACHE_TTL = 3000; 
+const corsHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+};
 
 export async function GET(req: Request) {
   try {
     const apiKey = req.headers.get("mapikey");
     if (!apiKey || apiKey.trim().length < 10) {
-      return NextResponse.json({ meta: { status: "error" }, message: "Missing API Key" }, { status: 401 });
+      return NextResponse.json({ meta: { status: "error" }, message: "Missing API Key" }, { status: 401, headers: corsHeaders });
     }
 
     await connectToDatabase();
     const user = await User.findOne({ apiKey: apiKey.trim() }).lean();
     if (!user || !user.isApiActive) {
-      return NextResponse.json({ meta: { status: "error" }, message: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ meta: { status: "error" }, message: "Unauthorized" }, { status: 401, headers: corsHeaders });
     }
 
     const now = Date.now();
     const REAL_API_KEY = "M_7VX25KAJI"; 
     
-    if (!globalMnetCache || (now - mnetLastFetchTime > MNET_CACHE_TTL)) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); 
+    let mnetData = null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000); 
 
-        try {
-            const response = await fetch(`https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${now}`, {
-              method: "GET",
-              headers: { 
-                 "mapikey": REAL_API_KEY, 
-                 "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
-                 "Connection": "keep-alive" 
-              },
-              cache: "no-store",
-              signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            
-            if (response.ok) {
-                globalMnetCache = await response.json();
-                mnetLastFetchTime = now;
-            }
-        } catch (fetchError: any) {
-            clearTimeout(timeoutId);
-            if (!globalMnetCache) return NextResponse.json({ meta: { status: "error" }, message: "Provider Error" }, { status: 504 });
+    try {
+        // 💥 DIRECT MNIT FETCH (No manual 3000ms cache anymore!) 💥
+        const response = await fetch(`https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${now}`, {
+          method: "GET",
+          headers: { 
+             "mapikey": REAL_API_KEY, 
+             "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
+             "Connection": "keep-alive",
+             "Cache-Control": "no-cache"
+          },
+          cache: "no-store",
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+            mnetData = await response.json();
+        } else {
+            return NextResponse.json({ meta: { status: "error" }, message: "Provider Error" }, { status: 504, headers: corsHeaders });
         }
+    } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        return NextResponse.json({ meta: { status: "error" }, message: "Provider Timeout" }, { status: 504, headers: corsHeaders });
     }
 
-    const rawOtps = globalMnetCache?.data?.otps;
+    const rawOtps = mnetData?.data?.otps;
     const liveOtps = Array.isArray(rawOtps) ? rawOtps : []; 
     let userSpecificOtps: any[] = [];
 
@@ -77,7 +82,7 @@ export async function GET(req: Request) {
             const matchedOtpObj = liveOtps.find((m: any) => String(m.number).replace(/\D/g, "").endsWith(last6));
 
             if (matchedOtpObj) {
-                // 💥 BRANDING MAGIC: ক্যাশ ঠিক রেখে ইউজারের কাছে M_ কে ZX_ বানিয়ে পাঠানো হচ্ছে 💥
+                // 💥 BRANDING MAGIC 💥
                 const customOtpObj = {
                     ...matchedOtpObj,
                     nid: matchedOtpObj.nid ? matchedOtpObj.nid.replace(/^M_/i, 'ZX_') : matchedOtpObj.nid
@@ -119,6 +124,7 @@ export async function GET(req: Request) {
 
                 let regexStr = /^\d+$/.test(incomingCode) ? `\\b${incomingCode}\\b` : incomingCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+                // 💥 DB Update: This ensures Panel syncs beautifully 💥
                 const updatedOrder = await Order.findOneAndUpdate(
                    { _id: order._id, fullMessage: { $not: new RegExp(regexStr) } },
                    { 
@@ -153,12 +159,12 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
-      meta: globalMnetCache?.meta || { status: "success", code: 200 },
+      meta: mnetData?.meta || { status: "success", code: 200 },
       data: { otps: userSpecificOtps }
-    }, { status: 200 });
+    }, { status: 200, headers: corsHeaders });
 
   } catch (error: any) {
-    return NextResponse.json({ meta: { status: "error" }, message: "Server Error" }, { status: 500 });
+    return NextResponse.json({ meta: { status: "error" }, message: "Server Error" }, { status: 500, headers: corsHeaders });
   }
 }
 
