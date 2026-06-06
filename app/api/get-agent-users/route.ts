@@ -61,8 +61,12 @@ export async function POST(req: NextRequest) {
     }
 
     const skip = (page - 1) * limit;
-    const filteredTotal = await User.countDocuments(query); 
-    const users = await User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+
+    // 💥 1. PARALLEL EXECUTION: Running Count and Find together (Speed Boost) 💥
+    const [filteredTotal, users] = await Promise.all([
+        User.countDocuments(query),
+        User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
+    ]);
 
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
     const todayStr = getUTCDateString(); 
@@ -111,12 +115,15 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // ✅ STATS LOGIC: Keeps original totals ignoring the search filter
+    // 💥 2. PARALLEL EXECUTION FOR STATS: 4 Queries running at once! 💥
     const globalQuery = { $and: [agentMatch, roleMatch] };
-    const globalTotal = await User.countDocuments(globalQuery);
-    const activeUsers = await User.countDocuments({ ...globalQuery, status: "active" });
-    const pendingUsers = await User.countDocuments({ ...globalQuery, status: "pending" });
-    const bannedUsers = await User.countDocuments({ ...globalQuery, status: "banned" });
+    
+    const [globalTotal, activeUsers, pendingUsers, bannedUsers] = await Promise.all([
+        User.countDocuments(globalQuery),
+        User.countDocuments({ ...globalQuery, status: "active" }),
+        User.countDocuments({ ...globalQuery, status: "pending" }),
+        User.countDocuments({ ...globalQuery, status: "banned" })
+    ]);
 
     return NextResponse.json({ 
         users: formattedUsers,

@@ -23,24 +23,22 @@ export async function POST(req: Request) {
     }
 
     if (role === "agent") {
-      const agentEmailLower = email.trim().toLowerCase();
-      const agentUser = await User.findOne({ 
-        email: { $regex: new RegExp(`^${agentEmailLower}$`, "i") } 
-      }).lean();
+      const agentUser = await User.findOne({ email }).lean(); // 💥 Regex Removed!
       
       if (!agentUser) return NextResponse.json({ success: true, data: [] });
 
       const emailsToMatch = [agentUser.email];
       if (agentUser.customAgentMail) emailsToMatch.push(agentUser.customAgentMail);
 
+      // 💥 EXACT MATCH: B-Tree Index Hit 💥
       const networkUsers = await User.find({
-        agentEmail: { $in: emailsToMatch.map(e => new RegExp(`^${e.trim()}$`, "i")) }
+        agentEmail: { $in: emailsToMatch } 
       }).select("email").lean();
 
       if (networkUsers.length === 0) return NextResponse.json({ success: true, data: [] });
 
-      const targetEmails = networkUsers.map((u: any) => u.email.trim());
-      query.userEmail = { $in: targetEmails.map(e => new RegExp(`^${e}$`, "i")) };
+      const targetEmails = networkUsers.map((u: any) => u.email);
+      query.userEmail = { $in: targetEmails }; // 💥 Exact match array, no Regex!
     }
 
     const fetchLimit = Number(limit) || 50; 
@@ -51,23 +49,22 @@ export async function POST(req: Request) {
 
     if (liveOrders.length === 0) return NextResponse.json({ success: true, data: [] });
 
-    const rawEmails = liveOrders.map((o: any) => o.userEmail?.trim()).filter(Boolean);
+    const rawEmails = liveOrders.map((o: any) => o.userEmail).filter(Boolean);
     const uniqueEmails = [...new Set(rawEmails)];
     
-    // 💥 MULTI-FIELD NAME FETCH: ডাটাবেসে নাম যে নামেই থাকুক, বের করে আনবে 💥
+    // 💥 MULTI-FIELD FETCH WITH EXACT STRINGS 💥
     const usersInfo = await User.find({ 
-        email: { $in: uniqueEmails.map(e => new RegExp(`^${e}$`, "i")) } 
+        email: { $in: uniqueEmails } 
     }).select("email name fullName userName username uid _id").lean();
 
     const userMap: Record<string, any> = {};
     usersInfo.forEach((u: any) => {
         if (u.email) {
-            const mailKey = u.email.trim().toLowerCase();
+            const mailKey = u.email.toLowerCase().trim();
             const userUID = (u.uid && u.uid.trim() !== "") 
                 ? u.uid 
                 : `ZX-${u._id.toString().substring(18, 24).toUpperCase()}`;
 
-            // 💥 BULLETPROOF NAME LOGIC: সব রকম ফিল্ড চেক করবে 💥
             const realName = u.name || u.fullName || u.userName || u.username || "";
 
             userMap[mailKey] = {
@@ -78,7 +75,7 @@ export async function POST(req: Request) {
     });
 
     const formattedData = liveOrders.map((order: any) => {
-      const mailKey = order.userEmail?.trim().toLowerCase() || "";
+      const mailKey = order.userEmail?.toLowerCase().trim() || "";
       return {
         ...order,
         userName: userMap[mailKey]?.name || (mailKey ? mailKey.split('@')[0] : "User"),

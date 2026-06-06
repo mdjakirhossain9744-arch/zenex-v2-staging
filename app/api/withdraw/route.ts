@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       const recentWithdraw = await Withdraw.findOne({
           email: email,
           createdAt: { $gte: oneHourAgo },
-          status: { $ne: "REJECTED" } // Rejected withdrawal doesn't block the user
+          status: { $ne: "REJECTED" } 
       }).lean();
 
       if (recentWithdraw) {
@@ -248,7 +248,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC 💥
+    // 💥 4. FETCH LOGIC (SUPER OPTIMIZED WITH PARALLEL PROMISES) 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -277,26 +277,26 @@ export async function POST(req: Request) {
          }
 
          const skip = (page - 1) * limit;
-         const totalItems = await Withdraw.countDocuments(query);
-         const requests = await Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
-         
-         requests.forEach(r => r.amount = Number(r.amount.toFixed(2)));
 
-         const pendingAgg = await Withdraw.aggregate([
-             { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, 
-             { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+         // 💥 SUPER OPTIMIZATION: 6 DB QUERIES RUNNING IN PARALLEL 💥
+         const [totalItems, rawRequests, pendingAgg, paidAgg, allAgg, totalCount] = await Promise.all([
+             Withdraw.countDocuments(query),
+             Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+             Withdraw.aggregate([
+                 { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, 
+                 { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+             ]),
+             Withdraw.aggregate([
+                 { $match: { status: "PAID" } }, 
+                 { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+             ]),
+             Withdraw.aggregate([
+                 { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
+             ]),
+             Withdraw.countDocuments()
          ]);
          
-         const paidAgg = await Withdraw.aggregate([
-             { $match: { status: "PAID" } }, 
-             { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
-         ]);
-         
-         const allAgg = await Withdraw.aggregate([
-             { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
-         ]);
-         
-         const totalCount = await Withdraw.countDocuments();
+         const requests = rawRequests.map((r: any) => ({ ...r, amount: Number((r.amount || 0).toFixed(2)) }));
 
          return NextResponse.json({ 
             success: true, 
@@ -310,8 +310,9 @@ export async function POST(req: Request) {
             }
          });
       } else {
-         let requests = await Withdraw.find({ email }).sort({ createdAt: -1 });
-         requests.forEach(r => r.amount = Number(r.amount.toFixed(2)));
+         // 💥 USING .lean() FOR FASTER USER FETCH 💥
+         let rawRequests = await Withdraw.find({ email }).sort({ createdAt: -1 }).lean();
+         const requests = rawRequests.map((r: any) => ({ ...r, amount: Number((r.amount || 0).toFixed(2)) }));
          return NextResponse.json({ success: true, data: requests });
       }
     }
