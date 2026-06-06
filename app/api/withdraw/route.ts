@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       }
       if (!withdrawPin) return NextResponse.json({ success: false, message: "Security PIN is required!" }, { status: 400 });
 
-      // 💥 Zero DB Load: 1 Hour Cooldown Check 💥
+      // Zero DB Load: 1 Hour Cooldown Check
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const recentWithdraw = await Withdraw.findOne({
           email: email,
@@ -215,8 +215,24 @@ export async function POST(req: Request) {
 
       if (newStatus === "PROCESSING" && request.status !== "PROCESSING") {
          request.adminNote = "Request is being verified...";
+         
+         // 💥 BINANCE BLOCKER FIX: Binance হলে Sheet এ ডাটা যাবে না! 💥
          const googleSheetUrl = process.env.GOOGLE_SHEET_WEBHOOK;
-         if (googleSheetUrl) fetch(googleSheetUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: request.date, name: request.name, email: request.email, amount: request.amount, method: request.method, accountNumber: request.accountNumber, status: "PROCESSING" }) }).catch(()=>{}); 
+         if (googleSheetUrl && request.method !== "Binance") { 
+             fetch(googleSheetUrl, { 
+                 method: "POST", 
+                 headers: { "Content-Type": "application/json" }, 
+                 body: JSON.stringify({ 
+                     date: request.date, 
+                     name: request.name, 
+                     email: request.email, 
+                     amount: request.amount, 
+                     method: request.method, 
+                     accountNumber: request.accountNumber, 
+                     status: "PROCESSING" 
+                 }) 
+             }).catch(()=>{}); 
+         }
       }
 
       if (newStatus === "REJECTED" && request.status !== "REJECTED") {
@@ -278,7 +294,6 @@ export async function POST(req: Request) {
 
          const skip = (page - 1) * limit;
 
-         // 💥 SUPER OPTIMIZATION: 6 DB QUERIES RUNNING IN PARALLEL 💥
          const [totalItems, rawRequests, pendingAgg, paidAgg, allAgg, totalCount] = await Promise.all([
              Withdraw.countDocuments(query),
              Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
@@ -310,7 +325,6 @@ export async function POST(req: Request) {
             }
          });
       } else {
-         // 💥 USING .lean() FOR FASTER USER FETCH 💥
          let rawRequests = await Withdraw.find({ email }).sort({ createdAt: -1 }).lean();
          const requests = rawRequests.map((r: any) => ({ ...r, amount: Number((r.amount || 0).toFixed(2)) }));
          return NextResponse.json({ success: true, data: requests });
