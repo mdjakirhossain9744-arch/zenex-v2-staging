@@ -279,7 +279,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {isMobileMenuOpen && (<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>)}
 
-      {/* 💥 MASTER FIX 1: Changed h-full to h-screen to make it touch the bottom 💥 */}
       <aside className={`fixed md:relative top-0 left-0 h-screen w-64 bg-[#1E293B]/95 md:bg-[#1E293B]/90 backdrop-blur-2xl border-r border-[#334155] z-[60] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="h-20 flex items-center justify-between px-5 border-b border-[#334155] shrink-0">
           <Link href={dashboardUrl} className="flex items-center gap-2 group">
@@ -289,10 +288,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-[#94A3B8] hover:text-white"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
         
-        {/* 💥 flex-1 flex flex-col on the nav element allows mt-auto to work 💥 */}
         <nav className="flex-1 flex flex-col overflow-y-auto px-4 py-5 custom-scrollbar">
           
-          {/* 💥 MASTER FIX 2: Removed flex-1 from here so it doesn't absorb the gap 💥 */}
           <div className="space-y-1"> 
             
             {role === "admin" && (
@@ -343,7 +340,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href="/notifications" className={`flex items-center gap-3 px-3.5 py-2.5 text-sm transition-all ${pathname === '/notifications' ? activeBlue : inactive}`}><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>Notifications</Link>
           </div>
           
-          {/* 💥 MASTER FIX 3: mt-auto pushes this card strictly to the absolute bottom! 💥 */}
           <div className="mt-auto pt-6 pb-2 px-1 shrink-0">
              <div className="bg-gradient-to-br from-[#0F172A] to-[#1E293B] border border-[#3B82F6]/30 rounded-xl p-3 shadow-md relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-10 h-10 bg-[#3B82F6]/10 rounded-bl-full pointer-events-none group-hover:bg-[#3B82F6]/20 transition-colors"></div>

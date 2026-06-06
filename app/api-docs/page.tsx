@@ -85,7 +85,7 @@ export default function ApiDocumentation() {
       {
         "nid": "ZX_9A8B7C6D5E",
         "number": "447384561029",
-        "otp": "otp": "849302 is your Instagram code. Don't share it with anyone.",
+        "otp": "849302 is your Instagram code. Don't share it with anyone.",
         "country": "United Kingdom",
         "operator": "T-Mobile",
         "created_at": "2024-05-18 14:45:12"
@@ -192,8 +192,8 @@ checkZenexLiveFeed("WhatsApp");`;
             Connect your systems directly to the Zenex Global Number Routing Engine. Provision premium numbers and capture real-time SMS payloads via our ultra-low latency REST architecture.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-4">
-             <span className="px-3 py-1.5 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded text-[10px] font-black uppercase tracking-widest">Version 2.4 (Stable)</span>
-             <span className="px-3 py-1.5 bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 rounded text-[10px] font-black uppercase tracking-widest">REST Architecture</span>
+             <span className="px-3 py-1.5 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded text-[10px] font-black uppercase tracking-widest">Version 4.0 (Stable)</span>
+             <span className="px-3 py-1.5 bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 rounded text-[10px] font-black uppercase tracking-widest">Real-Time Tunnel</span>
              <span className="px-3 py-1.5 bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/20 rounded text-[10px] font-black uppercase tracking-widest">JSON Output</span>
           </div>
         </div>
@@ -293,11 +293,16 @@ checkZenexLiveFeed("WhatsApp");`;
               <div>
                  <p className="text-[#94A3B8] text-sm mb-6">Polls the Zenex Core Engine to fetch incoming SMS payloads associated with your active number queue.</p>
                  
-                 <div className="p-4 rounded-xl bg-[#EAB308]/10 border border-[#EAB308]/20 flex items-start gap-3 mb-6">
-                    <svg className="w-5 h-5 text-[#EAB308] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                 {/* 💥 NEW PRO TIP NOTICE FOR BOTS 💥 */}
+                 <div className="p-4 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-start gap-3 mb-6">
+                    <svg className="w-6 h-6 text-[#10B981] mt-0.5 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                     <div>
-                       <p className="text-xs font-bold text-[#EAB308] mb-1">Global Polling Limit</p>
-                       <p className="text-[10px] text-[#94A3B8] leading-relaxed">To ensure zero-load stability across the network, maintain a 3 to 5 second polling interval. Aggressive polling will auto-trigger the Zenex Smart Firewall and temporarily drop your connections.</p>
+                       <p className="text-xs font-bold text-[#10B981] mb-1">🚀 ZENEX V4 API: Direct Real-Time Tunnel</p>
+                       <p className="text-[10px] text-[#94A3B8] leading-relaxed">
+                         Our OTP Engine is now completely cache-free! You will receive the OTP instantly the millisecond it arrives. 
+                         <span className="text-white font-bold block mt-1">⚠️ DO NOT cancel numbers prematurely. Set your bot timeout to at least 15-20 minutes for a 100% success rate!</span>
+                         Suggested polling rate: 3 to 5 seconds.
+                       </p>
                     </div>
                  </div>
 
@@ -346,7 +351,7 @@ checkZenexLiveFeed("WhatsApp");`;
            </div>
         </div>
 
-        {/* 3. NEW: Active Ranges API (For Telegram Bots) */}
+        {/* 3. Active Ranges API (For Telegram Bots) */}
         <div className="mb-12 bg-[#0F172A] border border-[#334155] rounded-2xl overflow-hidden shadow-lg relative">
            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
               <svg className="w-32 h-32 text-[#8B5CF6]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>

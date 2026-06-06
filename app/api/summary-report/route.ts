@@ -43,13 +43,16 @@ export async function POST(req: Request) {
     const { email, role, limitDays = 60 } = await req.json();
     const safeEmail = email.toLowerCase().trim();
 
+    // Small query (Regex is fine here as User collection is small)
     const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
     if (!currentUser) return NextResponse.json({ success: false });
 
+    // 💥 EXACT DB MATCH FIX: Getting the exact case-sensitive email directly from DB
+    const exactDbEmail = currentUser.email; 
+
     let userRate = role === "admin" ? 0 : (currentUser.otpRate || 0.50);
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
-    let targetEmail = role === "admin" ? "" : safeEmail;
-
+    
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
 
@@ -60,7 +63,6 @@ export async function POST(req: Request) {
     const currentUTCHour = new Date().getUTCHours();
     const currentUTCMin = new Date().getUTCMinutes();
     
-    // রাত ০০:০০ থেকে ০০:৩৫ পর্যন্ত লাইভ কুয়েরি গতকাল থেকে শুরু হবে (কারণ ক্রন তখনো ডায়েরি লিখেনি)
     if (currentUTCHour === 0 && currentUTCMin <= 35) {
         const yesterdayDate = new Date();
         yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
@@ -68,7 +70,6 @@ export async function POST(req: Request) {
         liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
     }
     
-    // ডায়েরি শুধু লাইভ সীমানার আগের ডাটা আনবে (ডাবল কাউন্ট রোধ করার জন্য)
     const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
     
     if (!isAllTime) {
@@ -78,8 +79,9 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
+    // 💥 BYPASSING REGEX: Using Exact Match for B-Tree Index hit (Ultra Fast) 💥
     if (role !== "admin") {
-        dailyStatQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+        dailyStatQuery.userEmail = exactDbEmail; 
     }
 
     const groupedRawData: Record<string, any> = {};
@@ -104,22 +106,20 @@ export async function POST(req: Request) {
         }
     });
 
-    // 💥 LIVE ORDERS FETCH 💥
+    // 💥 LIVE ORDERS FETCH WITH EXACT MATCH 💥
     const orderQuery: any = { createdAt: { $gte: liveQueryStart } }; 
     
     if (role !== "admin") {
-        orderQuery.userEmail = new RegExp(`^${targetEmail}$`, 'i');
+        orderQuery.userEmail = exactDbEmail; // 💥 No Regex!
     }
 
     const orders = await Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost orderCommission").lean();
 
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
-
-       // 💥 DATE CONSISTENCY FIX: ওটিপি পরে আসলেও অর্ডারের মূল দিনের ঘরেই কাউন্ট হবে 💥
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       if (finalDateStr < liveQueryDateStr) return; // সিকিউরিটি (ডাবল কাউন্ট রোধ)
+       if (finalDateStr < liveQueryDateStr) return; 
 
        if (!groupedRawData[finalDateStr]) groupedRawData[finalDateStr] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
        

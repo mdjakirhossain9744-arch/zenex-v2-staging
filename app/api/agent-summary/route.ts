@@ -47,7 +47,6 @@ export async function POST(req: Request) {
     const safeAgentEmail = email.toLowerCase().trim();
     const cacheKey = `${safeAgentEmail}_${limitDays}`;
 
-    // 💥 CHECK CACHE FIRST 💥
     const now = Date.now();
     const cachedData = cache.get(cacheKey);
     if (cachedData && (now - cachedData.timestamp < CACHE_DURATION)) {
@@ -59,24 +58,27 @@ export async function POST(req: Request) {
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
 
-    const emailConditions = [{ agentEmail: new RegExp(`^${agent.email}$`, 'i') }];
-    if (agent.customAgentMail) emailConditions.push({ agentEmail: new RegExp(`^${agent.customAgentMail}$`, 'i') });
+    // 💥 GET EXACT DB EMAILS 💥
+    const exactAgentEmail = agent.email;
+    const customAgentEmail = agent.customAgentMail;
+    
+    const agentEmailArray = [exactAgentEmail];
+    if (customAgentEmail) agentEmailArray.push(customAgentEmail);
 
-    const networkUsers = await User.find({ $or: emailConditions, role: "user" })
+    // Fetch network users using Exact Match $in array (Super Fast!)
+    const networkUsers = await User.find({ agentEmail: { $in: agentEmailArray }, role: "user" })
       .select("email otpRate fullName uid _id lastLogin createdAt balance status")
       .lean();
 
-    const targetEmails = new Set<string>();
+    const exactTargetEmails = [exactAgentEmail];
+    if (customAgentEmail) exactTargetEmails.push(customAgentEmail);
+    
     const userInfoMap: Record<string, any> = {}; 
-
-    targetEmails.add(safeAgentEmail);
-    if (agent.customAgentMail) targetEmails.add(agent.customAgentMail.toLowerCase().trim());
 
     networkUsers.forEach((u: any) => {
         if (u.email) {
-            const e = u.email.toLowerCase().trim();
-            targetEmails.add(e);
-            userInfoMap[e] = {
+            exactTargetEmails.push(u.email);
+            userInfoMap[u.email.toLowerCase()] = {
                 id: u.uid || `ZX-${u._id?.toString().substring(18, 24).toUpperCase() || 'UNKNOWN'}`,
                 name: u.fullName || u.email.split('@')[0],
                 todayOTP: 0 
@@ -84,13 +86,10 @@ export async function POST(req: Request) {
         }
     });
 
-    const uniqueEmails = Array.from(targetEmails);
     const agentMaxRate = agent.agentMaxRate || 0.70;
-
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
     
-    // 💥 THE MIDNIGHT CROSSOVER FIX 💥
     let liveQueryDateStr = todayStrUTC;
     let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
 
@@ -113,14 +112,12 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
-    const queryConditions: any[] = [];
-    uniqueEmails.forEach(e => {
-        const regex = new RegExp(`^${e}$`, 'i');
-        queryConditions.push({ userEmail: regex }, { email: regex });
-    });
-
-    if (queryConditions.length > 0) {
-        dailyStatQuery.$or = queryConditions;
+    // 💥 BYPASS REGEX: Exact Match $in Index Scan (Huge Speed Boost) 💥
+    if (exactTargetEmails.length > 0) {
+        dailyStatQuery.$or = [
+            { userEmail: { $in: exactTargetEmails } },
+            { email: { $in: exactTargetEmails } }
+        ];
     }
 
     const groupedRawData: Record<string, any> = {};
@@ -139,8 +136,11 @@ export async function POST(req: Request) {
 
     const orderQuery: any = { createdAt: { $gte: liveQueryStart } };
     
-    if (queryConditions.length > 0) {
-        orderQuery.$or = queryConditions;
+    if (exactTargetEmails.length > 0) {
+        orderQuery.$or = [
+            { userEmail: { $in: exactTargetEmails } },
+            { email: { $in: exactTargetEmails } }
+        ];
     }
 
     const orders = await Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission").lean(); 
@@ -161,7 +161,7 @@ export async function POST(req: Request) {
        }
        
        groupedRawData[finalDateStr].total += 1;
-       groupedRawData[finalDateStr].allocation += 1; // 💥 RESTORED ORIGINAL LOGIC
+       groupedRawData[finalDateStr].allocation += 1; 
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
           const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
@@ -187,7 +187,7 @@ export async function POST(req: Request) {
               todayAppCounts[sName] += validMsgCount;
           }
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
-           groupedRawData[finalDateStr].failed += 1; // 💥 RESTORED FAILED LOGIC
+           groupedRawData[finalDateStr].failed += 1; 
        }
     });
 
@@ -197,7 +197,6 @@ export async function POST(req: Request) {
 
     const nowTime = new Date().getTime();
     
-    // 💥 SMART FILTER: ONLY ACTIVE USERS FOR "UNSEEN LIST" 💥
     const activeNetworkUsers = networkUsers.filter((u: any) => {
         const s = (u.status || "active").toLowerCase();
         return s !== "banned" && s !== "pending" && s !== "suspended";
@@ -211,7 +210,6 @@ export async function POST(req: Request) {
             sortValue = loginTime;
             const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
             
-            // 💥 RESTORED ORIGINAL FULL TIME LOGIC 💥
             if (diffDays === 0) timeText = "Today";
             else if (diffDays === 1) timeText = "Yesterday";
             else if (diffDays < 7) timeText = `${diffDays} days ago`;
@@ -240,7 +238,7 @@ export async function POST(req: Request) {
             balance: u.balance || 0, 
             sortValue
         };
-    }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 15); // TOP 15
+    }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 15);
 
     const yesterdayDate = new Date();
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
@@ -258,7 +256,6 @@ export async function POST(req: Request) {
        yesterdaySuccess: yesterdayData.success, yesterdayRevenue: yesterdayData.amount
     };
 
-    // 💥 SAVE TO CACHE 💥
     cache.set(cacheKey, { timestamp: now, data: responseData });
 
     return NextResponse.json(responseData);
