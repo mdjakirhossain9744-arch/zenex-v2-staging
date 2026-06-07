@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../DashboardLayout"; 
 import { useRouter } from "next/navigation";
+import { messaging, onMessage } from "../../lib/firebase"; // 👈 Firebase import
 
 export default function AdminPayments() {
   const router = useRouter();
@@ -52,6 +53,21 @@ export default function AdminPayments() {
       fetchRealData();
     }
   }, [role, activeAdminTab, timeFilter, debouncedSearch, currentPage]);
+
+  // ==========================================
+  // 🚀 FCM: REAL-TIME AUTO REFRESH MAGIC
+  // ==========================================
+  useEffect(() => {
+    if (role === "admin" && typeof window !== "undefined" && messaging) {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        console.log("🔥 Live Withdraw Detected! Auto-Refreshing Table...", payload);
+        // যখনই নতুন পুশ নোটিফিকেশন আসবে, টেবিল অটো রিফ্রেশ হবে!
+        fetchRealData(); 
+      });
+      return () => unsubscribe(); // Cleanup
+    }
+  }, [role, messaging]); // Added to active listeners
+  // ==========================================
 
   const fetchPaymentSettings = async () => {
     try {
@@ -258,7 +274,6 @@ export default function AdminPayments() {
                   {(activeAdminTab !== "HISTORY") && (
                     <th className="p-4 pl-6 w-10"><input type="checkbox" onChange={toggleSelectAll} checked={selectedIds.length === dbRequests.length && dbRequests.length > 0} className="w-4 h-4 rounded bg-[#1E293B] border-[#334155] cursor-pointer" /></th>
                   )}
-                  {/* 💥 FIXED: Updated Header for WID & Date 💥 */}
                   <th className="p-4 pl-6 font-black">Ref ID & Date</th>
                   <th className="p-4 font-black">User Details</th>
                   <th className="p-4 font-black">Amount</th>
@@ -281,7 +296,6 @@ export default function AdminPayments() {
                         }} className="w-4 h-4 cursor-pointer" /></td>
                       )}
                       
-                      {/* 💥 FIXED: Displaying ZX- ID and Date 💥 */}
                       <td className="p-4 pl-6">
                          <div className="font-mono text-[#3B82F6] font-bold text-xs">{req.wid || 'ZX-PENDING'}</div>
                          <div className="text-[10px] font-black text-[#94A3B8] mt-0.5">{req.date || new Date(req.createdAt).toLocaleDateString()}</div>
@@ -294,7 +308,7 @@ export default function AdminPayments() {
                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded text-white ${req.method === 'Binance' ? 'bg-[#F59E0B]' : 'bg-[#334155]'}`}>{req.method}</span>
                            <span className="font-mono text-[#A855F7] font-bold">{req.accountNumber}</span>
                            <button onClick={() => copyToClipboard(req.accountNumber)} className="text-[#94A3B8] hover:text-[#3B82F6] transition-colors" title="Copy Number">
-                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                            </button>
                         </div>
                       </td>

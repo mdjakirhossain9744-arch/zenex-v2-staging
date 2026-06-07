@@ -5,6 +5,7 @@ import User from "../../../models/User";
 import PaymentSetting from "../../../models/PaymentSetting"; 
 import Notification from "../../../models/Notification";
 import { getLiveUsdtRate, sendBinancePay } from "../../lib/binance"; 
+import { adminMessaging } from "../../lib/firebase-admin"; // 👈 Firebase Admin Import (পাথ ঠিক না থাকলে একটু মিলিয়ে নেবেন)
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,24 @@ export async function POST(req: Request) {
           adminNote: "Processing request..."
       });
       await newWithdraw.save();
+
+      // ==========================================
+      // 🚀 FCM: SEND ALERT TO ADMINS (Fire & Forget)
+      // ==========================================
+      if (adminMessaging) {
+          User.find({ role: "admin", fcmToken: { $exists: true, $ne: "" } }).then(admins => {
+              admins.forEach(adminUser => {
+                  adminMessaging.send({
+                      token: adminUser.fcmToken,
+                      notification: { 
+                          title: "💰 New Withdraw Request!", 
+                          body: `${name} requested ৳${safeAmount} via ${method}.` 
+                      }
+                  }).catch(e => console.error("Admin FCM Error:", e));
+              });
+          }).catch(e => console.error("Admin Find Error:", e));
+      }
+
       return NextResponse.json({ success: true, message: "Withdraw request submitted successfully!" });
     }
 
@@ -83,6 +102,9 @@ export async function POST(req: Request) {
           const lockedReq = await Withdraw.findOneAndUpdate({ _id: request._id, status: { $in: ["PROCESSING", "PENDING"] } }, { $set: { status: "PAYING_LOCK" } }, { new: true });
           if (!lockedReq) continue;
 
+          let paymentSuccessful = false;
+          let paymentAmount = request.amount;
+
           if (request.method === "Binance") {
             try {
               const rate = await getLiveUsdtRate();
@@ -94,6 +116,9 @@ export async function POST(req: Request) {
                 lockedReq.adminNote = "Auto Paid. Binance TX Processed.";
                 await lockedReq.save();
                 await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
+                
+                paymentSuccessful = true;
+                paymentAmount = `$${usdAmount} USDT`; // For Notification
                 successCount++;
               } else {
                 const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
@@ -132,7 +157,24 @@ export async function POST(req: Request) {
             lockedReq.adminNote = "Manual Payment Completed.";
             await lockedReq.save();
             await Notification.create({ userEmail: request.email, title: "Payment Successful 🎉", description: `৳ ${request.amount} has been paid!`, type: "SUCCESS", color: "green" });
+            
+            paymentSuccessful = true;
+            paymentAmount = `৳${request.amount}`;
             successCount++;
+          }
+
+          // ==========================================
+          // 🚀 FCM: BULK SUCCESS ALERT TO USER 
+          // ==========================================
+          if (paymentSuccessful && adminMessaging) {
+              User.findOne({ email: request.email, fcmToken: { $exists: true, $ne: "" } }).then(u => {
+                  if (u && u.fcmToken) {
+                      adminMessaging.send({
+                          token: u.fcmToken,
+                          notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmount} has been paid via ${request.method}.` }
+                      }).catch(()=>{});
+                  }
+              }).catch(()=>{});
           }
         } 
         else if (actionType === "PROCESS" && request.status === "PENDING") {
@@ -156,6 +198,8 @@ export async function POST(req: Request) {
          
          if (!request) return NextResponse.json({ success: false, message: "Request already processed or locked!" });
 
+         let paymentAmountMsg = `৳${request.amount}`;
+
          if (request.method === "Binance") {
              try {
                  const rate = await getLiveUsdtRate();
@@ -168,7 +212,7 @@ export async function POST(req: Request) {
                      request.adminNote = "Auto Paid. Binance TX Processed.";
                      await request.save();
                      await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
-                     return NextResponse.json({ success: true, message: `Binance Auto Pay Successful! Sent $${usdAmount}` });
+                     paymentAmountMsg = `$${usdAmount} USDT`;
                  } else {
                      const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
                      const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
@@ -201,12 +245,27 @@ export async function POST(req: Request) {
                  await request.save();
                  return NextResponse.json({ success: false, message: `API Crash: ${apiErr.message}` });
              }
+         } else {
+             request.status = "PAID";
+             request.adminNote = "Manual Payment Completed.";
+             await request.save();
+             await Notification.create({ userEmail: request.email, title: "Payment Successful 🎉", description: `৳ ${request.amount} has been paid!`, type: "SUCCESS", color: "green" });
          }
 
-         request.status = "PAID";
-         request.adminNote = "Manual Payment Completed.";
-         await request.save();
-         await Notification.create({ userEmail: request.email, title: "Payment Successful 🎉", description: `৳ ${request.amount} has been paid!`, type: "SUCCESS", color: "green" });
+         // ==========================================
+         // 🚀 FCM: SINGLE SUCCESS ALERT TO USER
+         // ==========================================
+         if (adminMessaging) {
+             User.findOne({ email: request.email, fcmToken: { $exists: true, $ne: "" } }).then(u => {
+                 if (u && u.fcmToken) {
+                     adminMessaging.send({
+                         token: u.fcmToken,
+                         notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmountMsg} has been paid via ${request.method}.` }
+                     }).catch(()=>{});
+                 }
+             }).catch(()=>{});
+         }
+
          return NextResponse.json({ success: true, message: "Status updated to PAID" });
       }
 
@@ -216,7 +275,6 @@ export async function POST(req: Request) {
       if (newStatus === "PROCESSING" && request.status !== "PROCESSING") {
          request.adminNote = "Request is being verified...";
          
-         // 💥 BINANCE BLOCKER FIX: Binance হলে Sheet এ ডাটা যাবে না! 💥
          const googleSheetUrl = process.env.GOOGLE_SHEET_WEBHOOK;
          if (googleSheetUrl && request.method !== "Binance") { 
              fetch(googleSheetUrl, { 
@@ -264,7 +322,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC (SUPER OPTIMIZED WITH PARALLEL PROMISES) 💥
+    // 💥 4. FETCH LOGIC 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
