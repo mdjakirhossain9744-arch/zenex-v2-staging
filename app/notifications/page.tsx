@@ -9,8 +9,7 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 💥 NEW: Tab State 💥
-  const [activeTab, setActiveTab] = useState("GLOBAL"); // "GLOBAL" or "PERSONAL"
+  const [activeTab, setActiveTab] = useState("GLOBAL"); 
 
   const [isPosting, setIsPosting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -25,7 +24,6 @@ export default function Notifications() {
        setUserEmail(parsed.email);
     }
 
-    // 💥 URL Checker: If user clicked Bell Icon, open Personal Tab automatically 💥
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get("tab") === "personal") {
@@ -34,10 +32,23 @@ export default function Notifications() {
     }
   }, []);
 
+  // 💥 ম্যাজিক: লাইভ ডেটা ফেচ এবং ইভেন্ট লিসেনার 💥
   useEffect(() => {
     if (userEmail || activeTab === "GLOBAL") {
       fetchNotifications(activeTab);
     }
+
+    // সিগন্যাল পেলেই আবার ডেটা ফেচ করবে (রিলোড ছাড়াই)
+    const handleLiveUpdate = () => {
+      console.log("⚡ Live Signal Received! Refreshing Notifications...");
+      fetchNotifications(activeTab); 
+    };
+
+    window.addEventListener("NEW_LIVE_NOTIFICATION", handleLiveUpdate);
+
+    return () => {
+      window.removeEventListener("NEW_LIVE_NOTIFICATION", handleLiveUpdate);
+    };
   }, [activeTab, userEmail]);
 
   const fetchNotifications = async (tabType: string) => {
@@ -55,7 +66,6 @@ export default function Notifications() {
         const viewedNotifs = JSON.parse(localStorage.getItem("zenex_viewed") || "[]");
 
         const formatted = data.data.map((n: any) => {
-           // We only track views/likes for GLOBAL notices
            if (tabType === "GLOBAL" && !viewedNotifs.includes(n._id)) {
               viewedNotifs.push(n._id);
               localStorage.setItem("zenex_viewed", JSON.stringify(viewedNotifs));
@@ -107,7 +117,7 @@ export default function Notifications() {
         }
       }
       return notif;
-    })); // 💥 FIXED HERE: Properly closed the bracket! 💥
+    })); 
 
     localStorage.setItem("zenex_reactions", JSON.stringify(savedReactions));
 
@@ -160,7 +170,6 @@ export default function Notifications() {
       <div className="p-4 md:p-10 w-full relative z-10 pb-20">
         <div className="max-w-4xl mx-auto flex flex-col gap-6">
 
-           {/* 💥 TOP TAB NAVIGATION 💥 */}
            <div className="flex items-center gap-2 bg-[#0F172A] p-2 rounded-2xl border border-[#334155] w-full md:w-max">
              <button 
                 onClick={() => setActiveTab("GLOBAL")} 
@@ -262,7 +271,6 @@ export default function Notifications() {
                       {notif.description}
                    </p>
 
-                   {/* Only show views and reactions for GLOBAL notices */}
                    {activeTab === "GLOBAL" && (
                      <div className="flex items-center justify-between pt-4 border-t border-[#334155]/50">
                         <div className="flex items-center gap-1.5 text-xs font-bold text-[#64748B]">

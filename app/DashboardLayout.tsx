@@ -68,6 +68,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     
     checkActiveSession(); fetchSystemSettings(); fetchRealBalance(); fetchHeaderNotifications();
 
+    // 💥 ম্যাজিক: Live Header Update Listener 💥
+    const handleLiveNotification = () => {
+      console.log("⚡ Live Notification Signal Received in Header!");
+      fetchHeaderNotifications(); // রিলোড ছাড়াই নতুন নোটিফিকেশন ফেচ করবে
+    };
+    window.addEventListener("NEW_LIVE_NOTIFICATION", handleLiveNotification);
+    // ==========================================
+
     let sessionInterval: NodeJS.Timeout;
     let maintInterval: NodeJS.Timeout;
     let balanceInterval: NodeJS.Timeout;
@@ -104,6 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       stopUIUpdates(); 
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("storage", syncLogout); 
+      window.removeEventListener("NEW_LIVE_NOTIFICATION", handleLiveNotification); // 💥 Clean up Listener
     };
   }, [router, handleLogout]);
 
