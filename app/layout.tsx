@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import SessionWatcher from "./components/SessionWatcher"; // 💥 SessionWatcher ইমপোর্ট করা হলো
+import SessionWatcher from "./components/SessionWatcher"; // 💥 SessionWatcher
+import FCMProvider from "./components/FCMProvider"; // 🚀 FCM Push Notification Provider
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,8 +49,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {/* 💥 ম্যাজিক: Cross-Tab Session Sync Component 💥 */}
-        {/* এটি ব্যাকগ্রাউন্ডে কাজ করবে এবং অন্য ট্যাবে লগইন হলে এই পেজ রিলোড করে দেবে */}
         <SessionWatcher />
+        
+        {/* 🚀 ম্যাজিক: Real-Time FCM Push Notification Engine 🚀 */}
+        <FCMProvider />
         
         {children}
       </body>
