@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 💥 Advanced SEO Metadata & Preview Image Removed 💥
+// 💥 Advanced SEO Metadata & PWA Manifest Added 💥
 export const metadata: Metadata = {
+  manifest: "/manifest.json", // 🚀 PWA Builder-এর জন্য Manifest লিঙ্ক 
   metadataBase: new URL("https://www.zenexnetwork.com"),
   title: "ZENEX NETWORK",
   description: "Join ZENEX NETWORK. Get free virtual numbers, complete successful OTP tasks, and get paid instantly. Enterprise micro-job platform.",
