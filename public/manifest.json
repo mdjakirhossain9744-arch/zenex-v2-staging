@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon-512x512.png",
+      "src": "/zenex-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
