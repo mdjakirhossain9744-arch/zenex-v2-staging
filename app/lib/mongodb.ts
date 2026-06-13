@@ -17,7 +17,12 @@ async function connectToDatabase() {
     return cached.conn;
   }
   if (!cached.promise) {
-    const opts = { bufferCommands: false };
+    // 💥 ADDED: maxPoolSize and minPoolSize for Enterprise Connection Pooling 💥
+    const opts = { 
+        bufferCommands: false,
+        maxPoolSize: 100, // Handle up to 100 concurrent DB heavy connections safely
+        minPoolSize: 20   // Keep 20 connections warm and ready to eliminate connection lag
+    };
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
       return mongoose;
     });

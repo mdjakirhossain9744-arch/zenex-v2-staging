@@ -4,11 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../DashboardLayout"; 
 
-const getUTCHour = (dateObj: any = new Date()) => {
-  try { return new Date(dateObj).getUTCHours(); } 
-  catch(e) { return 0; }
-};
-
 export default function UserDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -27,7 +22,6 @@ export default function UserDashboardPage() {
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
-  // 🔥 DYNAMIC APP FORMATTER 🔥
   const formatTopApps = (countsObj: Record<string, number>) => {
     return Object.entries(countsObj).map(([name, count]) => {
       let info = { icon: name.charAt(0).toUpperCase(), text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
@@ -83,6 +77,7 @@ export default function UserDashboardPage() {
 
     const fetchUserDashboardData = async () => {
       try {
+        // Fetching data simultaneously to save network time
         const [userDetailsRes, summaryRes] = await Promise.all([
           fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
           fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "user" }) }).then(r => r.json())
@@ -113,7 +108,8 @@ export default function UserDashboardPage() {
     };
 
     fetchUserDashboardData();
-    const interval = setInterval(fetchUserDashboardData, 10000);
+    // 💥 SERVER OPTIMIZATION: Polling changed from 10s to 25s to stop API DDoS 💥
+    const interval = setInterval(fetchUserDashboardData, 25000);
     return () => clearInterval(interval);
   }, [router]);
 
