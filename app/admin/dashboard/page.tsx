@@ -78,7 +78,9 @@ export default function AdminGlobalDashboard() {
 
     setIsAdmin(true); 
     fetchAdminDashboardData(parsedUser.email);
-    const intervalData = setInterval(() => fetchAdminDashboardData(parsedUser.email), 10000);
+    
+    // 💥 SERVER OPTIMIZATION: Admin Dashboard Heavy Aggregation set to 30 Seconds! 💥
+    const intervalData = setInterval(() => fetchAdminDashboardData(parsedUser.email), 30000);
     return () => clearInterval(intervalData);
   }, [router]);
 
@@ -188,7 +190,6 @@ export default function AdminGlobalDashboard() {
                </span>
              </div>
              
-             {/* 💥 ADMIN GRAPH UPDATE: God-Mode Red-Amber Gradient Area Fill 💥 */}
              <div className="flex-1 w-full h-48 md:h-56 relative z-10">
                 {Math.max(...trafficData) === 0 ? (
                   <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">No Traffic Data Yet</div>

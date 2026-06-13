@@ -124,7 +124,8 @@ export default function ManagerDashboardPage() {
     };
 
     fetchAgentDashboardData();
-    const interval = setInterval(fetchAgentDashboardData, 10000);
+    // 💥 SERVER OPTIMIZATION: Manager Dashboard changed to 25 Seconds polling! 💥
+    const interval = setInterval(fetchAgentDashboardData, 25000);
     return () => clearInterval(interval);
   }, [router]);
 
