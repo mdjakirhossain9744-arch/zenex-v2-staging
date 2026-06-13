@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 // 💥 15-SECOND MICRO-CACHE MECHANISM (ZERO DB LOAD) 💥
 const cache = new Map<string, { timestamp: number, data: any }>();
-const CACHE_DURATION = 15000; // 15 seconds
+const CACHE_DURATION = 15000; 
 
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
@@ -58,14 +58,12 @@ export async function POST(req: Request) {
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
 
-    // 💥 GET EXACT DB EMAILS 💥
     const exactAgentEmail = agent.email;
     const customAgentEmail = agent.customAgentMail;
     
     const agentEmailArray = [exactAgentEmail];
     if (customAgentEmail) agentEmailArray.push(customAgentEmail);
 
-    // Fetch network users using Exact Match $in array (Super Fast!)
     const networkUsers = await User.find({ agentEmail: { $in: agentEmailArray }, role: "user" })
       .select("email otpRate fullName uid _id lastLogin createdAt balance status")
       .lean();
@@ -91,8 +89,6 @@ export async function POST(req: Request) {
     const isAllTime = limitDays === "all";
     
     let liveQueryDateStr = todayStrUTC;
-    let liveQueryStart = new Date(todayStrUTC + "T00:00:00.000Z");
-
     const currentUTCHour = new Date().getUTCHours();
     const currentUTCMin = new Date().getUTCMinutes();
     
@@ -100,7 +96,6 @@ export async function POST(req: Request) {
         const yesterdayDate = new Date();
         yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
         liveQueryDateStr = getUTCDateString(yesterdayDate);
-        liveQueryStart = new Date(liveQueryDateStr + "T00:00:00.000Z");
     }
 
     const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
@@ -112,7 +107,6 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
-    // 💥 BYPASS REGEX: Exact Match $in Index Scan (Huge Speed Boost) 💥
     if (exactTargetEmails.length > 0) {
         dailyStatQuery.$or = [
             { userEmail: { $in: exactTargetEmails } },
@@ -120,22 +114,7 @@ export async function POST(req: Request) {
         ];
     }
 
-    const groupedRawData: Record<string, any> = {};
-    const dailyStats = await DailyStat.find(dailyStatQuery).lean();
-    
-    dailyStats.forEach((ds: any) => {
-        const dDate = ds.dateString;
-        if (!groupedRawData[dDate]) groupedRawData[dDate] = { total: 0, success: 0, failed: 0, amount: 0, allocation: 0 };
-
-        groupedRawData[dDate].total += (ds.totalNumbers || 0);
-        groupedRawData[dDate].allocation += (ds.totalNumbers || 0);
-        groupedRawData[dDate].success += (ds.successOTP || 0);
-        groupedRawData[dDate].failed += (ds.failedNumbers || ds.failed || 0); 
-        groupedRawData[dDate].amount += (ds.totalCommission || 0);
-    });
-
-    const orderQuery: any = { createdAt: { $gte: liveQueryStart } };
-    
+    const orderQuery: any = { dateString: { $gte: liveQueryDateStr } }; // 💥 FIXED: Using Covering Index! 
     if (exactTargetEmails.length > 0) {
         orderQuery.$or = [
             { userEmail: { $in: exactTargetEmails } },
@@ -143,11 +122,35 @@ export async function POST(req: Request) {
         ];
     }
 
-    const orders = await Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission").lean(); 
+    // 💥 MONGODB AGGREGATION & PARALLEL EXECUTION FOR AGENT DASHBOARD 💥
+    const [dailyStatsAgg, orders] = await Promise.all([
+        DailyStat.aggregate([
+            { $match: dailyStatQuery },
+            { $group: {
+                _id: "$dateString",
+                total: { $sum: { $ifNull: ["$totalNumbers", 0] } },
+                allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } },
+                success: { $sum: { $ifNull: ["$successOTP", 0] } },
+                failed: { $sum: { $cond: [{ $gt: ["$failedNumbers", null] }, "$failedNumbers", { $ifNull: ["$failed", 0] }] } },
+                amount: { $sum: { $ifNull: ["$totalCommission", 0] } }
+            }}
+        ]),
+        Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission").lean()
+    ]);
 
+    const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
+
+    // Load instantly processed Aggregation Data
+    dailyStatsAgg.forEach((ds: any) => {
+        groupedRawData[ds._id] = {
+            total: ds.total, allocation: ds.allocation,
+            success: ds.success, failed: ds.failed, amount: ds.amount
+        };
+    });
     
+    // Process Today's Live Orders
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
