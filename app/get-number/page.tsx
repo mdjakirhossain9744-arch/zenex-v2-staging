@@ -186,7 +186,6 @@ export default function GetNumber() {
     setHasMore(true);       
   };
 
-  // 💥 MASTER FIX: The "Refresh" button now only queries our own MongoDB! NO MORE MNIT ATTACK! 💥
   const checkOtps = async () => {
     setIsRefreshing(true);
     try {
@@ -195,6 +194,15 @@ export default function GetNumber() {
       setTimeout(() => setIsRefreshing(false), 500); 
     }
   };
+
+  // 💥 FIXED: Moved loadMoreNumbers ABOVE the useEffect to fix the Red squiggly line 💥
+  const loadMoreNumbers = useCallback(async () => {
+     setIsFetchingMore(true);
+     const nextPage = page + 1;
+     await fetchDbOrders(nextPage, false);
+     setPage(nextPage);
+     setIsFetchingMore(false);
+  }, [page, fetchDbOrders]);
 
   useEffect(() => {
     const handleInstantOtp = (e: any) => {
@@ -238,15 +246,7 @@ export default function GetNumber() {
     
     if (observerRef.current) observer.observe(observerRef.current);
     return () => observer.disconnect();
-  }, [hasMore, isFetchingMore, isInitialLoad, page, fetchDbOrders]);
-
-  const loadMoreNumbers = async () => {
-     setIsFetchingMore(true);
-     const nextPage = page + 1;
-     await fetchDbOrders(nextPage, false);
-     setPage(nextPage);
-     setIsFetchingMore(false);
-  };
+  }, [hasMore, isFetchingMore, isInitialLoad, loadMoreNumbers]);
 
   const fetchNewNumber = async () => {
     if (!rangeInput) {
@@ -262,17 +262,22 @@ export default function GetNumber() {
       const result = await response.json();
       
       if (response.ok && result.success) {
-        const numberToCopy = result.data.copy;
+        const numberToCopy = result.data.copy || result.data.number;
         navigator.clipboard.writeText(numberToCopy);
         showToast(`Copied: ${numberToCopy}`);
 
-        const fullNumberDisplay = result.data.full_number.startsWith("+") ? result.data.full_number : `+${result.data.full_number}`;
+        const fullNumberDisplay = `+${result.data.full_number}`;
         const todayStr = getUTCDateString();
 
         const newEntry = {
-          id: `temp_${Date.now()}`, dateString: todayStr, displayNumber: fullNumberDisplay, 
-          searchNumber: result.data.full_number, country: result.data.country || "Unknown",
-          operator: result.data.operator || "Any", status: "WAIT", otp: "Waiting...",
+          id: result.orderId || `temp_${Date.now()}`,
+          dateString: todayStr, 
+          displayNumber: fullNumberDisplay, 
+          searchNumber: result.data.full_number, 
+          country: result.data.country || "Unknown",
+          operator: result.data.operator || "Any", 
+          status: "WAIT", 
+          otp: "Waiting...",
           fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
           createdAt: Date.now(), receivedAt: null 
         };
@@ -283,11 +288,6 @@ export default function GetNumber() {
         
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
-
-        fetch(`/api/sync-orders?t=${Date.now()}`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "CREATE", email: getUserEmail(), orderData: newEntry })
-        });
 
       } else {
         showToast(result.error || "Failed!");
