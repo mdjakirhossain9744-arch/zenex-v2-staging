@@ -15,9 +15,10 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
-// 💥 Sort Time Logic
+// 💥 BUG FIX: Convert String to Time (ms) to prevent NaN sorting crash!
 const getSortTime = (item: any) => {
-    return item.receivedAt || item.updatedAt || item.createdAt;
+    const t = item.receivedAt || item.updatedAt || item.createdAt;
+    return new Date(t).getTime() || 0;
 };
 
 export default function GetNumber() {
@@ -107,7 +108,7 @@ export default function GetNumber() {
     }, 3000);
   }, []);
 
-  const getTimeAgo = (timestamp: number) => {
+  const getTimeAgo = (timestamp: any) => {
     if (!timestamp) return "Just Now";
     const timeMs = new Date(timestamp).getTime();
     if (isNaN(timeMs)) return "Just Now";
@@ -121,9 +122,10 @@ export default function GetNumber() {
   };
 
   const getDisplayTime = (item: any) => {
+      const cTime = new Date(item.createdAt).getTime();
       if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
-      if (item.status === 'FAIL' || (item.status === 'WAIT' && (currentTime - item.createdAt) >= 20 * 60 * 1000)) {
-          if (item.otp === "Timeout") return item.createdAt + (20 * 60 * 1000); 
+      if (item.status === 'FAIL' || (item.status === 'WAIT' && (currentTime - cTime) >= 20 * 60 * 1000)) {
+          if (item.otp === "Timeout") return cTime + (20 * 60 * 1000); 
           return item.updatedAt || item.createdAt;
       }
       return item.createdAt; 
@@ -158,10 +160,19 @@ export default function GetNumber() {
               const itemId = fetchedItem._id || fetchedItem.id;
               const existingItem = prevMap.get(itemId);
               
-              if (existingItem && existingItem.status === "DONE" && fetchedItem.status === "WAIT") {
-                 return; 
+              if (existingItem) {
+                 if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
+                 
+                 // 💥 SMART MERGE: Keep UI states like copyNumber while updating DB status
+                 prevMap.set(itemId, { ...existingItem, ...fetchedItem, copyNumber: existingItem.copyNumber || fetchedItem.copyNumber });
+                 
+                 // Show Toast if UI updates from WAIT to DONE
+                 if (existingItem.status === "WAIT" && fetchedItem.status === "DONE" && isBackground) {
+                     showToast(`OTP Received: ${cleanOTPDisplay(fetchedItem.otp)}`);
+                 }
+              } else {
+                 prevMap.set(itemId, fetchedItem);
               }
-              prevMap.set(itemId, fetchedItem);
            });
 
            return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
@@ -173,7 +184,7 @@ export default function GetNumber() {
     finally {
       setIsInitialLoad(false); 
     }
-  }, [selectedDate, activeFilter]); 
+  }, [selectedDate, activeFilter, showToast]); 
 
   const handleFilterClick = (filterName: string) => {
     if (activeFilter === filterName) return;
@@ -224,6 +235,7 @@ export default function GetNumber() {
     window.addEventListener('otp-received-instant', handleInstantOtp);
 
     fetchDbOrders(1, false);
+    // 💥 3 SECONDS SYNC INTERVAL TO MATCH DB 💥
     const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
@@ -259,15 +271,11 @@ export default function GetNumber() {
       const result = await response.json();
       
       if (response.ok && result.success) {
-        // 💥 Boss, Here is the Magic! 
-        // numberToCopy = The customized format that user selected (without plus, local etc.)
         const numberToCopy = result.data.copy || result.data.number || result.data.full_number;
         navigator.clipboard.writeText(numberToCopy);
         showToast(`Copied: ${numberToCopy}`);
 
-        // realMNITNumber = Always the pure original MNIT number (+225077...) for Display and Database sync
         const realMNITNumber = result.data.full_number || result.data.number;
-        
         const todayStr = getUTCDateString();
         const realId = result.orderId || Date.now().toString();
 
@@ -275,17 +283,15 @@ export default function GetNumber() {
           id: realId,
           _id: realId, 
           dateString: todayStr, 
-          
-          displayNumber: realMNITNumber, // <-- Strictly Real MNIT Number for the UI Feed
-          searchNumber: realMNITNumber,  // <-- Strictly Real MNIT Number for Fastify Sync
-          copyNumber: numberToCopy,      // <-- Stored in state so if clicked again on feed, it copies properly
-          
+          displayNumber: realMNITNumber, 
+          searchNumber: realMNITNumber,  
+          copyNumber: numberToCopy,      
           country: result.data.country || "Unknown",
           operator: result.data.operator || "Any", 
           status: "WAIT", 
           otp: "Waiting...",
           fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
-          createdAt: Date.now(), receivedAt: null 
+          createdAt: new Date().toISOString(), receivedAt: null 
         };
         
         if (activeFilter === "ALL" || activeFilter === "WAIT") {
@@ -309,7 +315,8 @@ export default function GetNumber() {
   const dateFilteredNumbers = numbersList.filter((item) => item.dateString === selectedDate);
     
   const finalFilteredNumbers = dateFilteredNumbers.map((item) => {
-      if (item.status === "WAIT" && (currentTime - item.createdAt) >= 20 * 60 * 1000) {
+      const cTime = new Date(item.createdAt).getTime();
+      if (item.status === "WAIT" && (currentTime - cTime) >= 20 * 60 * 1000) {
           return { ...item, status: "FAIL", otp: "Timeout" };
       }
       return item;
@@ -347,7 +354,6 @@ export default function GetNumber() {
   });
 
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
-  
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   return (
@@ -485,17 +491,10 @@ export default function GetNumber() {
                       const isMultiTag = item.isMulti || item.isDup;
 
                       return (
-                      <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
+                      <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
-                            <div 
-                              // 💥 Boss, here it will copy the correct format even if clicked from feed!
-                              onClick={() => { navigator.clipboard.writeText(item.copyNumber || item.searchNumber || item.displayNumber); showToast("Number Copied!"); }} 
-                              className="flex items-center gap-1.5 cursor-pointer group"
-                            >
-                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">
-                                {/* 💥 Force UI to always show Real Search Number */}
-                                {item.searchNumber || item.displayNumber}
-                              </span>
+                            <div onClick={() => { navigator.clipboard.writeText(item.copyNumber || item.searchNumber || item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
+                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.searchNumber || item.displayNumber}</span>
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
