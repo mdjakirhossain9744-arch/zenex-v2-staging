@@ -15,7 +15,6 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
-// 💥 Helper for sorting logic to bring DONE items to Top automatically 💥
 const getSortTime = (item: any) => item.receivedAt || item.updatedAt || item.createdAt;
 
 export default function GetNumber() {
@@ -28,9 +27,7 @@ export default function GetNumber() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState("ALL"); 
   
-  // 💥 Updated Toast System: Multi-Toast Stacking (Max 2) 💥
   const [toasts, setToasts] = useState<{id: number, msg: string}[]>([]);
-  
   const [numbersList, setNumbersList] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [selectedDate, setSelectedDate] = useState(getUTCDateString());
@@ -96,15 +93,12 @@ export default function GetNumber() {
     return dateObj.toLocaleDateString('en-GB', options);
   };
 
-  // 💥 Stacked Toast logic (Max 2 Toasts limit) 💥
   const showToast = useCallback((msg: string) => {
     const id = Date.now() + Math.random();
-    
     setToasts((prev) => {
       const updatedToasts = [...prev, { id, msg }];
-      return updatedToasts.slice(-2); // সর্বোচ্চ ২টি টোস্ট শো করবে
+      return updatedToasts.slice(-2); 
     });
-
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3000);
@@ -169,7 +163,6 @@ export default function GetNumber() {
                  if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) return false; 
                  return true;
               });
-              // Sort using getSortTime to keep updated items at top naturally
               return combined.sort((a, b) => getSortTime(b) - getSortTime(a));
            } else {
               return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
@@ -193,14 +186,12 @@ export default function GetNumber() {
     setHasMore(true);       
   };
 
+  // 💥 MASTER FIX: The "Refresh" button now only queries our own MongoDB! NO MORE MNIT ATTACK! 💥
   const checkOtps = async () => {
     setIsRefreshing(true);
     try {
-      const res = await fetch(`/api/check-otp?t=${Date.now()}`);
-      const result = await res.json();
-      if (result.success) await fetchDbOrders(1, false); 
-    } catch (err) {} 
-    finally {
+      await fetchDbOrders(1, false); 
+    } finally {
       setTimeout(() => setIsRefreshing(false), 500); 
     }
   };
@@ -348,7 +339,6 @@ export default function GetNumber() {
       }
   });
 
-  // 💥 Master Sorting: Automatically brings DONE/Updated items to the absolute TOP! 💥
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
   
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
@@ -357,7 +347,6 @@ export default function GetNumber() {
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 font-sans">
         
-        {/* 💥 Dynamic Stacked Toast Notification Area (Max 2) 💥 */}
         <div className="fixed top-24 right-5 md:right-10 z-[100] flex flex-col gap-2 pointer-events-none">
           {toasts.map((toast) => (
             <div key={toast.id} className="bg-[#10B981] text-white px-4 py-2 rounded-lg shadow-lg font-bold text-sm flex items-center gap-2 animate-bounce-in transition-all pointer-events-auto">
@@ -519,7 +508,6 @@ export default function GetNumber() {
                                  <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
-                                   {/* 💥 FIX: OTP Copy Button now removes ALL spaces and hyphens before copying 💥 */}
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-2 py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
@@ -527,7 +515,7 @@ export default function GetNumber() {
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                       <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
                                       <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
-                                         <svg className="w-3 h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                         <svg className="w-3 h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                       </div>
                                    </button>
                                    

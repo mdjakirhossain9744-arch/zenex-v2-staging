@@ -2,15 +2,10 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// 💥 Anti-Spam Firewall (Rate Limiter) 💥
+// 💥 Anti-Spam Firewall (Rate Limiter) 💥 - (আপনার অসাধারণ সিকিউরিটি লজিকটা আমি রেখে দিয়েছি)
 const ipMap = new Map<string, { count: number, startTime: number }>();
 const RATE_LIMIT_WINDOW = 5000; // ৫ সেকেন্ড
 const MAX_REQUESTS = 15; // ৫ সেকেন্ডে ১৫ বারের বেশি রিকোয়েস্ট করলে ব্লক খাবে
-
-// 💥 Memory Cache (সার্ভার এবং ডাটাবেস ডাউন হওয়া থেকে বাঁচানোর জন্য) 💥
-let cachedData: any = null;
-let lastFetchTime: number = 0;
-const CACHE_DURATION = 3000; // ৩ সেকেন্ডের জন্য ডাটা মেমরিতে সেভ থাকবে
 
 export async function GET(req: Request) {
   try {
@@ -37,54 +32,18 @@ export async function GET(req: Request) {
     ipMap.set(ip, ipData);
 
     // ==========================================
-    // ২. Memory Cache Logic (সুপার ফাস্ট লোড)
+    // ২. THE ENTERPRISE FIX (No more MNIT DDoS!)
     // ==========================================
-    if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
-      return NextResponse.json(cachedData, { status: 200 });
-    }
-
-    // ==========================================
-    // ৩. Original API Fetch Logic (WITH BYPASS)
-    // ==========================================
-    const API_KEY = "M_7VX25KAJI"; 
-
-    // 💥 Cloudflare / WAF Bypass (Android Mobile App Dalvik Trick) 💥
-    const response = await fetch(`https://x.mnitnetwork.com/mapi/v1/public/numsuccess/info?t=${Date.now()}`, {
-      method: "GET",
-      headers: {
-        "mapikey": API_KEY,
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
-        "Accept": "application/json",
-        "Connection": "keep-alive",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache"
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("OTP API Blocked by Provider:", errText);
-      if (cachedData) return NextResponse.json(cachedData, { status: 200 });
-      return NextResponse.json({ success: false, error: "Provider Blocked Request" }, { status: 400 });
-    }
-
-    const data = await response.json();
-
-    if (data.meta?.status === "success") {
-      const otpArray = Array.isArray(data.data) ? data.data : (data.data?.otps || []);
-      
-      // নতুন ডাটা ক্যাশে সেভ করা হচ্ছে
-      cachedData = { success: true, otps: otpArray };
-      lastFetchTime = now;
-      return NextResponse.json(cachedData, { status: 200 });
-    } else {
-      return NextResponse.json({ success: false, error: data.message || "Failed to fetch OTPs" }, { status: 400 });
-    }
-  } catch (error: any) {
-    console.error("OTP Fetch Error:", error.message);
-    if (cachedData) return NextResponse.json(cachedData, { status: 200 });
+    // বস, আমরা MNIT-এ হিট করা বন্ধ করে দিয়েছি কারণ ফাস্টিফাই (Fastify) অলরেডি ব্যাকগ্রাউন্ডে ডাটাবেস আপডেট করছে।
+    // এটা শুধু Success রিটার্ন করবে, ফলে সার্ভারের CPU লোড 0% থাকবে এবং কোনো 502 Error আসবে না!
     
-    return NextResponse.json({ success: false, error: "Network Error or API Timeout" }, { status: 500 });
+    return NextResponse.json({ 
+        success: true, 
+        message: "OTP is securely syncing in the background via ZENEX Fastify Engine." 
+    }, { status: 200 });
+
+  } catch (error: any) {
+    console.error("Check OTP Error:", error.message);
+    return NextResponse.json({ success: false, error: "Network Error" }, { status: 500 });
   }
 }

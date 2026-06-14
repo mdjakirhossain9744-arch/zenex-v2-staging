@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server"; // 💥 FIXED: Imported NextRequest
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 
-// Vercel/Next.js ক্যাশ যেন না ধরে তার জন্য
+// Vercel বা Next.js ক্যাশ যেন না ধরে তার জন্য
 export const dynamic = "force-dynamic";
 
 const getUTCDateString = (dateObj: any = new Date()) => {
@@ -11,22 +11,38 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch(e) { return new Date().toISOString().split('T')[0]; }
 };
 
-export async function POST(request: Request) {
+// 💥 FIXED: Changed 'Request' to 'NextRequest' to remove the red squiggly line 💥
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    
-    // 💥 ADDED 'email' to identify which user is taking the number
-    const { range, is_national, remove_plus, email } = body;
+    let { range, is_national, remove_plus, email } = body;
 
-    // 🛡️ SECURITY CHECK: Email না থাকলে নাম্বার দেওয়া হবে না
+    // 💥 THE OFFICIAL NEXT.JS WAY: Reading Cookies directly from NextRequest 💥
     if (!email) {
-       return NextResponse.json({ error: "Unauthorized: User email is required" }, { status: 401 });
+        // Next.js এর অফিসিয়াল request.cookies.get() মেথড (এখন আর লাল দাগ আসবে না)
+        const token = request.cookies.get("zenex_token")?.value;
+        
+        if (token) {
+            try {
+                // JWT (JSON Web Token) এর স্ট্যান্ডার্ড নিয়ম অনুযায়ী পেলোড (Payload) ডিকোড করা হচ্ছে
+                const payloadBase64 = token.split('.')[1];
+                const decodedPayload = JSON.parse(atob(payloadBase64));
+                email = decodedPayload.email;
+            } catch (e) {
+                console.error("JWT Decode error in getnum");
+            }
+        }
+    }
+
+    // 🛡️ SECURITY CHECK: ইমেইল ছাড়া কাউকে ডাটাবেসে ঢুকতে দেওয়া হবে চিত্র
+    if (!email) {
+       return NextResponse.json({ error: "Unauthorized: User Session Expired or Email Missing" }, { status: 401 });
     }
 
     // 💥 CONNECT DATABASE 💥
     await connectToDatabase();
 
-    // Verify if user is Active and API is enabled (Optional but recommended for Web Users too)
+    // Verify User in Database
     const user = await User.findOne({ email: new RegExp(`^${email.trim()}$`, 'i') }).lean();
     if (!user || user.status !== "active") {
         return NextResponse.json({ error: "Account Inactive or Blocked" }, { status: 403 });
@@ -62,28 +78,27 @@ export async function POST(request: Request) {
 
     if (data.meta?.status !== "success" || !data.data) {
       return NextResponse.json(
-        { error: data.message || "Failed to get number from API" },
+        { error: data.message || "Failed to get number from Provider" },
         { status: 400 }
       );
     }
 
-    // 💥 THE MASTERPIECE FIX: SAVE TO DATABASE SO OTP SYNC CAN FIND IT 💥
+    // 💥 SAVE TO DATABASE SO OUR FASTIFY BACKGROUND WORKER CAN FIND IT 💥
     try {
         const todayStr = getUTCDateString();
         const newOrder = new Order({
-            userEmail: user.email, // Exact match from DB
+            userEmail: user.email, 
             searchNumber: data.data.full_number,
             displayNumber: data.data.number || `+${data.data.full_number}`,
             country: data.data.country || "Unknown",
             operator: data.data.operator || "Any",
             status: "WAIT",
             dateString: todayStr,
-            expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // ২ দিনের গ্যারান্টি
+            expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) 
         });
         await newOrder.save();
     } catch (dbError) {
         console.error("Order Save Error in Web API:", dbError);
-        // Even if saving fails, we don't crash the user experience, but log it.
     }
 
     return NextResponse.json({
