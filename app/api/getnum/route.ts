@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       headers: {
         "mapikey": API_KEY,
         "Content-Type": "application/json",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; SM-G998B Build/SP1A.210812.016)", 
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)", 
         "Accept": "application/json",
         "Connection": "keep-alive"
       },
@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
         const newOrder = new Order({
             userEmail: user.email, 
             searchNumber: data.data.full_number,
-            // 💥 FIX: ডাটাবেস এবং ড্যাশবোর্ডে সব সময় অরিজিনাল প্লাস (+) সহ নাম্বার সেভ হবে 💥
-            displayNumber: `+${data.data.full_number}`, 
+            // 💥 FIX: MNIT থেকে যেভাবে আসবে (প্লাস ছাড়া), ঠিক সেভাবেই সেভ হবে 💥
+            displayNumber: data.data.number || data.data.full_number, 
             country: data.data.country || "Unknown",
             operator: data.data.operator || "Any",
             status: "WAIT",
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
             expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) 
         });
         const savedRecord = await newOrder.save();
-        savedOrderId = savedRecord._id; // ফ্রন্টএন্ডে রিয়েল আইডি পাঠানোর জন্য
+        savedOrderId = savedRecord._id; 
     } catch (dbError) {
         console.error("Order Save Error in Web API:", dbError);
     }
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: data.data,
-      orderId: savedOrderId // 💥 Added to prevent duplicate temp entries
+      orderId: savedOrderId 
     });
 
   } catch (error: any) {
