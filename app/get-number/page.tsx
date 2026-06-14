@@ -15,7 +15,10 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
-const getSortTime = (item: any) => item.receivedAt || item.updatedAt || item.createdAt;
+// 💥 Sort Time Logic
+const getSortTime = (item: any) => {
+    return item.receivedAt || item.updatedAt || item.createdAt;
+};
 
 export default function GetNumber() {
   const [rangeInput, setRangeInput] = useState("");
@@ -147,26 +150,22 @@ export default function GetNumber() {
         if (data.stats) setStats(data.stats); 
 
         setNumbersList((prev) => {
-           const prevMap = new Map(prev.map(item => [item.id, item]));
+           const prevMap = new Map();
+
+           // 💥 DATABASE-FIRST LOGIC: No Temp IDs anymore! Just use standard MongoDB _id 💥
+           prev.forEach(item => prevMap.set(item._id || item.id, item));
            
            data.orders.forEach((fetchedItem: any) => {
-              const existingItem = prevMap.get(fetchedItem.id);
+              const itemId = fetchedItem._id || fetchedItem.id;
+              const existingItem = prevMap.get(itemId);
+              
               if (existingItem && existingItem.status === "DONE" && fetchedItem.status === "WAIT") {
-                 return;
+                 return; 
               }
-              prevMap.set(fetchedItem.id, fetchedItem);
+              prevMap.set(itemId, fetchedItem);
            });
 
-           if (isBackground) {
-              const dbSearchNumbers = new Set(data.orders.map((o: any) => o.searchNumber));
-              let combined = Array.from(prevMap.values()).filter(item => {
-                 if (item.id.toString().startsWith("temp_") && dbSearchNumbers.has(item.searchNumber)) return false; 
-                 return true;
-              });
-              return combined.sort((a, b) => getSortTime(b) - getSortTime(a));
-           } else {
-              return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
-           }
+           return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
         });
 
         if(data.pagination) setHasMore(data.pagination.hasMore);
@@ -195,7 +194,6 @@ export default function GetNumber() {
     }
   };
 
-  // 💥 FIXED: Moved loadMoreNumbers ABOVE the useEffect to fix the Red squiggly line 💥
   const loadMoreNumbers = useCallback(async () => {
      setIsFetchingMore(true);
      const nextPage = page + 1;
@@ -221,7 +219,7 @@ export default function GetNumber() {
            }
         }
         return item;
-      }));
+      }).sort((a, b) => getSortTime(b) - getSortTime(a))); 
     };
 
     window.addEventListener('otp-received-instant', handleInstantOtp);
@@ -262,15 +260,20 @@ export default function GetNumber() {
       const result = await response.json();
       
       if (response.ok && result.success) {
-        const numberToCopy = result.data.copy || result.data.number;
+        const numberToCopy = result.data.copy || result.data.number || result.data.full_number;
         navigator.clipboard.writeText(numberToCopy);
         showToast(`Copied: ${numberToCopy}`);
 
-        const fullNumberDisplay = `+${result.data.full_number}`;
+        const fullNumberDisplay = result.data.number || result.data.full_number;
         const todayStr = getUTCDateString();
+        
+        // 💥 DB FIRST LOGIC: Now we only rely on the real database orderId 💥
+        // If orderId somehow fails, we use a fallback timestamp, but typically it will be the real MongoDB _id
+        const realId = result.orderId || Date.now().toString();
 
         const newEntry = {
-          id: result.orderId || `temp_${Date.now()}`,
+          id: realId,
+          _id: realId, 
           dateString: todayStr, 
           displayNumber: fullNumberDisplay, 
           searchNumber: result.data.full_number, 
@@ -283,7 +286,7 @@ export default function GetNumber() {
         };
         
         if (activeFilter === "ALL" || activeFilter === "WAIT") {
-           setNumbersList((prev) => [newEntry, ...prev]);
+           setNumbersList((prev) => [newEntry, ...prev].sort((a, b) => getSortTime(b) - getSortTime(a)));
         }
         
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
@@ -313,10 +316,12 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
+  // 💥 ZERO LOSS DEDUPLICATION: Pure ID based filter 💥
   const uniqueItemIds = new Set();
   const deduplicatedNumbers = finalFilteredNumbers.filter((item) => {
-      if (uniqueItemIds.has(item.id)) return false;
-      uniqueItemIds.add(item.id);
+      const itemId = item._id || item.id;
+      if (uniqueItemIds.has(itemId)) return false;
+      uniqueItemIds.add(itemId);
       return true;
   });
 
@@ -328,14 +333,14 @@ export default function GetNumber() {
               const extracted = cleanOTPDisplay(msg);
               expandedNumbers.push({
                   ...item,
-                  id: `${item.id}_${idx}`, 
+                  id: `${item._id || item.id}_${idx}`, 
                   otp: extracted !== "Waiting..." ? extracted : item.otp,
                   fullMessage: msg,
                   isMulti: true 
               });
           });
       } else {
-          expandedNumbers.push(item);
+          expandedNumbers.push({ ...item, id: item._id || item.id });
       }
   });
 
