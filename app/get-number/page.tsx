@@ -152,7 +152,6 @@ export default function GetNumber() {
         setNumbersList((prev) => {
            const prevMap = new Map();
 
-           // 💥 DATABASE-FIRST LOGIC: No Temp IDs anymore! Just use standard MongoDB _id 💥
            prev.forEach(item => prevMap.set(item._id || item.id, item));
            
            data.orders.forEach((fetchedItem: any) => {
@@ -260,23 +259,27 @@ export default function GetNumber() {
       const result = await response.json();
       
       if (response.ok && result.success) {
+        // 💥 Boss, Here is the Magic! 
+        // numberToCopy = The customized format that user selected (without plus, local etc.)
         const numberToCopy = result.data.copy || result.data.number || result.data.full_number;
         navigator.clipboard.writeText(numberToCopy);
         showToast(`Copied: ${numberToCopy}`);
 
-        const fullNumberDisplay = result.data.number || result.data.full_number;
-        const todayStr = getUTCDateString();
+        // realMNITNumber = Always the pure original MNIT number (+225077...) for Display and Database sync
+        const realMNITNumber = result.data.full_number || result.data.number;
         
-        // 💥 DB FIRST LOGIC: Now we only rely on the real database orderId 💥
-        // If orderId somehow fails, we use a fallback timestamp, but typically it will be the real MongoDB _id
+        const todayStr = getUTCDateString();
         const realId = result.orderId || Date.now().toString();
 
         const newEntry = {
           id: realId,
           _id: realId, 
           dateString: todayStr, 
-          displayNumber: fullNumberDisplay, 
-          searchNumber: result.data.full_number, 
+          
+          displayNumber: realMNITNumber, // <-- Strictly Real MNIT Number for the UI Feed
+          searchNumber: realMNITNumber,  // <-- Strictly Real MNIT Number for Fastify Sync
+          copyNumber: numberToCopy,      // <-- Stored in state so if clicked again on feed, it copies properly
+          
           country: result.data.country || "Unknown",
           operator: result.data.operator || "Any", 
           status: "WAIT", 
@@ -316,7 +319,6 @@ export default function GetNumber() {
     return item.status === activeFilter;
   });
 
-  // 💥 ZERO LOSS DEDUPLICATION: Pure ID based filter 💥
   const uniqueItemIds = new Set();
   const deduplicatedNumbers = finalFilteredNumbers.filter((item) => {
       const itemId = item._id || item.id;
@@ -485,8 +487,15 @@ export default function GetNumber() {
                       return (
                       <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - (item.receivedAt||0) < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
-                            <div onClick={() => { navigator.clipboard.writeText(item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
-                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber}</span>
+                            <div 
+                              // 💥 Boss, here it will copy the correct format even if clicked from feed!
+                              onClick={() => { navigator.clipboard.writeText(item.copyNumber || item.searchNumber || item.displayNumber); showToast("Number Copied!"); }} 
+                              className="flex items-center gap-1.5 cursor-pointer group"
+                            >
+                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">
+                                {/* 💥 Force UI to always show Real Search Number */}
+                                {item.searchNumber || item.displayNumber}
+                              </span>
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
