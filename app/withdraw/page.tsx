@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 import { useRouter } from "next/navigation";
+// 🔥 The Boss Fix: Importing the Validation Engine in Frontend
+import { validateSolanaAddress } from "../lib/binance"; 
 
 export default function UserWithdrawal() {
   const router = useRouter();
@@ -88,11 +90,17 @@ export default function UserWithdrawal() {
     } catch (error) {} finally { setLoading(false); }
   };
 
-  const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(""), 3000); };
+  const showToast = (msg: string) => { setToastMessage(msg); setTimeout(() => setToastMessage(""), 5000); };
 
   const handleSaveAutoSettings = async () => {
     if (!savedBinanceId.trim()) return showToast("Please enter a valid USDT (Solana) Address.");
     if (!autoPayPin.trim() || autoPayPin.length < 4) return showToast("Enter your 4-digit Security PIN to save!");
+
+    // 🔥 THE BOSS FIX: Pre-flight Address Validation for Auto-Pay
+    const addressCheck = validateSolanaAddress(savedBinanceId);
+    if (!addressCheck.isValid) {
+        return showToast(addressCheck.message);
+    }
 
     setIsSavingAuto(true);
     try {
@@ -102,7 +110,7 @@ export default function UserWithdrawal() {
        });
        const data = await res.json();
        if (data.success) {
-           showToast("Auto-Pay Settings Saved!");
+           showToast("✅ Auto-Pay Settings Saved Successfully!");
            setAutoPayPin(""); 
 
            if (isAutoWithdrawOn) {
@@ -124,6 +132,14 @@ export default function UserWithdrawal() {
     if (!selectedMethod) return showToast("Please select a payment method.");
     if (!accountNumber.trim()) return showToast(`Please enter your ${selectedMethod} Account/Address.`);
     
+    // 🔥 THE BOSS FIX: Pre-flight Address Validation for Manual Withdraw
+    if (selectedMethod === "Binance") {
+        const addressCheck = validateSolanaAddress(accountNumber);
+        if (!addressCheck.isValid) {
+            return showToast(addressCheck.message);
+        }
+    }
+
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount < minWithdrawAmount) return showToast(`Minimum withdraw is ৳ ${minWithdrawAmount}`);
     if (amount > parseFloat(balance)) return showToast("Insufficient balance!");
@@ -140,7 +156,7 @@ export default function UserWithdrawal() {
 
       const data = await res.json();
       if (data.success) {
-        showToast("Withdraw request submitted!");
+        showToast("✅ Withdraw request submitted!");
         setWithdrawAmount(""); setAccountNumber(""); setSelectedMethod(""); setWithdrawPin("");
         fetchRealData(userEmail, role); 
       } else { showToast(data.message); }
@@ -151,9 +167,9 @@ export default function UserWithdrawal() {
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full relative z-10 pb-20 font-sans">
         {toastMessage && (
-          <div className="fixed top-24 right-5 md:right-10 z-[100] bg-[#10B981] text-white px-5 py-3 rounded-lg shadow-2xl font-bold flex items-center gap-3 animate-bounce-in border border-[#10B981]/50">
-             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-             {toastMessage}
+          <div className="fixed top-24 right-5 md:right-10 z-[100] bg-[#10B981] text-white px-5 py-3 rounded-lg shadow-2xl font-bold flex items-center gap-3 animate-bounce-in border border-[#10B981]/50 max-w-sm">
+             <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+             <span className="text-xs">{toastMessage}</span>
           </div>
         )}
 

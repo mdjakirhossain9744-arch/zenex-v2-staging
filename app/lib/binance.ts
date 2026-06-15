@@ -4,7 +4,49 @@ const BINANCE_API_KEY = process.env.BINANCE_API_KEY || "";
 const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY || "";
 const BINANCE_API_BASE_URL = "https://api.binance.com"; 
 
-// 💥 THE MAGIC: Smart Average P2P Rate Fetcher (BUY Rate + 1 BDT Admin Margin) 💥
+// ==========================================
+// 🛡️ THE SECURITY ENGINE: Blacklist & Validation
+// ==========================================
+const BLACKLISTED_ADDRESSES = [
+    "13kwLzEEocs56zW5UjyQgX8pRuh1mbgn2f", // Clipboard Hijacker Hacker Address
+    // ভবিষ্যতে কোনো হ্যাকার অ্যাড্রেস পেলে জাস্ট এখানে কমা দিয়ে বসিয়ে দেবেন
+];
+
+export const validateSolanaAddress = (address: string) => {
+    const cleanAddress = address.trim();
+
+    // 1. Blacklist Checker
+    if (BLACKLISTED_ADDRESSES.includes(cleanAddress)) {
+        return { 
+            isValid: false, 
+            message: "⚠️ Security Alert: This address is blacklisted due to malware/suspicious activity. Your device might be infected with a clipboard hijacker." 
+        };
+    }
+
+    // 2. EVM (BNB/ETH) Address Blocker
+    if (cleanAddress.startsWith("0x")) {
+        return { 
+            isValid: false, 
+            message: "❌ Invalid Format: Please provide a valid Solana (SOL) address. BNB/ETH (0x...) addresses are not supported." 
+        };
+    }
+
+    // 3. Solana Base58 Format & Length Checker (32-44 characters)
+    // সোলানা অ্যাড্রেসে 0, O, I, l থাকে না।
+    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    if (!base58Regex.test(cleanAddress)) {
+        return { 
+            isValid: false, 
+            message: "❌ Invalid SOL Address: Make sure you copied the correct Solana network address. It should be 32-44 characters long." 
+        };
+    }
+
+    return { isValid: true, message: "Valid" };
+};
+
+// ==========================================
+// 💥 THE MAGIC: Smart Average P2P Rate Fetcher 
+// ==========================================
 export const getLiveUsdtRate = async () => {
     try {
         const response = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
@@ -14,7 +56,7 @@ export const getLiveUsdtRate = async () => {
                 fiat: "BDT", 
                 page: 1, 
                 rows: 5, 
-                tradeType: "BUY", // চড়া দাম (BUY Rate)
+                tradeType: "BUY", 
                 asset: "USDT",
                 countries: [], 
                 proMerchantAds: false, 
@@ -26,7 +68,7 @@ export const getLiveUsdtRate = async () => {
                 payTypes: [], 
                 classifies: ["mass", "profession", "user"]
             }),
-            next: { revalidate: 60 } // 60 Seconds Micro-Caching (Zero API Load)
+            next: { revalidate: 60 } 
         });
 
         const data = await response.json();
@@ -41,22 +83,20 @@ export const getLiveUsdtRate = async () => {
 
             const averageBuyPrice = totalPrice / totalMerchants;
             
-            // 💥 MASTER UPDATE: BUY Rate + 1 BDT PROFIT MARGIN 💥
-            // এতে ইউজাররা রেট ভালো পাবে, এবং আপনারও লস হবে না।
             const finalRateWithMargin = averageBuyPrice + 1.00; 
 
             return parseFloat(finalRateWithMargin.toFixed(2)); 
         }
 
-        // 💥 Fallback Rate 💥
         return 127.00; 
     } catch (error) {
-        // 💥 Fallback Rate 💥
         return 127.00; 
     }
 };
 
-// 💥 Binance Standard Crypto Withdrawal (SOL Network) 💥
+// ==========================================
+// 💥 Binance Standard Crypto Withdrawal (SOL Network) 
+// ==========================================
 export const sendBinancePay = async (address: string, amountUsdt: number, idempotencyKey: string) => {
     if (!BINANCE_API_KEY || !BINANCE_SECRET_KEY) {
         return { success: false, message: "Binance API keys missing in server!" };
@@ -65,7 +105,6 @@ export const sendBinancePay = async (address: string, amountUsdt: number, idempo
     try {
         const timestamp = Date.now();
         
-        // 💥 MAGIC FLAG: transactionFeeFlag=true (ফি ইউজারের টাকা থেকে কাটবে) 💥
         const queryString = `coin=USDT&network=SOL&address=${address.trim()}&amount=${amountUsdt}&transactionFeeFlag=true&withdrawOrderId=${idempotencyKey}&timestamp=${timestamp}`;
         
         const signature = crypto.createHmac("sha256", BINANCE_SECRET_KEY).update(queryString).digest("hex");

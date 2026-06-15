@@ -4,8 +4,9 @@ import Withdraw from "../../../models/Withdraw";
 import User from "../../../models/User"; 
 import PaymentSetting from "../../../models/PaymentSetting"; 
 import Notification from "../../../models/Notification";
-import { getLiveUsdtRate, sendBinancePay } from "../../lib/binance"; 
-import { adminMessaging } from "../../lib/firebase-admin"; // 👈 Firebase Admin Import (পাথ ঠিক না থাকলে একটু মিলিয়ে নেবেন)
+// 🔥 Added `validateSolanaAddress` to imports
+import { getLiveUsdtRate, sendBinancePay, validateSolanaAddress } from "../../lib/binance"; 
+import { adminMessaging } from "../../lib/firebase-admin"; 
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: `Invalid amount. Minimum for ${method} is ৳ ${minRequired}.` }, { status: 400 });
       }
       if (!withdrawPin) return NextResponse.json({ success: false, message: "Security PIN is required!" }, { status: 400 });
+
+      // 🔥 THE BOSS FIX: Pre-flight Address Validation & Blacklist Checker 🔥
+      if (method === "Binance") {
+          const addressCheck = validateSolanaAddress(accountNumber);
+          if (!addressCheck.isValid) {
+              return NextResponse.json({ success: false, message: addressCheck.message }, { status: 400 });
+          }
+      }
 
       // Zero DB Load: 1 Hour Cooldown Check
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -118,7 +127,7 @@ export async function POST(req: Request) {
                 await Notification.create({ userEmail: request.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
                 
                 paymentSuccessful = true;
-                paymentAmount = `$${usdAmount} USDT`; // For Notification
+                paymentAmount = `$${usdAmount} USDT`; 
                 successCount++;
               } else {
                 const errorMsg = (binanceRes.message || "Unknown Binance Error").toLowerCase();
