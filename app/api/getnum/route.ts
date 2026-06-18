@@ -13,7 +13,7 @@ const getUTCDateString = (dateObj: any = new Date()) => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    let { range, is_national, remove_plus, email } = body;
+    let { range, email } = body; // is_national, remove_plus are obsolete now
 
     if (!email) {
         const token = request.cookies.get("zenex_token")?.value;
@@ -39,22 +39,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Account Inactive or Blocked" }, { status: 403 });
     }
 
-    const API_KEY = "M_7VX25KAJI";
+    const API_KEY = "MK2447V3313";
+    // 🔥 Remove "X" or "XXX" to get the exact `rid` for the new API
+    const rid = (range || "22501").replace(/x/gi, ''); 
 
-    const response = await fetch("https://x.mnitnetwork.com/mapi/v1/public/getnum/number", {
+    const response = await fetch("https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/getnum", {
       method: "POST",
       headers: {
-        "mapikey": API_KEY,
+        "mauthapi": API_KEY,
         "Content-Type": "application/json",
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)", 
         "Accept": "application/json",
         "Connection": "keep-alive"
       },
-      body: JSON.stringify({
-        range: range || "23276345XXX",
-        is_national: is_national || false,
-        remove_plus: remove_plus || false,
-      }),
+      body: JSON.stringify({ rid }),
       cache: "no-store",
     });
 
@@ -66,9 +64,9 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
 
-    if (data.meta?.status !== "success" || !data.data) {
+    if (data.meta?.code !== 200 || !data.data) {
       return NextResponse.json(
-        { error: data.message || "Failed to get number from Provider" },
+        { error: data.message || "Failed to get number from Provider. Out of Stock?" },
         { status: 400 }
       );
     }
@@ -79,9 +77,9 @@ export async function POST(request: NextRequest) {
         const todayStr = getUTCDateString();
         const newOrder = new Order({
             userEmail: user.email, 
-            searchNumber: data.data.full_number,
-            // 💥 FIX: MNIT থেকে যেভাবে আসবে (প্লাস ছাড়া), ঠিক সেভাবেই সেভ হবে 💥
-            displayNumber: data.data.number || data.data.full_number, 
+            // 💥 FIX: New API uses `no_plus_number` for search and `full_number` for display
+            searchNumber: data.data.no_plus_number,
+            displayNumber: data.data.full_number, 
             country: data.data.country || "Unknown",
             operator: data.data.operator || "Any",
             status: "WAIT",
@@ -94,9 +92,18 @@ export async function POST(request: NextRequest) {
         console.error("Order Save Error in Web API:", dbError);
     }
 
+    // Return the response in legacy format so Frontend doesn't break
     return NextResponse.json({
       success: true,
-      data: data.data,
+      data: {
+          copy: data.data.full_number,
+          full_number: data.data.no_plus_number,
+          number: data.data.full_number,
+          country: data.data.country,
+          iso: "Unknown",
+          operator: data.data.operator,
+          status: "pending"
+      },
       orderId: savedOrderId 
     });
 

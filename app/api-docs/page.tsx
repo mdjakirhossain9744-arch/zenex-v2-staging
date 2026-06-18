@@ -1,53 +1,132 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 import Link from "next/link";
 
 export default function ApiDocumentation() {
-  const router = useRouter();
   const [copiedSection, setCopiedSection] = useState("");
-  
-  // 💥 Security States 💥
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkApiAccess = async () => {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        try {
-          const res = await fetch("/api/get-user-details", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: parsedUser.email })
-          });
-          const data = await res.json();
-          
-          if (data.success && data.user && data.user.isApiActive) {
-            setIsAuthorized(true); 
-          } else {
-            setIsAuthorized(false); 
-          }
-        } catch (error) {
-          console.error("Failed to check API access");
-          setIsAuthorized(false);
-        }
-      } else {
-        router.push("/login");
-      }
-      setLoading(false);
-    };
-
-    checkApiAccess();
-  }, [router]);
 
   const handleCopy = (text: string, sectionId: string) => {
     navigator.clipboard.writeText(text);
     setCopiedSection(sectionId);
     setTimeout(() => setCopiedSection(""), 2000);
+  };
+
+  // 💥 TEXT FILE DOWNLOAD LOGIC (WITH FULL EXAMPLES) 💥
+  const handleDownloadDocs = () => {
+    const docText = `=========================================
+ZENEX CORE API DOCUMENTATION - V4.0
+=========================================
+Base URL: https://api.zenexnetwork.com
+Authentication Header: mapikey: YOUR_API_KEY_HERE
+
+Note: Keep your API key secure. Route all requests through your backend server.
+
+-----------------------------------------
+1. PROVISION VIRTUAL NUMBER
+-----------------------------------------
+Method: POST
+Endpoint: /v1/getnum
+Description: Instantly provisions a temporary or permanent virtual number.
+
+Payload Example:
+{
+  "range": "4473845XXX",
+  "is_national": false,
+  "remove_plus": false
+}
+
+Response Example (Success):
+{
+  "data": {
+    "copy": "+447384561029",
+    "country": "United Kingdom",
+    "full_number": "447384561029",
+    "iso": "gb",
+    "number": "+447384561029",
+    "operator": "Vodafone",
+    "status": "pending"
+  },
+  "message": "Virtual number provisioned successfully",
+  "meta": { "code": 200, "status": "success" }
+}
+
+-----------------------------------------
+2. FETCH SMS/OTP PAYLOADS
+-----------------------------------------
+Method: GET
+Endpoint: /v1/numsuccess/info
+Description: Polls the Zenex Core Engine to fetch incoming SMS payloads.
+Important: Our OTP Engine is completely cache-free. Suggested polling rate is 3-5 seconds. Do not cancel numbers prematurely.
+
+Response Example (Success):
+{
+  "data": {
+    "otps": [
+      {
+        "nid": "ZX_9A8B7C6D5E",
+        "number": "447384561029",
+        "otp": "849302 is your Instagram code. Don't share it.",
+        "country": "United Kingdom",
+        "operator": "T-Mobile",
+        "created_at": "2024-05-18 14:45:12"
+      }
+    ]
+  },
+  "message": "Live SMS records fetched successfully",
+  "meta": { "code": 200, "status": "success" }
+}
+
+-----------------------------------------
+3. LIVE ENGINE ROUTES (BOT FEED)
+-----------------------------------------
+Method: GET
+Endpoint: /v1/active-ranges
+Description: Exports the global live routing matrix. Use this feed to dynamically populate your App/Bot buttons with highly successful prefixes.
+Important: Protected by 60s micro-caching. Optimal polling: Every 2-5 minutes.
+
+Response Example (Success):
+{
+  "success": true,
+  "cached": true,
+  "data": {
+    "active_ranges": [
+      { "range": "447384XXX", "service": "Telegram", "tag": "Premium", "hits": 312 }
+    ]
+  }
+}
+
+Node.js Implementation Example:
+const axios = require('axios');
+
+async function checkZenexLiveFeed(targetService) {
+    try {
+        const response = await axios.get("https://api.zenexnetwork.com/v1/active-ranges", {
+            headers: { 'mapikey': 'YOUR_API_KEY_HERE' }
+        });
+        const activeRoutes = response.data.data.active_ranges;
+        const matchedRoutes = activeRoutes.filter(route => route.service === targetService);
+        if (matchedRoutes.length > 0) {
+            matchedRoutes.forEach(r => console.log(\`[Route: \${r.range}] -> \${r.hits} Success Hits\`));
+        }
+    } catch (error) { console.error("API Error"); }
+}
+checkZenexLiveFeed("Telegram");
+
+=========================================
+Generated from Zenex Network Core (V4.0)
+`;
+    
+    const blob = new Blob([docText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "Zenex-API-Documentation.txt";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const getNumberRequest = `curl -X POST "https://api.zenexnetwork.com/v1/getnum" \\
@@ -146,37 +225,6 @@ async function checkZenexLiveFeed(targetService, targetTag = "General") {
 checkZenexLiveFeed("Telegram", "Premium"); 
 checkZenexLiveFeed("WhatsApp");`;
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="min-h-screen bg-[#0B0F1A] flex flex-col items-center justify-center text-white p-10">
-          <div className="w-10 h-10 border-4 border-[#334155] border-t-[#3B82F6] rounded-full animate-spin mb-4"></div>
-          <p className="text-[#94A3B8] font-bold tracking-widest uppercase text-sm">Validating Zenex Core Access...</p>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (!isAuthorized) {
-    return (
-      <DashboardLayout>
-        <div className="min-h-screen bg-[#0B0F1A] flex flex-col items-center justify-center text-center p-10 relative overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-            <div className="w-96 h-96 bg-[#F43F5E] rounded-full blur-[120px]"></div>
-          </div>
-          <svg className="w-20 h-20 text-[#F43F5E] mb-6 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-          <h1 className="text-3xl md:text-5xl font-black text-white uppercase tracking-widest relative z-10">Access Denied</h1>
-          <p className="text-[#94A3B8] font-bold mt-4 text-sm md:text-base max-w-lg relative z-10 leading-relaxed">
-            Your workspace is not authorized to interact with the Zenex Core API. Please upgrade your account or contact your network manager.
-          </p>
-          <Link href="/profile" className="mt-8 bg-[#1E293B] border border-[#334155] hover:border-[#3B82F6] text-white px-8 py-3 rounded-lg font-black uppercase tracking-widest text-xs transition-colors shadow-lg relative z-10">
-            Return to Profile
-          </Link>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout>
       <div className="p-4 md:p-10 w-full min-h-screen bg-[#0B0F1A] text-slate-200 font-sans selection:bg-[#3B82F6] selection:text-white">
@@ -191,10 +239,17 @@ checkZenexLiveFeed("WhatsApp");`;
           <p className="text-[#94A3B8] font-bold mt-3 text-sm md:text-base max-w-2xl leading-relaxed">
             Connect your systems directly to the Zenex Global Number Routing Engine. Provision premium numbers and capture real-time SMS payloads via our ultra-low latency REST architecture.
           </p>
+          
           <div className="mt-6 flex flex-wrap items-center gap-4">
              <span className="px-3 py-1.5 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded text-[10px] font-black uppercase tracking-widest">Version 4.0 (Stable)</span>
              <span className="px-3 py-1.5 bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 rounded text-[10px] font-black uppercase tracking-widest">Real-Time Microservice</span>
              <span className="px-3 py-1.5 bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/20 rounded text-[10px] font-black uppercase tracking-widest">JSON Output</span>
+             
+             {/* 💥 DOWNLOAD BUTTON 💥 */}
+             <button onClick={handleDownloadDocs} className="px-4 py-1.5 bg-[#EAB308]/10 hover:bg-[#EAB308]/20 text-[#EAB308] border border-[#EAB308]/30 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-[0_0_10px_rgba(234,179,8,0.2)] ml-auto md:ml-4">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Download Docs (.txt)
+             </button>
           </div>
         </div>
 
@@ -204,8 +259,17 @@ checkZenexLiveFeed("WhatsApp");`;
              <span className="text-[#3B82F6]">#</span> Authentication Engine
            </h2>
            <p className="text-[#94A3B8] text-sm font-medium mb-4">
-             Every request to the Zenex Core requires a valid cryptographic API key. Locate your secure access key inside your <Link href="/profile" className="text-[#3B82F6] hover:underline">Profile Settings</Link>.
+             Every request to the Zenex Core requires a valid cryptographic API key. 
            </p>
+
+           <div className="mt-4 mb-6 p-4 rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/30 flex items-start gap-3 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+              <svg className="w-6 h-6 text-[#3B82F6] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+              <p className="text-sm font-bold text-[#E2E8F0] leading-relaxed">
+                 <span className="text-[#3B82F6]">🔑 Where is my API Key?</span> <br/>
+                 To generate or copy your API Key, please navigate to your <Link href="/profile" className="text-white underline hover:text-[#3B82F6] transition-colors">Profile Page</Link> and enable it from the 'API Access' section.
+              </p>
+           </div>
+
            <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4 flex items-center justify-between">
               <div>
                  <span className="block text-[10px] text-[#64748B] font-black uppercase tracking-widest mb-1">Authorization Header</span>
@@ -256,7 +320,7 @@ checkZenexLiveFeed("WhatsApp");`;
                     <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
                        <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Client Request (cURL)</span>
                        <button onClick={() => handleCopy(getNumberRequest, 'req1')} className="text-[#64748B] hover:text-white transition-colors">
-                          {copiedSection === 'req1' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                          {copiedSection === 'req1' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                        </button>
                     </div>
                     <pre className="p-4 text-xs text-[#E2E8F0] font-mono overflow-x-auto custom-scrollbar">
@@ -293,7 +357,6 @@ checkZenexLiveFeed("WhatsApp");`;
               <div>
                  <p className="text-[#94A3B8] text-sm mb-6">Polls the Zenex Core Engine to fetch incoming SMS payloads associated with your active number queue.</p>
                  
-                 {/* 💥 NEW PRO TIP NOTICE FOR BOTS 💥 */}
                  <div className="p-4 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-start gap-3 mb-6">
                     <svg className="w-6 h-6 text-[#10B981] mt-0.5 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                     <div>
@@ -328,7 +391,7 @@ checkZenexLiveFeed("WhatsApp");`;
                     <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
                        <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Client Request (cURL)</span>
                        <button onClick={() => handleCopy(checkOtpRequest, 'req2')} className="text-[#64748B] hover:text-white transition-colors">
-                          {copiedSection === 'req2' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                          {copiedSection === 'req2' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                        </button>
                     </div>
                     <pre className="p-4 text-xs text-[#E2E8F0] font-mono overflow-x-auto custom-scrollbar">
@@ -351,7 +414,7 @@ checkZenexLiveFeed("WhatsApp");`;
            </div>
         </div>
 
-        {/* 3. Active Ranges API (For Telegram Bots) */}
+        {/* 3. Active Ranges API */}
         <div className="mb-12 bg-[#0F172A] border border-[#334155] rounded-2xl overflow-hidden shadow-lg relative">
            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
               <svg className="w-32 h-32 text-[#8B5CF6]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
@@ -368,7 +431,7 @@ checkZenexLiveFeed("WhatsApp");`;
            <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-8 relative z-10">
               <div>
                  <p className="text-[#94A3B8] text-sm mb-6 leading-relaxed">
-                   Exports the global live routing matrix. Use this feed to dynamically populate your App/Bot buttons with highly successful prefixes (e.g., UK Telegram, USA WhatsApp).
+                   Exports the global live routing matrix. Use this feed to dynamically populate your App/Bot buttons with highly successful prefixes.
                  </p>
                  
                  <div className="p-4 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/20 flex items-start gap-3 mb-6">
@@ -376,7 +439,7 @@ checkZenexLiveFeed("WhatsApp");`;
                     <div>
                        <p className="text-xs font-bold text-[#F43F5E] mb-1">DDoS Mitigation Array</p>
                        <p className="text-[10px] text-[#94A3B8] leading-relaxed">
-                         Protected by our 60-second micro-caching layer on our new Microservice. Rapid requests will serve cached matrix data without penalizing your network score. Optimal polling: Every 2-5 minutes.
+                         Protected by our 60-second micro-caching layer. Optimal polling: Every 2-5 minutes.
                        </p>
                     </div>
                  </div>

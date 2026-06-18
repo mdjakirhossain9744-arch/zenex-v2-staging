@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import connectToDatabase from "../../lib/mongodb";
+import Order from "../../../models/Order";
 
 export const dynamic = "force-dynamic";
 
@@ -24,29 +26,48 @@ export async function GET(req: Request) {
     }
     ipMap.set(ip, ipData);
 
-    const API_KEY = "M_7VX25KAJI"; 
+    // 💥 NEW V4 ARCHITECTURE: Direct DB Query (Bypassing Localhost HTTP Hop) 💥
+    // এতে 500 Error আসবে না এবং ডেটা রকেটের গতিতে ফেচ হবে!
+    await connectToDatabase();
+    
+    const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+    
+    const recentOrders = await Order.find({
+        status: { $in: ["DONE", "Success", "SUCCESS"] },
+        updatedAt: { $gte: twentyMinutesAgo }
+    })
+    .select("_id displayNumber searchNumber otp fullMessage country operator updatedAt createdAt")
+    .sort({ updatedAt: -1 })
+    .limit(100)
+    .lean();
 
-    // 💥 THE MASTER BRIDGE: Fetching from our own Fastify instead of MNIT 💥
-    // এতে MNIT ব্লক করবে না, আর Console-এ রকেটের গতিতে ডাটা শো করবে!
-    const response = await fetch(`http://127.0.0.1:4000/v1/numsuccess/info`, {
-      method: "GET",
-      headers: { "mapikey": API_KEY },
-      cache: "no-store",
+    let expandedOtps: any[] = [];
+
+    recentOrders.forEach(order => {
+        const d = new Date(order.updatedAt || order.createdAt || Date.now());
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const formattedDate = `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+        
+        const numberClean = String(order.displayNumber || order.searchNumber || "").replace(/\D/g, "");
+        const baseNid = "ZX_" + order._id.toString().substring(0, 10).toUpperCase();
+
+        // 💥 Zero-Loss Multi-OTP Expansion 💥
+        if (order.fullMessage && order.fullMessage.includes("_||_")) {
+            const msgsArray = order.fullMessage.split("_||_").map((m: string) => m.trim()).filter(Boolean);
+            msgsArray.forEach((msg: string, idx: number) => {
+                expandedOtps.push({ nid: `${baseNid}_${idx}`, number: numberClean, otp: msg, country: order.country || "Unknown", operator: order.operator || "Any", created_at: formattedDate });
+            });
+        } else {
+            expandedOtps.push({ nid: baseNid, number: numberClean, otp: order.fullMessage || order.otp || "", country: order.country || "Unknown", operator: order.operator || "Any", created_at: formattedDate });
+        }
     });
 
-    if (!response.ok) {
-      return NextResponse.json({ success: false, error: "Internal Fastify Engine Blocked Request" }, { status: 400 });
-    }
+    const validOtps = expandedOtps.filter(o => o.otp && o.otp.trim() !== "" && !["waiting...", "pending", "null"].includes(o.otp.toLowerCase()));
 
-    const data = await response.json();
+    return NextResponse.json({ success: true, otps: validOtps }, { status: 200 });
 
-    if (data.meta?.status === "success") {
-      const otpArray = Array.isArray(data.data) ? data.data : (data.data?.otps || []);
-      return NextResponse.json({ success: true, otps: otpArray }, { status: 200 });
-    } else {
-      return NextResponse.json({ success: false, error: data.message || "Failed to fetch OTPs" }, { status: 400 });
-    }
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: "Network Error or Fastify Timeout" }, { status: 500 });
+    console.error("Check OTP Error:", error.message);
+    return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
   }
 }

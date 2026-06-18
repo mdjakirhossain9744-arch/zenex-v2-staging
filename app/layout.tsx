@@ -1,18 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SessionWatcher from "./components/SessionWatcher"; // 💥 SessionWatcher
 import FCMProvider from "./components/FCMProvider"; // 🚀 FCM Push Notification Provider
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 // 💥 Advanced SEO Metadata & PWA Manifest Added 💥
 export const metadata: Metadata = {
@@ -46,9 +35,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // 💥 Google Fonts সরিয়ে Next.js এর ডিফল্ট ফাস্ট font-sans ব্যবহার করা হলো
+      className="h-full antialiased font-sans"
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col bg-[#0F172A] text-[#E2E8F0]">
         {/* 💥 ম্যাজিক: Cross-Tab Session Sync Component 💥 */}
         <SessionWatcher />
         

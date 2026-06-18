@@ -92,9 +92,9 @@ export async function POST(req: Request) {
                           title: "💰 New Withdraw Request!", 
                           body: `${name} requested ৳${safeAmount} via ${method}.` 
                       }
-                  }).catch(e => console.error("Admin FCM Error:", e));
+                  }).catch((e: any) => console.error("Admin FCM Error:", e));
               });
-          }).catch(e => console.error("Admin Find Error:", e));
+          }).catch((e: any) => console.error("Admin Find Error:", e));
       }
 
       return NextResponse.json({ success: true, message: "Withdraw request submitted successfully!" });
