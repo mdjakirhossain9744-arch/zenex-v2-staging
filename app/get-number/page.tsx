@@ -163,10 +163,8 @@ export default function GetNumber() {
               if (existingItem) {
                  if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
                  
-                 // 💥 SMART MERGE: Keep UI states like copyNumber while updating DB status
                  prevMap.set(itemId, { ...existingItem, ...fetchedItem, copyNumber: existingItem.copyNumber || fetchedItem.copyNumber });
                  
-                 // Show Toast if UI updates from WAIT to DONE
                  if (existingItem.status === "WAIT" && fetchedItem.status === "DONE" && isBackground) {
                      showToast(`OTP Received: ${cleanOTPDisplay(fetchedItem.otp)}`);
                  }
@@ -235,7 +233,6 @@ export default function GetNumber() {
     window.addEventListener('otp-received-instant', handleInstantOtp);
 
     fetchDbOrders(1, false);
-    // 💥 3 SECONDS SYNC INTERVAL TO MATCH DB 💥
     const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
@@ -271,11 +268,25 @@ export default function GetNumber() {
       const result = await response.json();
       
       if (response.ok && result.success) {
-        const numberToCopy = result.data.copy || result.data.number || result.data.full_number;
+        
+        // 💥 MAGIC LOGIC FOR NUMBER FORMATTING (COPY VS DISPLAY) 💥
+        const rawNumber = result.data.number || ""; 
+        const fullNumber = result.data.full_number || rawNumber;
+        
+        // Display Number always keeps the original formatting (+ and country code)
+        const realMNITNumber = fullNumber; 
+
+        // Formatter only for Clipboard (Copying)
+        let numberToCopy = isNational ? rawNumber : fullNumber;
+        
+        if (removePlus) {
+            numberToCopy = String(numberToCopy).replace(/\+/g, '');
+        }
+
+        // Copy exactly what the user selected in toggles
         navigator.clipboard.writeText(numberToCopy);
         showToast(`Copied: ${numberToCopy}`);
 
-        const realMNITNumber = result.data.full_number || result.data.number;
         const todayStr = getUTCDateString();
         const realId = result.orderId || Date.now().toString();
 
@@ -283,9 +294,9 @@ export default function GetNumber() {
           id: realId,
           _id: realId, 
           dateString: todayStr, 
-          displayNumber: realMNITNumber, 
+          displayNumber: realMNITNumber, // FEED E ASOL TA DEKHABE
           searchNumber: realMNITNumber,  
-          copyNumber: numberToCopy,      
+          copyNumber: numberToCopy,      // KINTU COPY KORLE FILTTER KORA TA HOBE
           country: result.data.country || "Unknown",
           operator: result.data.operator || "Any", 
           status: "WAIT", 
@@ -493,8 +504,19 @@ export default function GetNumber() {
                       return (
                       <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
-                            <div onClick={() => { navigator.clipboard.writeText(item.copyNumber || item.searchNumber || item.displayNumber); showToast("Number Copied!"); }} className="flex items-center gap-1.5 cursor-pointer group">
+                            
+                            {/* 💥 FEED E NUMBER COPY KORAR LOGIC UPDATE 💥 */}
+                            <div onClick={() => { 
+                               let textToCopy = item.copyNumber || item.searchNumber || item.displayNumber;
+                               // Jodi old history theke kew Remove+ on thaka obosthay copy kore, tahole plus delete hobe
+                               if (removePlus) textToCopy = String(textToCopy).replace(/\+/g, '');
+                               navigator.clipboard.writeText(textToCopy); 
+                               showToast("Number Copied!"); 
+                            }} className="flex items-center gap-1.5 cursor-pointer group">
+                              
+                              {/* 💥 DISPLAY HOBE ORIGINAL + SOHO NUMBER (item.searchNumber) 💥 */}
                               <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.searchNumber || item.displayNumber}</span>
+                              
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
