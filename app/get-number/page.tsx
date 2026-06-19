@@ -3,6 +3,37 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
+// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR 💥
+const GLOBAL_COUNTRY_CODES = [
+  "225", "236", "234", "212", "254", "221", "222", "223", "224", "226", "227", "228", "229", "231", "232", "233", "235", "237", "238", "239", "240", "241", "242", "243", "244", "245", "246", "247", "250", "251", "252", "253", "255", "256", "257", "258", "260", "261", "262", "263", "264", "265", "266", "267", "268", "269", "20", "27", 
+  "880", "91", "92", "93", "94", "95", "86", "81", "82", "84", "62", "60", "63", "66", "65", "855", "856", "886", "976", "977", "960", "961", "962", "963", "964", "965", "966", "967", "968", "971", "972", "973", "974", "975", 
+  "44", "33", "49", "48", "39", "34", "351", "352", "353", "354", "355", "356", "357", "358", "359", "370", "371", "372", "373", "374", "375", "376", "377", "378", "380", "381", "382", "385", "386", "387", "389", "40", "41", "43", "45", "46", "47", "7", 
+  "1", "51", "52", "53", "54", "55", "56", "57", "58", "590", "591", "592", "593", "594", "595", "596", "597", "598", "599", "61", "64"
+].sort((a, b) => b.length - a.length);
+
+const getFormattedCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
+  let clean = String(rawNum).replace(/\D/g, ''); // Extract only pure digits
+  if (!clean) return rawNum;
+
+  let finalNum = clean;
+
+  if (isNat) {
+      for (let code of GLOBAL_COUNTRY_CODES) {
+          if (clean.startsWith(code)) {
+              finalNum = clean.substring(code.length); // Remove country code
+              break;
+          }
+      }
+  }
+
+  // If Default (Neither National nor No+ selected), ADD the Plus
+  if (!noPlus && !isNat) {
+      finalNum = '+' + clean;
+  }
+
+  return finalNum;
+};
+
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
@@ -15,7 +46,6 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
-// 💥 BUG FIX: Convert String to Time (ms) to prevent NaN sorting crash!
 const getSortTime = (item: any) => {
     const t = item.receivedAt || item.updatedAt || item.createdAt;
     return new Date(t).getTime() || 0;
@@ -163,7 +193,7 @@ export default function GetNumber() {
               if (existingItem) {
                  if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
                  
-                 prevMap.set(itemId, { ...existingItem, ...fetchedItem, copyNumber: existingItem.copyNumber || fetchedItem.copyNumber });
+                 prevMap.set(itemId, { ...existingItem, ...fetchedItem });
                  
                  if (existingItem.status === "WAIT" && fetchedItem.status === "DONE" && isBackground) {
                      showToast(`OTP Received: ${cleanOTPDisplay(fetchedItem.otp)}`);
@@ -269,23 +299,13 @@ export default function GetNumber() {
       
       if (response.ok && result.success) {
         
-        // 💥 MAGIC LOGIC FOR NUMBER FORMATTING (COPY VS DISPLAY) 💥
-        const rawNumber = result.data.number || ""; 
-        const fullNumber = result.data.full_number || rawNumber;
+        // 💥 GET REAL NUMBER FROM API 💥
+        const rawServerNumber = result.data.full_number || result.data.number || result.data.copy || "";
         
-        // Display Number always keeps the original formatting (+ and country code)
-        const realMNITNumber = fullNumber; 
-
-        // Formatter only for Clipboard (Copying)
-        let numberToCopy = isNational ? rawNumber : fullNumber;
-        
-        if (removePlus) {
-            numberToCopy = String(numberToCopy).replace(/\+/g, '');
-        }
-
-        // Copy exactly what the user selected in toggles
-        navigator.clipboard.writeText(numberToCopy);
-        showToast(`Copied: ${numberToCopy}`);
+        // 💥 APPLY SMART COPY FORMATTING 💥
+        const textToCopy = getFormattedCopyNumber(rawServerNumber, isNational, removePlus);
+        navigator.clipboard.writeText(textToCopy);
+        showToast(`Copied: ${textToCopy}`);
 
         const todayStr = getUTCDateString();
         const realId = result.orderId || Date.now().toString();
@@ -294,9 +314,8 @@ export default function GetNumber() {
           id: realId,
           _id: realId, 
           dateString: todayStr, 
-          displayNumber: realMNITNumber, // FEED E ASOL TA DEKHABE
-          searchNumber: realMNITNumber,  
-          copyNumber: numberToCopy,      // KINTU COPY KORLE FILTTER KORA TA HOBE
+          displayNumber: rawServerNumber, // ALWAYS SHOW RAW SERVER NUMBER IN FEED
+          searchNumber: rawServerNumber,  
           country: result.data.country || "Unknown",
           operator: result.data.operator || "Any", 
           status: "WAIT", 
@@ -505,17 +524,14 @@ export default function GetNumber() {
                       <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
                             
-                            {/* 💥 FEED E NUMBER COPY KORAR LOGIC UPDATE 💥 */}
+                            {/* 💥 FEED E NUMBER CLICK KORLE DYNAMIC COPY LOGIC 💥 */}
                             <div onClick={() => { 
-                               let textToCopy = item.copyNumber || item.searchNumber || item.displayNumber;
-                               // Jodi old history theke kew Remove+ on thaka obosthay copy kore, tahole plus delete hobe
-                               if (removePlus) textToCopy = String(textToCopy).replace(/\+/g, '');
+                               const textToCopy = getFormattedCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
                                navigator.clipboard.writeText(textToCopy); 
                                showToast("Number Copied!"); 
                             }} className="flex items-center gap-1.5 cursor-pointer group">
                               
-                              {/* 💥 DISPLAY HOBE ORIGINAL + SOHO NUMBER (item.searchNumber) 💥 */}
-                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.searchNumber || item.displayNumber}</span>
+                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber || item.searchNumber}</span>
                               
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
