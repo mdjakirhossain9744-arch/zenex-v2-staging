@@ -1,4 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
+import mongoose from "mongoose";
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import DailyStat from "../../../models/DailyStat";
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
     tenDaysAgoDate.setUTCDate(tenDaysAgoDate.getUTCDate() - 10);
     const tenDaysAgoMidnight = new Date(getUTCDateString(tenDaysAgoDate) + "T00:00:00.000Z");
 
+    // 1. BACKUP YESTERDAY'S ORDERS INTO DAILY_STATS
     const yesterdayOrders = await Order.find({
         createdAt: { 
             $gte: new Date(yesterdayStrUTC + "T00:00:00.000Z"), 
@@ -66,9 +68,7 @@ export async function GET(req: NextRequest) {
 
             const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
 
-            // 💥 MATH FIX: এখন WhatsApp ও Telegram-কেও Success হিসেবে কাউন্ট করা হবে 💥
             statsMap[key].success += validMsgCount;
-            
             statsMap[key].amount += (o.orderCost || 0);
             statsMap[key].commission += (o.orderCommission || 0);
             
@@ -94,6 +94,7 @@ export async function GET(req: NextRequest) {
         );
     }
 
+    // 2. DELETE OLD ORDERS (Failed: 2 Days, Success: 10 Days)
     const deletedFailed = await Order.deleteMany({
         createdAt: { $lt: twoDaysAgoMidnight },
         status: { $nin: ["DONE", "Success", "SUCCESS"] }
@@ -104,12 +105,28 @@ export async function GET(req: NextRequest) {
         status: { $in: ["DONE", "Success", "SUCCESS"] }
     });
 
+    // 💥 3. SMART OPTIMIZATION: DELETE OLD RAW DATA (2 DAYS ONLY) 💥
+    let deletedRawLogsCount = 0;
+    try {
+      const db = mongoose.connection.db;
+      if (db) {
+         const rawResult = await db.collection("rawlogs").deleteMany({
+            // 💥 Changed from tenDaysAgoMidnight to twoDaysAgoMidnight
+            timestamp: { $lt: twoDaysAgoMidnight } 
+         });
+         deletedRawLogsCount = rawResult.deletedCount || 0;
+      }
+    } catch (e) {
+      console.error("RAW_DATA_CLEANUP_ERROR:", e);
+    }
+
     return NextResponse.json({
         success: true,
-        message: "✅ Backup & Cleanup Successful!",
+        message: "✅ Backup & Full Cleanup Successful!",
         backupSaved: Object.keys(statsMap).length,
         deletedFailedOrders: deletedFailed.deletedCount,
-        deletedSuccessOrders: deletedSuccess.deletedCount
+        deletedSuccessOrders: deletedSuccess.deletedCount,
+        deletedRawData: deletedRawLogsCount
     });
 
   } catch (error: any) {
