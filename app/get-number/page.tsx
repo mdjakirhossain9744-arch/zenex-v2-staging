@@ -13,7 +13,7 @@ const GLOBAL_COUNTRY_CODES = [
 
 // 💥 BULLETPROOF COPY FORMATTER 💥
 const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
-  let digitsOnly = String(rawNum).replace(/\D/g, ''); // Remove +, spaces, everything
+  let digitsOnly = String(rawNum).replace(/\D/g, ''); 
 
   if (!digitsOnly) return rawNum;
 
@@ -73,6 +73,7 @@ export default function GetNumber() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const observerRef = useRef<HTMLDivElement>(null);
 
   const getUserEmail = () => {
@@ -194,10 +195,7 @@ export default function GetNumber() {
               
               if (existingItem) {
                  if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
-                 
-                 // MARGE DATA AND UPDATE
                  prevMap.set(itemId, { ...existingItem, ...fetchedItem });
-                 
                  if (existingItem.status === "WAIT" && fetchedItem.status === "DONE" && isBackground) {
                      showToast(`OTP Received: ${cleanOTPDisplay(fetchedItem.otp)}`);
                  }
@@ -302,11 +300,9 @@ export default function GetNumber() {
       
       if (response.ok && result.success) {
         
-        // 💥 GET REAL API NUMBER & FORCE CLEAN IT FOR FEED DISPLAY 💥
         const rawServerNumber = result.data.full_number || result.data.number || result.data.copy || "";
-        const pureFeedNumber = String(rawServerNumber).replace(/\D/g, ''); // Only digits (No + in feed)
+        const pureFeedNumber = String(rawServerNumber).replace(/\D/g, ''); 
         
-        // 💥 COPY LOGIC RULES APPLY 💥
         const textToCopy = formatCopyNumber(pureFeedNumber, isNational, removePlus);
         navigator.clipboard.writeText(textToCopy);
         showToast(`Copied: ${textToCopy}`);
@@ -318,7 +314,7 @@ export default function GetNumber() {
           id: realId,
           _id: realId, 
           dateString: todayStr, 
-          displayNumber: pureFeedNumber, // Ekhane kkhno + show korbe na!
+          displayNumber: pureFeedNumber, 
           searchNumber: pureFeedNumber,  
           copyNumber: textToCopy,
           country: result.data.country || "Unknown",
@@ -391,34 +387,48 @@ export default function GetNumber() {
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
-  // 💥 NEW: ONE-CLICK OTP DOWNLOAD LOGIC 💥
-  const downloadSuccessOTPs = () => {
-    // Select all successful OTPs for the specific selected date (regardless of active UI filter)
-    const successItems = expandedNumbers.filter(item => item.status === "DONE" && item.dateString === selectedDate);
-    
-    if (successItems.length === 0) {
-      showToast("No successful OTPs to download for this date!");
+  // 💥 NEW: ZERO-LOAD BULK DOWNLOAD LOGIC (Calls the Next.js Proxy -> Fastify DB) 💥
+  const downloadAllSuccessOTPs = async () => {
+    const email = getUserEmail();
+    if (!email) return;
+
+    if (stats.success === 0) {
+      showToast("No successful OTPs to download!");
       return;
     }
 
-    let fileContent = "";
-    successItems.forEach(item => {
-      const num = String(item.displayNumber || item.searchNumber).replace(/\D/g, '');
-      const otpVal = cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '');
-      fileContent += `${num}|${otpVal}\n`;
-    });
+    setIsDownloading(true);
+    showToast("Preparing Full Download...");
 
-    const blob = new Blob([fileContent], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `ZENEX_DONE_OTPS_${selectedDate}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    showToast(`Downloaded ${successItems.length} OTPs!`);
+    try {
+      // Calls the new Zero-Load Proxy API
+      const res = await fetch(`/api/download-otps`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, targetDate: selectedDate })
+      });
+      
+      const data = await res.json();
+
+      if (data.success && data.textData) {
+        const blob = new Blob([data.textData], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ZENEX_DONE_OTPS_${selectedDate}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showToast(`Success! Downloaded All OTPs.`);
+      } else {
+        showToast("Error: No data found for this date.");
+      }
+    } catch (err) {
+      showToast("Download failed! Try again.");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -559,15 +569,11 @@ export default function GetNumber() {
                       <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
                             
-                            {/* 💥 FEED E CLICK KORLE UPDATE COPY LOGIC 💥 */}
                             <div onClick={() => { 
-                               // Compute the copy text dynamically based on current toggles
                                const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
                                navigator.clipboard.writeText(textToCopy); 
                                showToast("Number Copied!"); 
                             }} className="flex items-center gap-1.5 cursor-pointer group">
-                              
-                              {/* 💥 DISPLAY HOBE ORIGINAL (NO PLUS) NUMBER 💥 */}
                               <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}</span>
                               
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
@@ -585,7 +591,6 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         {/* 💥 TASK 2: MOBILE LAYOUT FIX APPLIED HERE 💥 */}
                          <div className="flex justify-between items-center w-full">
                             
                             <div className="flex-1 overflow-hidden pr-2 min-w-0">
@@ -637,7 +642,6 @@ export default function GetNumber() {
            </div>
         </div>
 
-        {/* 💥 TASK 3: ONE CLICK DOWNLOAD UI APPLIED HERE 💥 */}
         <div className="flex flex-col items-center justify-center pb-2 flex-shrink-0">
            <div className="flex items-center gap-3 bg-[#1E293B]/80 border border-[#334155] rounded-full px-4 py-1.5 shadow-md">
              <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full transition-colors"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
@@ -646,10 +650,25 @@ export default function GetNumber() {
              
              <div className="w-[1px] h-4 bg-[#334155] mx-1"></div>
              
-             <button onClick={downloadSuccessOTPs} title="Download DONE OTPs" className="p-1.5 text-[#10B981] hover:text-white hover:bg-[#10B981] rounded-full transition-all bg-[#10B981]/10 border border-[#10B981]/30">
-               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-               </svg>
+             <button 
+                onClick={downloadAllSuccessOTPs} 
+                disabled={isDownloading || stats.success === 0}
+                title="Download ALL DONE OTPs" 
+                className={`p-1.5 rounded-full transition-all border ${
+                  isDownloading || stats.success === 0 
+                  ? 'bg-[#334155]/20 text-[#64748B] border-[#334155]/30 cursor-not-allowed' 
+                  : 'text-[#10B981] bg-[#10B981]/10 border-[#10B981]/30 hover:text-white hover:bg-[#10B981]'
+                }`}
+             >
+               {isDownloading ? (
+                 <svg className="w-4 h-4 animate-spin text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                 </svg>
+               ) : (
+                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                 </svg>
+               )}
              </button>
            </div>
         </div>
