@@ -3,35 +3,37 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR 💥
+// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR (Sorted by length to match properly) 💥
 const GLOBAL_COUNTRY_CODES = [
-  "225", "236", "234", "212", "254", "221", "222", "223", "224", "226", "227", "228", "229", "231", "232", "233", "235", "237", "238", "239", "240", "241", "242", "243", "244", "245", "246", "247", "250", "251", "252", "253", "255", "256", "257", "258", "260", "261", "262", "263", "264", "265", "266", "267", "268", "269", "20", "27", 
+  "225", "236", "234", "212", "254", "221", "222", "223", "224", "226", "227", "228", "229", "231", "232", "233", "235", "237", "238", "239", "240", "241", "242", "243", "244", "245", "246", "247", "250", "251", "252", "253", "255", "256", "257", "258", "260", "261", "262", "263", "264", "265", "266", "269", "20", "27", 
   "880", "91", "92", "93", "94", "95", "86", "81", "82", "84", "62", "60", "63", "66", "65", "855", "856", "886", "976", "977", "960", "961", "962", "963", "964", "965", "966", "967", "968", "971", "972", "973", "974", "975", 
   "44", "33", "49", "48", "39", "34", "351", "352", "353", "354", "355", "356", "357", "358", "359", "370", "371", "372", "373", "374", "375", "376", "377", "378", "380", "381", "382", "385", "386", "387", "389", "40", "41", "43", "45", "46", "47", "7", 
   "1", "51", "52", "53", "54", "55", "56", "57", "58", "590", "591", "592", "593", "594", "595", "596", "597", "598", "599", "61", "64"
 ].sort((a, b) => b.length - a.length);
 
-const getFormattedCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
-  let clean = String(rawNum).replace(/\D/g, ''); // Extract only pure digits
-  if (!clean) return rawNum;
+// 💥 BULLETPROOF COPY FORMATTER 💥
+const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
+  let digitsOnly = String(rawNum).replace(/\D/g, ''); // Remove +, spaces, everything
 
-  let finalNum = clean;
+  if (!digitsOnly) return rawNum;
 
+  // Rule 1: National (Strip Country Code)
   if (isNat) {
       for (let code of GLOBAL_COUNTRY_CODES) {
-          if (clean.startsWith(code)) {
-              finalNum = clean.substring(code.length); // Remove country code
-              break;
+          if (digitsOnly.startsWith(code)) {
+              return digitsOnly.substring(code.length); 
           }
       }
+      return digitsOnly;
   }
 
-  // If Default (Neither National nor No+ selected), ADD the Plus
-  if (!noPlus && !isNat) {
-      finalNum = '+' + clean;
+  // Rule 2: No (+) (Return plain digits)
+  if (noPlus) {
+      return digitsOnly;
   }
 
-  return finalNum;
+  // Rule 3: Default (Add +)
+  return '+' + digitsOnly;
 };
 
 const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
@@ -193,6 +195,7 @@ export default function GetNumber() {
               if (existingItem) {
                  if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
                  
+                 // MARGE DATA AND UPDATE
                  prevMap.set(itemId, { ...existingItem, ...fetchedItem });
                  
                  if (existingItem.status === "WAIT" && fetchedItem.status === "DONE" && isBackground) {
@@ -299,11 +302,12 @@ export default function GetNumber() {
       
       if (response.ok && result.success) {
         
-        // 💥 GET REAL NUMBER FROM API 💥
+        // 💥 GET REAL API NUMBER & FORCE CLEAN IT FOR FEED DISPLAY 💥
         const rawServerNumber = result.data.full_number || result.data.number || result.data.copy || "";
+        const pureFeedNumber = String(rawServerNumber).replace(/\D/g, ''); // Only digits (No + in feed)
         
-        // 💥 APPLY SMART COPY FORMATTING 💥
-        const textToCopy = getFormattedCopyNumber(rawServerNumber, isNational, removePlus);
+        // 💥 COPY LOGIC RULES APPLY 💥
+        const textToCopy = formatCopyNumber(pureFeedNumber, isNational, removePlus);
         navigator.clipboard.writeText(textToCopy);
         showToast(`Copied: ${textToCopy}`);
 
@@ -314,8 +318,9 @@ export default function GetNumber() {
           id: realId,
           _id: realId, 
           dateString: todayStr, 
-          displayNumber: rawServerNumber, // ALWAYS SHOW RAW SERVER NUMBER IN FEED
-          searchNumber: rawServerNumber,  
+          displayNumber: pureFeedNumber, // Ekhane kkhno + show korbe na!
+          searchNumber: pureFeedNumber,  
+          copyNumber: textToCopy,
           country: result.data.country || "Unknown",
           operator: result.data.operator || "Any", 
           status: "WAIT", 
@@ -524,14 +529,16 @@ export default function GetNumber() {
                       <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          <div className="flex justify-between items-center mb-1.5">
                             
-                            {/* 💥 FEED E NUMBER CLICK KORLE DYNAMIC COPY LOGIC 💥 */}
+                            {/* 💥 FEED E CLICK KORLE UPDATE COPY LOGIC 💥 */}
                             <div onClick={() => { 
-                               const textToCopy = getFormattedCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
+                               // Compute the copy text dynamically based on current toggles
+                               const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
                                navigator.clipboard.writeText(textToCopy); 
                                showToast("Number Copied!"); 
                             }} className="flex items-center gap-1.5 cursor-pointer group">
                               
-                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{item.displayNumber || item.searchNumber}</span>
+                              {/* 💥 DISPLAY HOBE ORIGINAL (NO PLUS) NUMBER 💥 */}
+                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}</span>
                               
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
