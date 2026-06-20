@@ -111,7 +111,10 @@ export async function POST(req: NextRequest) {
         status: u.status === 'active' ? 'Active' : u.status === 'pending' ? 'Pending' : 'Banned',
         balance: Number(u.balance || 0).toFixed(2),
         todayOTP: todayOtpCount, 
-        rate: (u.otpRate !== undefined && u.otpRate !== null) ? Number(u.otpRate).toFixed(2) : "0.00"
+        rate: (u.otpRate !== undefined && u.otpRate !== null) ? Number(u.otpRate).toFixed(2) : "0.00",
+        
+        // 💥 MAGIC FIX: NOW AGENT PANEL GETS THE REAL API STATUS 💥
+        isApiActive: u.isApiActive || false
       };
     });
 
