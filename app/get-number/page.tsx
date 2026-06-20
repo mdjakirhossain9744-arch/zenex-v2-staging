@@ -391,6 +391,36 @@ export default function GetNumber() {
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
+  // 💥 NEW: ONE-CLICK OTP DOWNLOAD LOGIC 💥
+  const downloadSuccessOTPs = () => {
+    // Select all successful OTPs for the specific selected date (regardless of active UI filter)
+    const successItems = expandedNumbers.filter(item => item.status === "DONE" && item.dateString === selectedDate);
+    
+    if (successItems.length === 0) {
+      showToast("No successful OTPs to download for this date!");
+      return;
+    }
+
+    let fileContent = "";
+    successItems.forEach(item => {
+      const num = String(item.displayNumber || item.searchNumber).replace(/\D/g, '');
+      const otpVal = cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '');
+      fileContent += `${num}|${otpVal}\n`;
+    });
+
+    const blob = new Blob([fileContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ZENEX_DONE_OTPS_${selectedDate}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    showToast(`Downloaded ${successItems.length} OTPs!`);
+  };
+
   return (
     <DashboardLayout>
       <div className="p-3 md:p-10 w-full relative z-10 font-sans">
@@ -555,8 +585,10 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         <div className="flex justify-between items-center">
-                            <div className="flex-1 overflow-hidden pr-2">
+                         {/* 💥 TASK 2: MOBILE LAYOUT FIX APPLIED HERE 💥 */}
+                         <div className="flex justify-between items-center w-full">
+                            
+                            <div className="flex-1 overflow-hidden pr-2 min-w-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
@@ -568,7 +600,7 @@ export default function GetNumber() {
                                  <div className="flex flex-col items-start gap-1">
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
-                                      className="group relative inline-flex items-center gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-2 py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
+                                      className="group relative inline-flex items-center gap-1 md:gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-0.5 md:px-2 md:py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
                                    >
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                       <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
@@ -582,12 +614,12 @@ export default function GetNumber() {
                                )}
                             </div>
                             
-                            <div className="flex flex-col items-end text-right min-w-[60px]">
-                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase">
+                            <div className="flex flex-col items-end text-right min-w-[70px] max-w-[120px] md:max-w-[200px] flex-shrink-0">
+                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase truncate w-full text-right">
                                  <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
                                  {item.operator}
                               </span>
-                              <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5">{getTimeAgo(getDisplayTime(item))}</span>
+                              <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5 truncate w-full text-right">{getTimeAgo(getDisplayTime(item))}</span>
                             </div>
                          </div>
                       </div>
@@ -605,11 +637,20 @@ export default function GetNumber() {
            </div>
         </div>
 
+        {/* 💥 TASK 3: ONE CLICK DOWNLOAD UI APPLIED HERE 💥 */}
         <div className="flex flex-col items-center justify-center pb-2 flex-shrink-0">
            <div className="flex items-center gap-3 bg-[#1E293B]/80 border border-[#334155] rounded-full px-4 py-1.5 shadow-md">
              <button onClick={() => changeDate(-1)} className="p-1 text-[#94A3B8] hover:text-[#3B82F6] rounded-full transition-colors"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg></button>
              <span className="text-xs font-black text-white min-w-[120px] text-center">{getFormattedDate()}</span>
              <button onClick={() => changeDate(1)} disabled={isToday} className={`p-1 rounded-full transition-colors ${isToday ? 'text-[#334155] cursor-not-allowed' : 'text-[#94A3B8] hover:text-[#3B82F6]'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg></button>
+             
+             <div className="w-[1px] h-4 bg-[#334155] mx-1"></div>
+             
+             <button onClick={downloadSuccessOTPs} title="Download DONE OTPs" className="p-1.5 text-[#10B981] hover:text-white hover:bg-[#10B981] rounded-full transition-all bg-[#10B981]/10 border border-[#10B981]/30">
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+               </svg>
+             </button>
            </div>
         </div>
 

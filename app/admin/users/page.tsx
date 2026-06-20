@@ -30,7 +30,10 @@ export default function AdminUsersManagementPage() {
   const [customMail, setCustomMail] = useState("");
   const [contactLink, setContactLink] = useState("");
   const [maxLimit, setMaxLimit] = useState("100"); 
+  
+  // API States
   const [newApiStatus, setNewApiStatus] = useState(false);
+  const [canManageApi, setCanManageApi] = useState(false); 
   
   const [newAgentEmail, setNewAgentEmail] = useState(""); 
   const [handoverEmail, setHandoverEmail] = useState(""); 
@@ -98,6 +101,7 @@ export default function AdminUsersManagementPage() {
     setNewPassword(""); 
     setNewPin(""); 
     setNewApiStatus(user.isApiActive || false); 
+    setCanManageApi(user.canManageApi || false); 
     setNewAgentEmail(user.agentEmail || ""); 
     setHandoverEmail(""); 
     
@@ -134,6 +138,7 @@ export default function AdminUsersManagementPage() {
       contactLink: makeRole === "agent" ? contactLink : "",
       maxLimit: makeRole === "agent" ? maxLimit : 100,
       isApiActive: newApiStatus, 
+      canManageApi: canManageApi, // ADMIN PASSES PERMISSION TO AGENT
       newAgentEmail: newAgentEmail !== selectedUser.agentEmail ? newAgentEmail : undefined,
       handoverToEmail: handoverEmail, 
       requesterEmail: adminEmail,
@@ -154,7 +159,6 @@ export default function AdminUsersManagementPage() {
     } else alert(data.message);
   };
 
-  // 💥 BRAND NEW: Generate API Key Manually (AJAX) 💥
   const handleGenerateNewKey = async () => {
     if (!confirm("⚠️ DANGER: Are you sure you want to generate a new API key? The old key will immediately stop working!")) return;
     
@@ -163,14 +167,14 @@ export default function AdminUsersManagementPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId: selectedUser.id,
-        generateNewKey: true // Sends trigger to backend
+        generateNewKey: true 
       })
     });
     const data = await res.json();
     if (res.ok) {
       alert("✅ Success! A new API Key has been generated and saved.");
       fetchUsers(true);
-      setIsModalOpen(false); // Close modal to refresh data on next open
+      setIsModalOpen(false); 
     } else {
       alert(data.message);
     }
@@ -190,7 +194,8 @@ export default function AdminUsersManagementPage() {
         customMail: user.customAgentMail || "",
         contactLink: user.telegramLink || "",
         maxLimit: user.agentMaxUsers || 100,
-        isApiActive: user.isApiActive || false
+        isApiActive: user.isApiActive || false,
+        canManageApi: user.canManageApi || false
       })
     });
     
@@ -289,7 +294,6 @@ export default function AdminUsersManagementPage() {
           </div>
         </div>
 
-        {/* 💥 AGENT FILTER: When selected, it automatically filters users for that agent 💥 */}
         <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#1E293B]/50 border border-[#334155] p-4 rounded-xl">
           <div>
             <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Filter by Status</label>
@@ -313,7 +317,9 @@ export default function AdminUsersManagementPage() {
             >
               <option value="all">All Agents</option>
               {cachedAgentOptions.map(ag => (
-                <option key={ag.id} value={ag.customAgentMail || ag.email}>{ag.name || "Unknown"} ({ag.customAgentMail || ag.email || "No Email"})</option>
+                <option key={ag.id} value={ag.customAgentMail || ag.email}>
+                  {ag.name || "Unknown"} ({ag.customAgentMail || ag.email || "No Email"})
+                </option>
               ))}
             </select>
           </div>
@@ -336,7 +342,10 @@ export default function AdminUsersManagementPage() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="p-4 pl-6"><div className="h-4 bg-[#334155] rounded w-3/4 mb-2"></div><div className="h-3 bg-[#334155]/50 rounded w-1/2"></div></td>
+                    <td className="p-4 pl-6">
+                      <div className="h-4 bg-[#334155] rounded w-3/4 mb-2"></div>
+                      <div className="h-3 bg-[#334155]/50 rounded w-1/2"></div>
+                    </td>
                     <td className="p-4"><div className="h-5 bg-[#334155] rounded w-20"></div></td>
                     <td className="p-4 text-center"><div className="h-4 bg-[#334155] rounded w-10 mx-auto"></div></td>
                     <td className="p-4"><div className="h-4 bg-[#334155] rounded w-16"></div></td>
@@ -346,14 +355,18 @@ export default function AdminUsersManagementPage() {
                   </tr>
                 ))
               ) : allUsers.length === 0 ? (
-                <tr><td colSpan={7} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
+                <tr>
+                  <td colSpan={7} className="text-center p-8 text-[#64748B] font-bold">No users found.</td>
+                </tr>
               ) : (
                 allUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-[#334155]/20 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-bold text-[#E2E8F0]">{u.name || "Unknown User"}</p>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#3B82F6]/20 text-[#3B82F6] border border-[#3B82F6]/30">{u.uid}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#3B82F6]/20 text-[#3B82F6] border border-[#3B82F6]/30">
+                          {u.uid}
+                        </span>
                         {u.isApiActive && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest">API</span>
                         )}
@@ -378,7 +391,6 @@ export default function AdminUsersManagementPage() {
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right flex justify-end gap-2">
-                      {/* 💥 NEW BUTTON: View Network (Shortcut to see agent's users) 💥 */}
                       {u.role === 'agent' && (
                          <button 
                            onClick={() => { setAgentFilter(u.customAgentMail || u.email); setCurrentPage(1); }} 
@@ -388,11 +400,17 @@ export default function AdminUsersManagementPage() {
                          </button>
                       )}
                       {u.status?.toLowerCase() === 'banned' && (
-                        <button onClick={() => handleQuickUnban(u)} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors border border-red-500/30">
+                        <button 
+                          onClick={() => handleQuickUnban(u)} 
+                          className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors border border-red-500/30"
+                        >
                           Unban
                         </button>
                       )}
-                      <button onClick={() => openManageModal(u)} className="bg-[#3B82F6]/10 hover:bg-[#3B82F6] text-[#3B82F6] hover:text-white px-4 py-1.5 rounded-lg text-xs font-black transition-colors border border-[#3B82F6]/30 shadow-sm">
+                      <button 
+                        onClick={() => openManageModal(u)} 
+                        className="bg-[#3B82F6]/10 hover:bg-[#3B82F6] text-[#3B82F6] hover:text-white px-4 py-1.5 rounded-lg text-xs font-black transition-colors border border-[#3B82F6]/30 shadow-sm"
+                      >
                         Manage
                       </button>
                     </td>
@@ -404,20 +422,27 @@ export default function AdminUsersManagementPage() {
 
           {totalPages > 1 && (
             <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 flex items-center justify-between">
-               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
+               <button 
+                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
+                 disabled={currentPage === 1} 
+                 className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors"
+               >
                  ← Previous
                </button>
                <span className="text-xs font-black text-[#94A3B8]">
                  Page <span className="text-white">{currentPage}</span> of {totalPages}
                </span>
-               <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
+               <button 
+                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
+                 disabled={currentPage === totalPages} 
+                 className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors"
+               >
                  Next →
                </button>
             </div>
           )}
         </div>
 
-        {/* MODAL SECTION */}
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -428,12 +453,14 @@ export default function AdminUsersManagementPage() {
                    {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                  </div>
                  <div>
-                   <h3 className="text-lg font-black text-white leading-tight">{selectedUser?.name || "Unknown User"} <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser?.role || "user"}</span></h3>
+                   <h3 className="text-lg font-black text-white leading-tight">
+                     {selectedUser?.name || "Unknown User"} 
+                     <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser?.role || "user"}</span>
+                   </h3>
                    <p className="text-[10px] font-mono text-[#3B82F6] font-bold">{selectedUser?.email || "No Email"}</p>
                  </div>
               </div>
               
-              {/* 💥 API ACCESS & GENERATE KEY SECTION 💥 */}
               <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex flex-col gap-3">
                  <div className="flex items-center justify-between">
                    <div>
@@ -449,7 +476,6 @@ export default function AdminUsersManagementPage() {
                    </button>
                  </div>
                  
-                 {/* 💥 NEW GENERATE KEY BUTTON 💥 */}
                  {selectedUser.role !== 'agent' && (
                     <div className="border-t border-[#334155] pt-3 mt-1 flex justify-between items-center">
                       <span className="text-[10px] text-[#64748B] font-bold">Compromised Key?</span>
@@ -500,7 +526,11 @@ export default function AdminUsersManagementPage() {
                 
                 <div>
                   <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Account Status</label>
-                  <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} className={`w-full bg-[#1E293B] border text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none ${newStatus === 'banned' ? 'border-red-500 text-red-400' : 'border-[#334155]'}`}>
+                  <select 
+                    value={newStatus} 
+                    onChange={(e) => setNewStatus(e.target.value)} 
+                    className={`w-full bg-[#1E293B] border text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none ${newStatus === 'banned' ? 'border-red-500 text-red-400' : 'border-[#334155]'}`}
+                  >
                     <option value="active">Active (Can Work)</option>
                     <option value="pending">Pending (Waiting Approval)</option>
                     <option value="banned">Banned (Global Session Wipe)</option> 
@@ -510,9 +540,13 @@ export default function AdminUsersManagementPage() {
                 {role === 'admin' && !isMakingAgent && selectedUser.role === 'user' && (
                   <div>
                     <label className="block text-[10px] text-teal-400 uppercase font-black mb-1">Transfer to Agent (Email)</label>
-                    <input type="email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)}
+                    <input 
+                      type="email" 
+                      value={newAgentEmail} 
+                      onChange={(e) => setNewAgentEmail(e.target.value)}
                       placeholder="admin@zenex.com"
-                      className="w-full bg-[#1E293B] border border-teal-500/30 text-teal-300 font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-teal-400" />
+                      className="w-full bg-[#1E293B] border border-teal-500/30 text-teal-300 font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-teal-400" 
+                    />
                     <p className="text-[9px] text-[#64748B] mt-1 font-bold">Leave as is to keep under current agent.</p>
                   </div>
                 )}
@@ -521,46 +555,108 @@ export default function AdminUsersManagementPage() {
                   <>
                     <div>
                       <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Custom Agent Mail</label>
-                      <input type="email" required placeholder="agent_name@zenex.com" value={customMail} onChange={(e) => setCustomMail(e.target.value)}
-                        className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" />
+                      <input 
+                        type="email" 
+                        required 
+                        placeholder="agent_name@zenex.com" 
+                        value={customMail} 
+                        onChange={(e) => setCustomMail(e.target.value)}
+                        className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
+                      />
                     </div>
                     <div>
                       <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Telegram Contact Link</label>
-                      <input type="text" required placeholder="t.me/agent_username" value={contactLink} onChange={(e) => setContactLink(e.target.value)}
-                        className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" />
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="t.me/agent_username" 
+                        value={contactLink} 
+                        onChange={(e) => setContactLink(e.target.value)}
+                        className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
+                      />
                     </div>
+                    
+                    {/* 💥 ADMIN TO AGENT API PERMISSION TOGGLE 💥 */}
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#334155]">
+                      <div>
+                         <label className="block text-[10px] text-purple-400 uppercase font-bold">API Manager Access</label>
+                         <p className="text-[8px] text-[#64748B]">Can this agent enable API for their users?</p>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => setCanManageApi(!canManageApi)} 
+                        className={`relative w-10 h-5 rounded-full flex items-center p-1 transition-colors duration-300 ${canManageApi ? 'bg-[#A855F7]' : 'bg-[#334155]'}`}
+                      >
+                         <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform duration-300 shadow-md ${canManageApi ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                      </button>
+                    </div>
+
                     <div>
                       <label className="block text-[10px] text-[#3B82F6] uppercase font-bold mb-1">Max Users Limit (Seat)</label>
-                      <input type="number" required placeholder="e.g. 100, 200, 500" value={maxLimit} onChange={(e) => setMaxLimit(e.target.value)}
-                        className="w-full bg-[#1E293B] border border-[#3B82F6] focus:border-[#00C6FF] text-[#3B82F6] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none shadow-[0_0_15px_rgba(59,130,246,0.15)]" />
+                      <input 
+                        type="number" 
+                        required 
+                        placeholder="e.g. 100, 200, 500" 
+                        value={maxLimit} 
+                        onChange={(e) => setMaxLimit(e.target.value)}
+                        className="w-full bg-[#1E293B] border border-[#3B82F6] focus:border-[#00C6FF] text-[#3B82F6] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none shadow-[0_0_15px_rgba(59,130,246,0.15)]" 
+                      />
                     </div>
                   </>
                 )}
 
                 <div>
-                  <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">{isMakingAgent ? "Agent Pay Rate (BDT)" : "Pay Rate (BDT per OTP)"}</label>
-                  <input type="number" step="0.01" required value={newRate} onChange={(e) => setNewRate(e.target.value)}
-                    className="w-full bg-[#1E293B] border border-[#334155] text-[#10B981] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" />
+                  <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
+                    {isMakingAgent ? "Agent Pay Rate (BDT)" : "Pay Rate (BDT per OTP)"}
+                  </label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    required 
+                    value={newRate} 
+                    onChange={(e) => setNewRate(e.target.value)}
+                    className="w-full bg-[#1E293B] border border-[#334155] text-[#10B981] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
+                  />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   <div>
                     <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
-                    <input type="text" placeholder="New Pass..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#F43F5E] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569]" />
+                    <input 
+                      type="text" 
+                      placeholder="New Pass..." 
+                      value={newPassword} 
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#F43F5E] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569]" 
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] text-[#10B981] uppercase font-bold mb-1">Reset PIN</label>
-                    <input type="text" placeholder="New PIN..." maxLength={4} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#10B981] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569] text-center tracking-widest font-mono" />
+                    <input 
+                      type="text" 
+                      placeholder="New PIN..." 
+                      maxLength={4} 
+                      value={newPin} 
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#10B981] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569] text-center tracking-widest font-mono" 
+                    />
                   </div>
                 </div>
                 
                 <div className="flex gap-3 pt-3">
                   {selectedUser?.role === "user" && isMakingAgent && (
-                    <button type="button" onClick={() => setIsMakingAgent(false)} className="flex-1 py-2.5 bg-[#334155] text-white text-xs font-bold rounded-lg hover:bg-[#475569]">Cancel</button>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsMakingAgent(false)} 
+                      className="flex-1 py-2.5 bg-[#334155] text-white text-xs font-bold rounded-lg hover:bg-[#475569]"
+                    >
+                      Cancel
+                    </button>
                   )}
-                  <button type="submit" className="w-full flex-1 py-2.5 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white text-xs font-black rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.4)]">
+                  <button 
+                    type="submit" 
+                    className="w-full flex-1 py-2.5 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white text-xs font-black rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.4)]"
+                  >
                     Save Changes
                   </button>
                 </div>
@@ -568,7 +664,11 @@ export default function AdminUsersManagementPage() {
 
               {selectedUser?.role !== 'admin' && selectedUser?.role !== 'agent' && (
                 <div className="pt-4 border-t border-[#334155]/50 mt-4 text-center">
-                  <button type="button" onClick={handleDeleteUser} className="text-xs font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1.5 py-2">
+                  <button 
+                    type="button" 
+                    onClick={handleDeleteUser} 
+                    className="text-xs font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1.5 py-2"
+                  >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     Permanently delete this user
                   </button>

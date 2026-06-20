@@ -128,7 +128,6 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
-  // 💥 আপনার অরিজিনাল লজিক, শুধু ৬ থেকে ১৫ করা হয়েছে 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
     
@@ -156,7 +155,6 @@ export default function Console() {
 
     let finalRanges = [...recentSorted];
 
-    // 💥 Updated limit: 6 -> 15 💥
     if (finalRanges.length < 15) {
       for (const oldItem of olderSorted) {
         if (!finalRanges.find(r => r[0] === oldItem[0])) {
@@ -176,7 +174,6 @@ export default function Console() {
   const topData = getTopRangesData();
   const badgeText = topData.recentCount >= 4 ? 'Last 30m' : (topData.recentCount > 0 ? 'Live & Recent' : 'Recent Hits');
 
-  // 💥 Top Apps Calculation (Glitch/Scrollbar Fixed) 💥
   const processedGraphData = [...graphData]
     .filter(item => item.value > 0)
     .sort((a, b) => b.value - a.value)
@@ -210,7 +207,7 @@ export default function Console() {
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
              
-             {/* 💥 FIXED: Top Apps Chart - No Scrollbars, No Glitch 💥 */}
+             {/* Top Apps Chart */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#8B5CF6] to-[#3B82F6]"></div>
                 <h3 className="text-xs md:text-sm font-black text-[#94A3B8] uppercase tracking-widest flex justify-between mb-1 shrink-0">
@@ -309,7 +306,6 @@ export default function Console() {
                            className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn shrink-0"
                         >
                            <div className="flex flex-col items-start gap-1 relative pl-3">
-                              {/* 💥 Green/Gray Dot Logic is back exactly as you designed 💥 */}
                               <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#10B981] shadow-[0_0_5px_#10B981]' : 'bg-[#475569]'}`}></div>
                               
                               <span className="text-sm font-black text-white font-mono group-hover/btn:text-[#3B82F6] transition-colors">{range}</span>
@@ -326,7 +322,7 @@ export default function Console() {
                            </div>
                            <div className="flex items-center gap-2">
                               <span className="text-[10px] font-bold bg-[#1E293B] text-[#10B981] px-2 py-1 rounded border border-[#10B981]/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]">{data.count} Hits</span>
-                              <svg className="w-4 h-4 text-[#64748B] group-hover/btn:text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                              <svg className="w-4 h-4 text-[#64748B] group-hover/btn:text-[#3B82F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                            </div>
                         </button>
                       )
@@ -359,8 +355,8 @@ export default function Console() {
              </div>
           </div>
 
-          {/* Live Logs Feed */}
-          <div className="flex flex-col gap-2 w-full pb-10">
+          {/* Live Logs Feed - SLIM & COMPACT VERSION */}
+          <div className="flex flex-col gap-1.5 md:gap-2 w-full pb-10">
              {loading && liveLogs.length === 0 ? (
                 <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
                    <div className="w-6 h-6 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -377,21 +373,23 @@ export default function Console() {
                   const bigMaskedNumber = maskNumber(log.number);
 
                   return (
-                   <div key={log.id || index} className="bg-[#0B0F1A]/80 border border-[#334155] p-3 md:p-4 rounded-lg flex flex-col gap-2 relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm">
+                   <div key={log.id || index} className="bg-[#0B0F1A]/80 border border-[#334155] p-2 md:p-3 rounded-lg flex flex-col relative group hover:bg-[#1E293B]/60 transition-colors shadow-sm overflow-hidden">
                       <div className="absolute left-0 top-0 w-1 h-full bg-[#3B82F6]/40 group-hover:bg-[#8B5CF6] transition-colors rounded-l-lg"></div>
                       
-                      <div className="flex flex-wrap justify-between items-center ml-2 border-b border-[#334155]/50 pb-2 gap-2">
-                        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-                          <span className="text-[10px] md:text-xs font-black text-[#F59E0B] tracking-widest">{time}</span>
-                          <span className="text-[10px] md:text-xs font-bold text-[#94A3B8]">{log.operator || "Carrier"}</span>
-                          <span className="text-[10px] text-[#475569]">|</span>
-                          <span className="text-[10px] md:text-xs font-black text-[#10B981] flex items-center gap-1">
-                            🌍 {String(log.country || "Global").toUpperCase()}
-                          </span>
+                      <div className="flex justify-between items-start ml-1.5 md:ml-2 border-b border-[#334155]/50 pb-1.5 w-full">
+                        <div className="flex flex-wrap items-center gap-x-1.5 md:gap-x-3 gap-y-0.5 flex-1 pr-1">
+                          <span className="text-[9px] md:text-xs font-black text-[#F59E0B] tracking-widest shrink-0">{time}</span>
+                          <div className="flex items-center gap-1.5">
+                             <span className="text-[9px] md:text-xs font-bold text-[#94A3B8]">{log.operator || "Carrier"}</span>
+                             <span className="text-[8px] md:text-[10px] text-[#475569] hidden sm:inline">|</span>
+                             <span className="text-[9px] md:text-xs font-black text-[#10B981]">
+                               🌍 {String(log.country || "Global").toUpperCase()}
+                             </span>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                           <span className={`text-[9px] md:text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest ${
+                        <div className="flex items-center justify-end shrink-0 pl-1">
+                           <span className={`text-[7px] md:text-[9px] font-black px-1.5 py-0.5 md:px-2 md:py-1 rounded uppercase tracking-widest whitespace-nowrap ${
                              log.service === 'FACEBOOK' ? 'bg-[#1877F2]/15 text-[#1877F2]' : 
                              log.service === 'WHATSAPP' ? 'bg-[#25D366]/15 text-[#25D366]' : 
                              log.service === 'INSTAGRAM' ? 'bg-[#E1306C]/15 text-[#E1306C]' : 
@@ -405,29 +403,32 @@ export default function Console() {
                         </div>
                       </div>
                       
-                      <div className="ml-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-4 font-mono mt-1">
+                      <div className="ml-1.5 md:ml-2 flex flex-col md:flex-row md:items-center gap-1.5 md:gap-4 font-mono mt-1">
                         
-                        <div 
-                           onClick={() => handleCopy(bigMaskedNumber)}
-                           className="flex items-center gap-2 text-white min-w-[140px] cursor-pointer hover:text-[#10B981] transition-colors group/bignum"
-                           title="Click to copy this number range"
-                        >
-                          <span className="text-sm md:text-base font-bold tracking-wider text-[#E2E8F0] group-hover/bignum:text-[#10B981]">{bigMaskedNumber}</span>
+                        {/* 💥 SIDE-BY-SIDE LAYOUT FIX APPLIED HERE 💥 */}
+                        <div className="flex flex-row items-center gap-2 md:gap-3 w-full md:w-auto pr-2 md:pr-0">
+                            <div 
+                               onClick={() => handleCopy(bigMaskedNumber)}
+                               className="flex items-center text-white cursor-pointer hover:text-[#10B981] transition-colors group/bignum"
+                               title="Click to copy this number range"
+                            >
+                              <span className="text-xs md:text-sm font-bold tracking-wider text-[#E2E8F0] group-hover/bignum:text-[#10B981]">{bigMaskedNumber}</span>
+                            </div>
+                            
+                            <button 
+                              onClick={() => handleCopy(targetRange)}
+                              className="flex items-center gap-1 bg-[#0F172A] border border-[#334155] hover:border-[#10B981] px-1.5 py-0.5 md:px-2 md:py-1 rounded cursor-pointer transition-all group/range shadow-[0_2px_4px_rgba(0,0,0,0.2)]"
+                              title="Copy Network Block to Buy Number"
+                            >
+                               <span className="text-[9px] md:text-xs font-black text-[#3B82F6] group-hover/range:text-[#10B981] transition-colors">{targetRange}</span>
+                               <svg className="w-2.5 h-2.5 text-[#64748B] group-hover/range:text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            </button>
                         </div>
-                        
-                        <button 
-                          onClick={() => handleCopy(targetRange)}
-                          className="flex items-center gap-1.5 bg-[#0F172A] border border-[#334155] hover:border-[#10B981] px-2.5 py-1 rounded cursor-pointer transition-all group/range w-fit shadow-[0_2px_4px_rgba(0,0,0,0.2)]"
-                          title="Copy Network Block to Buy Number"
-                        >
-                           <span className="text-[10px] md:text-xs font-black text-[#3B82F6] group-hover/range:text-[#10B981] transition-colors">{targetRange}</span>
-                           <svg className="w-3 h-3 text-[#64748B] group-hover/range:text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                        </button>
 
                         <span className="hidden md:inline text-[#334155] font-black text-xs">➜</span>
                         
-                        <div className="text-[11px] md:text-xs text-[#94A3B8] leading-relaxed flex-1 break-words">
-                          <span className="text-[#10B981] font-black mr-1.5 md:hidden">↳</span>
+                        <div className="text-[10px] md:text-xs text-[#94A3B8] leading-snug flex-1 break-words pr-2">
+                          <span className="text-[#10B981] font-black mr-1 md:hidden">↳</span>
                           <span className="text-[#10B981] font-black mr-1">&lt;#&gt;</span>
                           {maskFullMessage(log.otp)}
                         </div>

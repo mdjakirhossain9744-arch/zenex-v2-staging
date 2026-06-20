@@ -11,6 +11,9 @@ export default function ManagerUsersDirectoryPage() {
   const [userEmail, setUserEmail] = useState("");
   const [agentRate, setAgentRate] = useState<number>(0.70); 
   
+  // 💥 NEW: Agent's Real-Time API Permission State 💥
+  const [hasApiPermission, setHasApiPermission] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,6 +33,7 @@ export default function ManagerUsersDirectoryPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newPin, setNewPin] = useState("");
   const [newStatus, setNewStatus] = useState("active");
+  const [newApiStatus, setNewApiStatus] = useState(false); 
   const [isSaving, setIsSaving] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -42,6 +46,21 @@ export default function ManagerUsersDirectoryPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, statusFilter]);
+
+  // 💥 REAL-TIME PERMISSION CHECKER 💥
+  const checkAgentPermission = useCallback(async (email: string) => {
+    try {
+      const res = await fetch("/api/get-user-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (data?.user) {
+        setHasApiPermission(data.user.canManageApi || false);
+      }
+    } catch (e) {}
+  }, []);
 
   const fetchNetworkUsers = useCallback((email: string, userRole: string, isSilent = false) => {
     if (!isSilent) setLoading(true); 
@@ -91,10 +110,14 @@ export default function ManagerUsersDirectoryPage() {
 
         setRole(parsedUser.role);
         setUserEmail(parsedUser.email); 
+        
+        // Initial Fetch
         fetchNetworkUsers(parsedUser.email, parsedUser.role, false); 
+        checkAgentPermission(parsedUser.email);
         
         const interval = setInterval(() => {
            fetchNetworkUsers(parsedUser.email, parsedUser.role, true); 
+           checkAgentPermission(parsedUser.email); // Keeps permission updated real-time
         }, 10000); 
         
         return () => clearInterval(interval);
@@ -104,7 +127,7 @@ export default function ManagerUsersDirectoryPage() {
     } else {
       router.push("/login");
     }
-  }, [fetchNetworkUsers, router]);
+  }, [fetchNetworkUsers, checkAgentPermission, router]);
 
   const isSeatFull = role === "agent" && stats.activeUsers >= agentMaxLimit;
 
@@ -116,6 +139,7 @@ export default function ManagerUsersDirectoryPage() {
     setNewStatus(String(user?.status || "active").toLowerCase()); 
     setNewPassword(""); 
     setNewPin(""); 
+    setNewApiStatus(user?.isApiActive || false); 
     setIsModalOpen(true);
   };
 
@@ -130,18 +154,25 @@ export default function ManagerUsersDirectoryPage() {
     }
 
     try {
+      const payload: any = {
+        userId: selectedUser?.id || selectedUser?._id,
+        newPassword: newPassword,
+        newPin: newPin, 
+        newRate: newRate,
+        newStatus: newStatus,
+        requesterEmail: userEmail, 
+        requesterRole: role        
+      };
+
+      // Only send API status if agent has permission
+      if (hasApiPermission) {
+        payload.isApiActive = newApiStatus;
+      }
+
       const res = await fetch("/api/update-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: selectedUser?.id || selectedUser?._id,
-          newPassword: newPassword,
-          newPin: newPin, 
-          newRate: newRate,
-          newStatus: newStatus,
-          requesterEmail: userEmail, 
-          requesterRole: role        
-        })
+        body: JSON.stringify(payload)
       });
       
       const data = await res.json();
@@ -156,6 +187,28 @@ export default function ManagerUsersDirectoryPage() {
       alert("Network Error!");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGenerateNewKey = async () => {
+    if (!confirm("⚠️ Are you sure you want to generate a new API key? The old key will immediately stop working!")) return;
+    
+    const res = await fetch("/api/update-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        userId: selectedUser?.id || selectedUser?._id, 
+        generateNewKey: true 
+      })
+    });
+    
+    const data = await res.json();
+    if (res.ok) { 
+      alert("✅ Success! New API Key generated."); 
+      fetchNetworkUsers(userEmail, role, true); 
+      setIsModalOpen(false); 
+    } else {
+      alert(data.message);
     }
   };
 
@@ -274,7 +327,6 @@ export default function ManagerUsersDirectoryPage() {
             </thead>
             <tbody className="divide-y divide-[#334155]/50">
               {loading ? (
-                // 💥 PREMIUM SKELETON LOADER FOR USERS DIRECTORY 💥
                 Array.from({ length: 7 }).map((_, idx) => (
                   <tr key={idx} className="bg-transparent border-b border-[#334155]/50">
                     <td className="p-4 pl-6">
@@ -296,7 +348,9 @@ export default function ManagerUsersDirectoryPage() {
                   </tr>
                 ))
               ) : myUsers.length === 0 ? (
-                <tr><td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found.</td></tr>
+                <tr>
+                  <td colSpan={6} className="text-center p-8 text-[#64748B] font-bold">No users found.</td>
+                </tr>
               ) : (
                 myUsers.map((u, i) => (
                   <tr key={u?.id || u?._id || i} className="hover:bg-[#334155]/20 transition-colors">
@@ -304,6 +358,10 @@ export default function ManagerUsersDirectoryPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-bold text-[#E2E8F0]">{u?.name || "Unknown"}</p>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30">{u?.uid || "N/A"}</span>
+                        {/* Only show API badge if agent has permission to see it, or if you want agents to always know who has API */}
+                        {u?.isApiActive && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-widest">API</span>
+                        )}
                       </div>
                       <p className="text-[10px] text-[#64748B]">{u?.email || "No Email"}</p>
                     </td>
@@ -318,7 +376,10 @@ export default function ManagerUsersDirectoryPage() {
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      <button onClick={() => openManageModal(u)} className="px-4 py-2 rounded-lg text-xs font-black transition-colors border bg-[#A855F7]/10 hover:bg-[#A855F7] text-[#A855F7] hover:text-white border-[#A855F7]/30">
+                      <button 
+                        onClick={() => openManageModal(u)} 
+                        className="px-4 py-2 rounded-lg text-xs font-black transition-colors border bg-[#A855F7]/10 hover:bg-[#A855F7] text-[#A855F7] hover:text-white border-[#A855F7]/30"
+                      >
                         Manage User
                       </button>
                     </td>
@@ -330,13 +391,21 @@ export default function ManagerUsersDirectoryPage() {
           
           {totalPages > 1 && (
             <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 flex items-center justify-between">
-               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
+               <button 
+                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
+                 disabled={currentPage === 1} 
+                 className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors"
+               >
                  ← Previous
                </button>
                <span className="text-xs font-black text-[#94A3B8]">
                  Page <span className="text-white">{currentPage}</span> of {totalPages}
                </span>
-               <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors">
+               <button 
+                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
+                 disabled={currentPage === totalPages} 
+                 className="px-4 py-2 bg-[#1E293B] text-white text-xs font-bold rounded-lg border border-[#334155] disabled:opacity-50 hover:bg-[#334155] transition-colors"
+               >
                  Next →
                </button>
             </div>
@@ -346,7 +415,12 @@ export default function ManagerUsersDirectoryPage() {
         {isModalOpen && selectedUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative max-h-[90vh] overflow-y-auto">
-              <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
+              <button 
+                onClick={() => setIsModalOpen(false)} 
+                className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl"
+              >
+                ✕
+              </button>
 
               <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black bg-gradient-to-tr from-[#A855F7] to-[#EC4899]">
@@ -358,10 +432,44 @@ export default function ManagerUsersDirectoryPage() {
                  </div>
               </div>
 
+              {/* 💥 ONLY SHOW THIS SECTION IF AGENT HAS PERMISSION FROM ADMIN 💥 */}
+              {hasApiPermission && (
+                <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex flex-col gap-3">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-black text-purple-400">Developer API Access</p>
+                       <p className="text-[9px] text-[#64748B] mt-1 font-bold">Allow user to generate numbers via API</p>
+                     </div>
+                     <button 
+                       type="button" 
+                       onClick={() => setNewApiStatus(!newApiStatus)} 
+                       className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${newApiStatus ? 'bg-[#10B981]' : 'bg-[#334155]'}`}
+                     >
+                       <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-md ${newApiStatus ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                     </button>
+                   </div>
+                   <div className="border-t border-[#334155] pt-3 mt-1 flex justify-between items-center">
+                     <span className="text-[10px] text-[#64748B] font-bold">Compromised Key?</span>
+                     <button 
+                       type="button" 
+                       onClick={handleGenerateNewKey} 
+                       className="bg-[#A855F7]/10 hover:bg-[#A855F7]/20 border border-[#A855F7] text-[#A855F7] px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1"
+                     >
+                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                       Generate Key
+                     </button>
+                   </div>
+                </div>
+              )}
+
               <form onSubmit={handleSaveUser} className="space-y-4">
                 <div>
                   <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Account Status</label>
-                  <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} className="w-full bg-[#0F172A] border border-[#334155] text-white font-bold px-4 py-3 rounded-xl text-sm focus:outline-none">
+                  <select 
+                    value={newStatus} 
+                    onChange={(e) => setNewStatus(e.target.value)} 
+                    className="w-full bg-[#0F172A] border border-[#334155] text-white font-bold px-4 py-3 rounded-xl text-sm focus:outline-none"
+                  >
                     <option value="active">Active (Can Work)</option>
                     <option value="pending">Pending (Waiting Approval)</option>
                     <option value="banned">Banned (Blocked)</option>
@@ -372,30 +480,55 @@ export default function ManagerUsersDirectoryPage() {
                   <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
                     Set User Pay Rate (Max: ৳ {Number(agentRate || 0).toFixed(2)})
                   </label>
-                  <input type="number" step="0.01" value={newRate} onChange={(e) => setNewRate(e.target.value)} required
-                    className="w-full bg-[#0F172A] border border-[#334155] text-white font-black px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#EAB308]" />
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={newRate} 
+                    onChange={(e) => setNewRate(e.target.value)} 
+                    required 
+                    className="w-full bg-[#0F172A] border border-[#334155] text-white font-black px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-[#EAB308]" 
+                  />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
-                    <input type="text" placeholder="New Password..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#F43F5E] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155]" />
+                    <input 
+                      type="text" 
+                      placeholder="New Password..." 
+                      value={newPassword} 
+                      onChange={(e) => setNewPassword(e.target.value)} 
+                      className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#F43F5E] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155]" 
+                    />
                   </div>
                   
                   <div>
                     <label className="block text-[10px] text-[#10B981] uppercase font-bold mb-1">Reset Withdraw PIN</label>
-                    <input type="text" placeholder="New 4-digit PIN..." value={newPin} maxLength={4} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#10B981] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155] text-center tracking-widest font-mono" />
+                    <input 
+                      type="text" 
+                      placeholder="New 4-digit PIN..." 
+                      value={newPin} 
+                      maxLength={4} 
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} 
+                      className="w-full bg-[#0F172A] border border-[#334155] focus:border-[#10B981] text-white px-4 py-3 rounded-xl text-sm focus:outline-none placeholder-[#334155] text-center tracking-widest font-mono" 
+                    />
                   </div>
                 </div>
                 
-                <button type="submit" disabled={isSaving} className="w-full py-3.5 mt-2 rounded-xl text-white font-black text-sm transition-transform hover:-translate-y-1 disabled:opacity-50 bg-gradient-to-r from-[#A855F7] to-[#EC4899] shadow-[0_0_15px_rgba(168,85,247,0.4)]">
+                <button 
+                  type="submit" 
+                  disabled={isSaving} 
+                  className="w-full py-3.5 mt-2 rounded-xl text-white font-black text-sm transition-transform hover:-translate-y-1 disabled:opacity-50 bg-gradient-to-r from-[#A855F7] to-[#EC4899] shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                >
                   {isSaving ? "Saving..." : "Update User Details"}
                 </button>
 
                 <div className="pt-2 text-center">
-                  <button type="button" onClick={handleDeleteUser} className="text-[10px] font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1">
+                  <button 
+                    type="button" 
+                    onClick={handleDeleteUser} 
+                    className="text-[10px] font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1"
+                  >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     Permanently delete this user
                   </button>

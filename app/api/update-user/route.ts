@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
       newAgentEmail, 
       handoverToEmail,
       generateNewKey,
-      newBalance 
+      newBalance,
+      canManageApi // 💥 NEW: Admin to Agent API Permission
     } = body;
 
     // 💥 MASTER FIX: Block Undefined CastErrors 💥
@@ -47,14 +48,14 @@ export async function POST(req: NextRequest) {
        return NextResponse.json({ message: "🔴 ERROR: Valid User ID is required!" }, { status: 400 });
     }
 
-    // 💥 ULTRA-HYBRID ID RESOLVER: Support exact "zxId" from Schema 💥
+    // 💥 ULTRA-HYBRID ID RESOLVER 💥
     const isValidMongoId = mongoose.Types.ObjectId.isValid(userId);
     
     const targetUser = await User.findOne({
       $or: [
         ...(isValidMongoId ? [{ _id: userId }] : []),
-        { zxId: userId },     // 💥 MASTER FIX: Exact field name from your models/User.ts
-        { email: userId }     // Fallback just in case
+        { zxId: userId },     
+        { email: userId }     
       ]
     });
 
@@ -62,11 +63,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "User not found in database!" }, { status: 404 });
     }
 
-    const realDbId = targetUser._id; // Using the authentic MongoDB _id for updates
+    const realDbId = targetUser._id; 
     const isTargetAgent = newRole === "agent" || targetUser.role === "agent";
     let updateData: any = {};
 
-    // 💥 BALANCE UPDATE FIX (0 is cleanly accepted) 💥
+    // 💥 BALANCE UPDATE FIX 💥
     if (newBalance !== undefined && newBalance !== null && newBalance !== "") {
        if (realRequesterRole !== "admin") {
           return NextResponse.json({ message: "🔴 SECURITY: Only Admins can edit balance directly!" }, { status: 403 });
@@ -74,11 +75,27 @@ export async function POST(req: NextRequest) {
        updateData.balance = parseFloat(newBalance);
     }
 
-    // 💥 GENERATE NEW API KEY 💥
+    // 💥 GENERATE NEW API KEY (Admin + Authorized Agent) 💥
     if (generateNewKey) {
-      if (realRequesterRole !== "admin") {
-         return NextResponse.json({ message: "🔴 SECURITY: Only Admins can generate API keys!" }, { status: 403 });
+      let isAllowedToGenerate = false;
+
+      if (realRequesterRole === "admin") {
+         isAllowedToGenerate = true;
+      } else if (realRequesterRole === "agent") {
+         const agentDoc = await User.findOne({ email: realRequesterEmail });
+         // Check if agent has permission AND user belongs to this agent
+         if (
+           agentDoc?.canManageApi && 
+           (targetUser.agentEmail === agentDoc.email || targetUser.agentEmail === agentDoc.customAgentMail)
+         ) {
+            isAllowedToGenerate = true;
+         }
       }
+
+      if (!isAllowedToGenerate) {
+         return NextResponse.json({ message: "🔴 SECURITY: You do not have Admin permission to generate API keys!" }, { status: 403 });
+      }
+
       const newApiKey = "ZNX_" + crypto.randomBytes(16).toString("hex").toUpperCase();
       updateData.apiKey = newApiKey;
     }
@@ -108,7 +125,8 @@ export async function POST(req: NextRequest) {
             agentMaxRate: targetUser.agentMaxRate || 0,
             agentMaxUsers: targetUser.agentMaxUsers || 100,
             customAgentMail: targetUser.customAgentMail || "",
-            telegramLink: targetUser.telegramLink || ""
+            telegramLink: targetUser.telegramLink || "",
+            canManageApi: targetUser.canManageApi || false // Transfer API perm too
          }
       });
 
@@ -116,9 +134,10 @@ export async function POST(req: NextRequest) {
       updateData.agentMaxUsers = 100;
       updateData.customAgentMail = "";
       updateData.telegramLink = "";
+      updateData.canManageApi = false;
     }
 
-    // 💥 USER NETWORK TRANSFER LOGIC (Unbreakable Link Fix) 💥
+    // 💥 USER NETWORK TRANSFER LOGIC 💥
     if (newAgentEmail && newAgentEmail !== targetUser.agentEmail && targetUser.role === "user") {
       if (realRequesterRole !== "admin") {
         return NextResponse.json({ message: "🔴 SECURITY: Only Admins can transfer user networks!" }, { status: 403 });
@@ -158,20 +177,28 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 💥 MASTER FIX: Always save the Agent's REAL email to create an unbreakable database link! 💥
       updateData.agentEmail = newAgent.email; 
     }
 
-    // Role Security Checks
+    // 💥 AGENT SECURITY CHECKS 💥
     if (realRequesterRole === "agent") {
        if (newRole === "admin") {
           return NextResponse.json({ message: "🔴 SECURITY ALERT: Agents cannot promote to Admin!" }, { status: 403 });
        }
+       
+       const agent = await User.findOne({ email: realRequesterEmail });
+
+       // API TOGGLE PERMISSION CHECK
        if (isApiActive !== undefined) {
-          return NextResponse.json({ message: "🔴 SECURITY ALERT: Only Admins can enable Developer API!" }, { status: 403 });
+          if (!agent?.canManageApi) {
+             return NextResponse.json({ message: "🔴 SECURITY ALERT: You do not have Admin permission to enable Developer API!" }, { status: 403 });
+          }
+          if (targetUser.agentEmail !== agent.email && targetUser.agentEmail !== agent.customAgentMail) {
+             return NextResponse.json({ message: "🔴 SECURITY ALERT: This user does not belong to your network!" }, { status: 403 });
+          }
+          updateData.isApiActive = isApiActive;
        }
 
-       const agent = await User.findOne({ email: realRequesterEmail });
        let maxR = agent?.agentMaxRate || 0;
        let otpR = agent?.otpRate || 0;
        let agentLimit = Math.max(maxR, otpR); 
@@ -212,15 +239,15 @@ export async function POST(req: NextRequest) {
       updateData.withdrawPin = newPin.trim();
     }
 
-    if (realRequesterRole === "admin" && isApiActive !== undefined) {
-      updateData.isApiActive = isApiActive;
+    if (realRequesterRole === "admin") {
+      if (isApiActive !== undefined) updateData.isApiActive = isApiActive;
+      if (canManageApi !== undefined && isTargetAgent) updateData.canManageApi = canManageApi;
     }
 
     if (isTargetAgent && newRole !== "user") {
       
       if (customMail !== undefined) {
         const trimmedMail = customMail.trim();
-        
         if (trimmedMail !== "") {
           const isMailTaken = await User.findOne({ 
              customAgentMail: trimmedMail, 
@@ -233,7 +260,6 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
           }
         }
-        
         updateData.customAgentMail = trimmedMail;
       }
       
@@ -243,7 +269,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 💥 MASTER FIX: Using realDbId instead of userId to prevent CastError 💥
+    // 💥 MASTER FIX: Using realDbId instead of userId 💥
     await User.findByIdAndUpdate(realDbId, { $set: updateData }, { new: true, strict: false });
 
     return NextResponse.json({ message: "Account successfully updated!" }, { status: 200 });

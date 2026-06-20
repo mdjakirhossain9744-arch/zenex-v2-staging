@@ -9,7 +9,7 @@ import Order from "../../../models/Order";
 const getUTCDateString = (dateObj: any = new Date()) => {
   try {
     return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'UTC', // ✅ Changed from Asia/Dhaka to UTC
+        timeZone: 'UTC', 
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
-    const todayStr = getUTCDateString(); // ✅ Using UTC format
+    const todayStr = getUTCDateString(); 
     
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
@@ -127,7 +127,9 @@ export async function GET(req: NextRequest) {
         customAgentMail: u.customAgentMail || "", 
         telegramLink: u.telegramLink || "",
         agentMaxUsers: u.agentMaxUsers || 100,
-        isApiActive: u.isApiActive || false        
+        isApiActive: u.isApiActive || false,
+        // 💥 MAGIC FIX: NOW THE FRONTEND KNOWS IF AGENT HAS PERMISSION 💥
+        canManageApi: u.canManageApi || false 
       };
     });
 
