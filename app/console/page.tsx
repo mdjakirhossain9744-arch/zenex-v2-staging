@@ -86,18 +86,27 @@ export default function Console() {
     return cleanNum;
   };
 
-  // 💥 100% ORIGINAL LOGIC KEPT UNTOUCHED 💥
+  // 💥 FIXED: PC CLONE & NEW FB LOGIC (Supports both Digits and Masked Stars) 💥
   const analyzeOTP = (service: string, fullMessage: string) => {
     if (service?.toUpperCase() !== "FACEBOOK") return null;
-    const match = fullMessage?.match(/\b\d{4,8}\b/);
-    if (!match) return null;
+    if (!fullMessage) return null;
     
-    const code = match[0];
-    if (code.length === 6 || code.length === 8) {
-      return { tag: "Fb Clone 🔥", color: "text-[#F43F5E]", bg: "bg-[#F43F5E]/10 border-[#F43F5E]/30" };
+    // Check for raw digits OR masked stars from backend
+    const digitMatch = fullMessage.match(/\b\d{4,8}\b/);
+    const starMatch = fullMessage.match(/\*{4,8}/);
+    
+    let codeLength = 0;
+    if (digitMatch) {
+       codeLength = digitMatch[0].length;
+    } else if (starMatch) {
+       codeLength = starMatch[0].length;
     }
-    if (code.length === 5) {
-      return { tag: "New Fb", color: "text-[#3B82F6]", bg: "bg-[#3B82F6]/10 border-[#3B82F6]/30" };
+
+    if (codeLength === 6 || codeLength === 8) {
+      return { tag: "PC Clone" };
+    }
+    if (codeLength === 5) {
+      return { tag: "New Fb" };
     }
     return null;
   };
@@ -129,7 +138,6 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
-  // 💥 100% ORIGINAL TOP RANGES LOGIC KEPT UNTOUCHED 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
     
@@ -277,7 +285,7 @@ export default function Console() {
                 </div>
              </div>
 
-             {/* Top Hit Ranges Card - 100% ORIGINAL SETUP */}
+             {/* Top Hit Ranges Card */}
              <div className="lg:col-span-1 bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 rounded-xl shadow-lg h-[280px] md:h-[320px] flex flex-col relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-full h-1 bg-gradient-to-r ${topData.isFresh ? 'from-[#10B981] to-[#F43F5E]' : 'from-[#EAB308] to-[#F59E0B]'}`}></div>
                 
@@ -308,16 +316,16 @@ export default function Console() {
                            className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn shrink-0"
                         >
                            <div className="flex flex-col items-start gap-1 relative pl-3">
-                              {/* 💥 ORIGINAL DOT LOGIC (GREEN OR GRAY) 💥 */}
-                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#10B981] shadow-[0_0_5px_#10B981]' : 'bg-[#475569]'}`}></div>
+                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#3B82F6] shadow-[0_0_5px_#3B82F6]' : 'bg-[#475569]'}`}></div>
                               
                               <span className="text-sm font-black text-white font-mono group-hover/btn:text-[#3B82F6] transition-colors">{range}</span>
                               <div className="flex items-center gap-1.5">
                                  <span className="text-[9px] font-bold text-[#94A3B8]">{data.platform}</span>
-                                 {/* 💥 ORIGINAL FB TAG LOGIC 💥 */}
+                                 
+                                 {/* 💥 DYNAMIC COLOR RENDERING FOR PC CLONE & NEW FB 💥 */}
                                  {data.fbTag && (
                                    <span className={`text-[8px] font-black px-1.5 py-[1px] rounded border ${
-                                      data.fbTag.includes("Fb Clone") ? "text-[#F43F5E] bg-[#F43F5E]/10 border-[#F43F5E]/30" : "text-[#3B82F6] bg-[#3B82F6]/10 border-[#3B82F6]/30"
+                                      data.fbTag === "PC Clone" ? "text-[#F43F5E] bg-[#F43F5E]/10 border-[#F43F5E]/30" : "text-[#10B981] bg-[#10B981]/10 border-[#10B981]/30"
                                    }`}>
                                       {data.fbTag}
                                    </span>
@@ -359,7 +367,7 @@ export default function Console() {
              </div>
           </div>
 
-          {/* 💥 UPDATED LIVE LOGS FEED: MOBILE LAYOUT FIX + SIDE-BY-SIDE + COMPACT 💥 */}
+          {/* Live Logs Feed */}
           <div className="flex flex-col gap-1.5 md:gap-2 w-full pb-10">
              {loading && liveLogs.length === 0 ? (
                 <div className="p-10 flex flex-col items-center justify-center text-center bg-[#1E293B]/50 border border-[#334155] rounded-xl">
