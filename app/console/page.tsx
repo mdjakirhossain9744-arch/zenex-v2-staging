@@ -86,6 +86,7 @@ export default function Console() {
     return cleanNum;
   };
 
+  // 💥 ORIGINAL PC CLONE & NEW LOGIC 💥
   const analyzeOTP = (service: string, fullMessage: string) => {
     if (service?.toUpperCase() !== "FACEBOOK") return null;
     const match = fullMessage?.match(/\b\d{4,8}\b/);
@@ -93,10 +94,10 @@ export default function Console() {
     
     const code = match[0];
     if (code.length === 6 || code.length === 8) {
-      return { tag: "Fb Clone 🔥", color: "text-[#F43F5E]", bg: "bg-[#F43F5E]/10 border-[#F43F5E]/30" };
+      return { tag: "PC Clone", color: "text-[#3B82F6]", bg: "bg-[#3B82F6]/10 border-[#3B82F6]/30" };
     }
     if (code.length === 5) {
-      return { tag: "New Fb", color: "text-[#3B82F6]", bg: "bg-[#3B82F6]/10 border-[#3B82F6]/30" };
+      return { tag: "New", color: "text-[#10B981]", bg: "bg-[#10B981]/10 border-[#10B981]/30" };
     }
     return null;
   };
@@ -128,6 +129,7 @@ export default function Console() {
     return fullMessage.includes(searchLower) || number.includes(searchLower);
   });
 
+  // 💥 ORIGINAL TOP HIT RANGES LOGIC 💥
   const getTopRangesData = () => {
     const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
     
@@ -140,8 +142,10 @@ export default function Console() {
 
       const fbData = analyzeOTP(log.service, log.otp);
       const key = `${range}|${log.service}|${fbData ? fbData.tag : 'General'}`;
+      
+      const logTime = new Date(log.createdAt).getTime();
 
-      if (log.createdAt >= thirtyMinsAgo) {
+      if (logTime >= thirtyMinsAgo) {
         if (!recentCounts[key]) recentCounts[key] = { count: 0, platform: log.service, fbTag: fbData ? fbData.tag : null, isRecent: true };
         recentCounts[key].count += 1;
       } else {
@@ -306,18 +310,23 @@ export default function Console() {
                            className="w-full flex items-center justify-between bg-[#0F172A] hover:bg-[#3B82F6]/10 border border-[#334155] hover:border-[#3B82F6] px-3 py-2.5 rounded-lg transition-all group/btn shrink-0"
                         >
                            <div className="flex flex-col items-start gap-1 relative pl-3">
-                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#10B981] shadow-[0_0_5px_#10B981]' : 'bg-[#475569]'}`}></div>
+                              
+                              {/* 💥 BLUE DOT for Traffic, GRAY DOT for Inactive 💥 */}
+                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${data.isRecent ? 'bg-[#3B82F6] shadow-[0_0_5px_#3B82F6]' : 'bg-[#475569]'}`}></div>
                               
                               <span className="text-sm font-black text-white font-mono group-hover/btn:text-[#3B82F6] transition-colors">{range}</span>
                               <div className="flex items-center gap-1.5">
                                  <span className="text-[9px] font-bold text-[#94A3B8]">{data.platform}</span>
+                                 
+                                 {/* 💥 PC CLONE AND NEW TAG RENDERING 💥 */}
                                  {data.fbTag && (
                                    <span className={`text-[8px] font-black px-1.5 py-[1px] rounded border ${
-                                      data.fbTag.includes("Fb Clone") ? "text-[#F43F5E] bg-[#F43F5E]/10 border-[#F43F5E]/30" : "text-[#3B82F6] bg-[#3B82F6]/10 border-[#3B82F6]/30"
+                                      data.fbTag === "PC Clone" ? "text-[#3B82F6] bg-[#3B82F6]/10 border-[#3B82F6]/30" : "text-[#10B981] bg-[#10B981]/10 border-[#10B981]/30"
                                    }`}>
                                       {data.fbTag}
                                    </span>
                                  )}
+
                               </div>
                            </div>
                            <div className="flex items-center gap-2">
@@ -405,7 +414,6 @@ export default function Console() {
                       
                       <div className="ml-1.5 md:ml-2 flex flex-col md:flex-row md:items-center gap-1.5 md:gap-4 font-mono mt-1">
                         
-                        {/* 💥 SIDE-BY-SIDE LAYOUT FIX APPLIED HERE 💥 */}
                         <div className="flex flex-row items-center gap-2 md:gap-3 w-full md:w-auto pr-2 md:pr-0">
                             <div 
                                onClick={() => handleCopy(bigMaskedNumber)}
