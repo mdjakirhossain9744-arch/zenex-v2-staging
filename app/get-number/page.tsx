@@ -160,7 +160,6 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
-  // 💥 ZERO-DELAY FETCH WITH CACHE-BUSTING 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
@@ -617,15 +616,16 @@ export default function GetNumber() {
                                )}
                             </div>
                             
-                            {/* 💥 SMART 1-LINE SHRINK LOGIC: Country truncates first, Operator stays safe! 💥 */}
-                            <div className="flex flex-col items-end text-right w-[105px] md:w-[160px] shrink-0">
-                              <div className="flex items-center justify-end w-full text-[9px] font-bold text-[#E2E8F0] uppercase">
-                                 <span className="sm:hidden text-[#94A3B8] truncate min-w-0 shrink" title={item.country}>{item.country}</span>
-                                 <span className="sm:hidden text-[#94A3B8] mx-1 shrink-0">•</span>
-                                 <span className="truncate shrink-0 text-right max-w-[60px] md:max-w-[150px]" title={item.operator}>{item.operator}</span>
+                            {/* 💥 SMART FLEXBOX: Uses all empty space! Only truncates if absolutely needed 💥 */}
+                            <div className="flex flex-col items-end text-right shrink min-w-0 max-w-[60%] md:max-w-[70%]">
+                              <div className="flex items-center justify-end w-full text-[9px] md:text-[10px] font-bold text-[#E2E8F0] uppercase">
+                                 <span className="sm:hidden text-[#94A3B8] truncate min-w-0" title={item.country}>{item.country}</span>
+                                 {item.operator && item.operator !== "Any" && <span className="sm:hidden text-[#94A3B8] mx-1 shrink-0">•</span>}
+                                 <span className="truncate shrink-0 text-right max-w-[120px] sm:max-w-none" title={item.operator}>{item.operator}</span>
                               </div>
                               <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5 truncate w-full text-right">{getTimeAgo(getDisplayTime(item))}</span>
                             </div>
+
                          </div>
                       </div>
                       )
