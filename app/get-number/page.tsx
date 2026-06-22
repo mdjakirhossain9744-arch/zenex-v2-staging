@@ -449,10 +449,7 @@ export default function GetNumber() {
 
         <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 flex flex-col h-[75vh] md:h-[900px] min-h-[500px]">
            
-           {/* 💥 RESPONSIVE HEADER FIX: 1 Row Layout (Original Clean Look) + Small DPI Safe 💥 */}
            <div className="flex justify-between items-center p-2.5 md:p-3 bg-[#0F172A]/50 border-b border-[#334155] flex-shrink-0 w-full overflow-hidden">
-             
-             {/* Left Area: Fixed, never shrinks */}
              <div className="flex items-center gap-1.5 md:gap-2 shrink-0 pr-2">
                <h3 className="text-[11px] md:text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
                  {isToday ? <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></span> : <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]"></span>}
@@ -465,7 +462,6 @@ export default function GetNumber() {
                )}
              </div>
              
-             {/* Right Area: Horizontal scroll if space is too tight on 320px screens */}
              <div className="flex gap-0.5 sm:gap-1 bg-[#0B0F19] p-0.5 rounded border border-[#334155] overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-w-[70%] sm:max-w-none">
                {["ALL", "DONE", "WAIT", "FAIL"].map((filterName) => {
                  const displayLabel = filterName === "DONE" ? "SUCCESS" : filterName === "WAIT" ? "PENDING" : filterName === "FAIL" ? "FAILED" : filterName;
@@ -477,13 +473,12 @@ export default function GetNumber() {
                  );
                })}
              </div>
-
            </div>
 
            <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar w-full">
               {isInitialLoad ? (
                  Array(5).fill(0).map((_, i) => (
-                   <div key={i} className="flex flex-col p-3 border-b border-[#334155] w-full animate-pulse bg-[#1E293B]/40 h-[80px]">
+                   <div key={i} className="flex flex-col p-3 border-b border-[#334155] w-full animate-pulse bg-[#1E293B]/40 h-[90px]">
                       <div className="flex justify-between items-center mb-2">
                         <div className="h-4 bg-[#334155] rounded w-32 md:w-48"></div>
                         <div className="h-3 bg-[#334155] rounded w-16"></div>
@@ -512,14 +507,14 @@ export default function GetNumber() {
                       const badgeClasses = `px-1.5 py-[2px] md:px-2 md:py-[3px] border text-[8px] md:text-[9px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
 
                       return (
-                      // 💥 STRICT FIXED HEIGHT (h-80px): No Layout Shift allowed here! 💥
-                      <div key={item.id} className={`h-[80px] md:h-[85px] shrink-0 flex justify-between items-center px-2.5 md:px-3 border-b border-[#334155] transition-colors w-full overflow-hidden ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
+                      // 💥 STRICT FIXED HEIGHT (h-90px): Increased slightly to hold all 3 rows perfectly 💥
+                      <div key={item.id} className={`h-[90px] shrink-0 flex justify-between items-center px-2.5 md:px-3 py-2 border-b border-[#334155] transition-colors w-full overflow-hidden ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          
-                         {/* 💥 LEFT COLUMN: Height strictly managed 💥 */}
-                         <div className="flex flex-col justify-center items-start h-full flex-1 min-w-0 pr-2">
+                         {/* 💥 LEFT COLUMN: 3 Dedicated Independent Rows 💥 */}
+                         <div className="flex flex-col justify-between items-start h-full flex-1 min-w-0 pr-2">
                             
-                            {/* STRICT Number Area (Height: 24px) */}
-                            <div className="flex items-center gap-1.5 h-[24px] w-full">
+                            {/* Row 1: NUMBER (Fixed h-24px) */}
+                            <div className="flex items-center gap-1.5 h-[24px] w-full shrink-0">
                               <div onClick={() => { 
                                  const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
                                  navigator.clipboard.writeText(textToCopy); 
@@ -527,11 +522,9 @@ export default function GetNumber() {
                               }} className="text-sm md:text-base font-black text-white tracking-wide cursor-pointer hover:text-[#3B82F6] transition-colors truncate">
                                 {String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}
                               </div>
-                              
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
-
                               {isMultiTag && (
                                  <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
                                    MULTI
@@ -539,43 +532,45 @@ export default function GetNumber() {
                               )}
                             </div>
                             
-                            {/* STRICT OTP Area (Height: 36px) - Space reserved forever! */}
-                            <div className="w-full h-[36px] flex flex-col justify-center overflow-hidden">
+                            {/* Row 2: OTP AREA (Fixed h-28px) */}
+                            <div className="flex items-center h-[28px] w-full shrink-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
                                    <span className="text-[10px] md:text-[11px] italic text-[#64748B]">Waiting...</span>
                                  </div>
                                ) : item.status === "FAIL" ? (
-                                 <div className="flex items-center">
-                                    <span className="text-[10px] md:text-[11px] font-bold text-[#F43F5E]">{item.otp}</span>
-                                 </div>
+                                 <span className="text-[10px] md:text-[11px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
-                                 <div className="flex flex-col items-start gap-1 justify-center">
-                                   <button 
-                                      onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
-                                      className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden shrink-0"
-                                   >
-                                      <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                                      <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
-                                      <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
-                                         <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                                      </div>
-                                   </button>
-                                   {item.fullMessage && <span className="text-[9px] text-[#64748B] w-full truncate leading-none block">{item.fullMessage}</span>}
-                                 </div>
+                                 <button 
+                                    onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
+                                    className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden shrink-0"
+                                 >
+                                    <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                                    <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
+                                    <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
+                                       <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                    </div>
+                                 </button>
                                )}
+                            </div>
+
+                            {/* Row 3: MESSAGE TEXT (Fixed h-18px) */}
+                            <div className="flex items-center h-[18px] w-full shrink-0 overflow-hidden">
+                               {item.status === "DONE" && item.fullMessage ? (
+                                  <span className="text-[9px] text-[#64748B] w-full truncate leading-none block">{item.fullMessage}</span>
+                               ) : null}
                             </div>
                          </div>
                          
-                         {/* 💥 RIGHT COLUMN: strictly formatted to fit inside h-80px 💥 */}
-                         <div className="flex flex-col justify-center shrink-0 w-[110px] sm:w-[130px] md:w-[150px] h-full">
+                         {/* 💥 RIGHT COLUMN: Adjusted to fit beautifully inside the 90px container 💥 */}
+                         <div className="flex flex-col justify-between shrink-0 w-[110px] sm:w-[130px] md:w-[150px] h-full">
                             
-                            {/* MOBILE ONLY VIEW (Stack fits exactly) */}
-                            <div className="flex sm:hidden flex-col items-end justify-center w-full h-full space-y-[2px]">
+                            {/* MOBILE ONLY VIEW */}
+                            <div className="flex sm:hidden flex-col items-end justify-between w-full h-full py-0.5">
                                <span className={`${badgeClasses}`}>{displayStatus}</span>
                                
-                               <span className="text-[9.5px] font-bold text-[#E2E8F0] uppercase text-right w-full block truncate leading-tight mt-1">
+                               <span className="text-[9.5px] font-bold text-[#E2E8F0] uppercase text-right w-full block truncate">
                                   {item.country}
                                </span>
                                
@@ -589,16 +584,16 @@ export default function GetNumber() {
                                   </span>
                                )}
                                
-                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right block truncate mt-0.5">
+                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right block truncate">
                                   {getTimeAgo(getDisplayTime(item))}
                                </span>
                             </div>
 
                             {/* PC ONLY VIEW */}
-                            <div className="hidden sm:flex flex-col items-end justify-center w-full gap-1.5 h-full">
-                               <div className="flex items-center gap-2">
+                            <div className="hidden sm:flex flex-col items-end justify-between w-full h-full py-0.5">
+                               <div className="flex flex-col items-end gap-1">
                                   <span className={badgeClasses}>{displayStatus}</span>
-                                  <span className="text-[10px] font-bold text-[#64748B] whitespace-nowrap">{getTimeAgo(getDisplayTime(item))}</span>
+                                  <span className="text-[10px] font-bold text-[#64748B] whitespace-nowrap mt-1">{getTimeAgo(getDisplayTime(item))}</span>
                                </div>
                                
                                {item.operator && item.operator !== "Any" && (
