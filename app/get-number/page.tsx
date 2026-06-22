@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR 💥
+// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR (Sorted by length to match properly) 💥
 const GLOBAL_COUNTRY_CODES = [
   "225", "236", "234", "212", "254", "221", "222", "223", "224", "226", "227", "228", "229", "231", "232", "233", "235", "237", "238", "239", "240", "241", "242", "243", "244", "245", "246", "247", "250", "251", "252", "253", "255", "256", "257", "258", "260", "261", "262", "263", "264", "265", "266", "269", "20", "27", 
   "880", "91", "92", "93", "94", "95", "86", "81", "82", "84", "62", "60", "63", "66", "65", "855", "856", "886", "976", "977", "960", "961", "962", "963", "964", "965", "966", "967", "968", "971", "972", "973", "974", "975", 
@@ -11,11 +11,13 @@ const GLOBAL_COUNTRY_CODES = [
   "1", "51", "52", "53", "54", "55", "56", "57", "58", "590", "591", "592", "593", "594", "595", "596", "597", "598", "599", "61", "64"
 ].sort((a, b) => b.length - a.length);
 
+// 💥 BULLETPROOF COPY FORMATTER 💥
 const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
   let digitsOnly = String(rawNum).replace(/\D/g, ''); 
 
   if (!digitsOnly) return rawNum;
 
+  // Rule 1: National (Strip Country Code)
   if (isNat) {
       for (let code of GLOBAL_COUNTRY_CODES) {
           if (digitsOnly.startsWith(code)) {
@@ -25,10 +27,12 @@ const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
       return digitsOnly;
   }
 
+  // Rule 2: No (+) (Return plain digits)
   if (noPlus) {
       return digitsOnly;
   }
 
+  // Rule 3: Default (Add +)
   return '+' + digitsOnly;
 };
 
@@ -160,15 +164,12 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
-  // 💥 ZERO-DELAY FETCH WITH CACHE-BUSTING 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
     try {
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
-        method: "POST", 
-        headers: { "Content-Type": "application/json" },
-        cache: 'no-store',
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
             action: "FETCH", 
             email, 
@@ -185,6 +186,7 @@ export default function GetNumber() {
 
         setNumbersList((prev) => {
            const prevMap = new Map();
+
            prev.forEach(item => prevMap.set(item._id || item.id, item));
            
            data.orders.forEach((fetchedItem: any) => {
@@ -292,7 +294,6 @@ export default function GetNumber() {
     try {
       const response = await fetch("/api/getnum", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        cache: 'no-store',
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
       const result = await response.json();
@@ -386,6 +387,7 @@ export default function GetNumber() {
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
+  // 💥 NEW: ZERO-LOAD BULK DOWNLOAD LOGIC (Calls the Next.js Proxy -> Fastify DB) 💥
   const downloadAllSuccessOTPs = async () => {
     const email = getUserEmail();
     if (!email) return;
@@ -399,9 +401,9 @@ export default function GetNumber() {
     showToast("Preparing Full Download...");
 
     try {
+      // Calls the new Zero-Load Proxy API
       const res = await fetch(`/api/download-otps`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        cache: 'no-store',
         body: JSON.stringify({ email, targetDate: selectedDate })
       });
       
@@ -589,9 +591,9 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         <div className="flex justify-between items-center w-full gap-2">
+                         <div className="flex justify-between items-center w-full">
                             
-                            <div className="flex-1 overflow-hidden min-w-0">
+                            <div className="flex-1 overflow-hidden pr-2 min-w-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
@@ -603,12 +605,12 @@ export default function GetNumber() {
                                  <div className="flex flex-col items-start gap-1">
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
-                                      className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
+                                      className="group relative inline-flex items-center gap-1 md:gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-0.5 md:px-2 md:py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
                                    >
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                       <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
                                       <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
-                                         <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                         <svg className="w-3 h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                       </div>
                                    </button>
                                    
@@ -617,13 +619,11 @@ export default function GetNumber() {
                                )}
                             </div>
                             
-                            {/* 💥 SMART 1-LINE SHRINK LOGIC: Country truncates first, Operator stays safe! 💥 */}
-                            <div className="flex flex-col items-end text-right w-[105px] md:w-[160px] shrink-0">
-                              <div className="flex items-center justify-end w-full text-[9px] font-bold text-[#E2E8F0] uppercase">
-                                 <span className="sm:hidden text-[#94A3B8] truncate min-w-0 shrink" title={item.country}>{item.country}</span>
-                                 <span className="sm:hidden text-[#94A3B8] mx-1 shrink-0">•</span>
-                                 <span className="truncate shrink-0 text-right max-w-[60px] md:max-w-[150px]" title={item.operator}>{item.operator}</span>
-                              </div>
+                            <div className="flex flex-col items-end text-right min-w-[70px] max-w-[120px] md:max-w-[200px] flex-shrink-0">
+                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase truncate w-full text-right">
+                                 <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
+                                 {item.operator}
+                              </span>
                               <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5 truncate w-full text-right">{getTimeAgo(getDisplayTime(item))}</span>
                             </div>
                          </div>
