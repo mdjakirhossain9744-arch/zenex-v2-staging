@@ -13,22 +13,14 @@ const GLOBAL_COUNTRY_CODES = [
 
 const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
   let digitsOnly = String(rawNum).replace(/\D/g, ''); 
-
   if (!digitsOnly) return rawNum;
-
   if (isNat) {
       for (let code of GLOBAL_COUNTRY_CODES) {
-          if (digitsOnly.startsWith(code)) {
-              return digitsOnly.substring(code.length); 
-          }
+          if (digitsOnly.startsWith(code)) return digitsOnly.substring(code.length); 
       }
       return digitsOnly;
   }
-
-  if (noPlus) {
-      return digitsOnly;
-  }
-
+  if (noPlus) return digitsOnly;
   return '+' + digitsOnly;
 };
 
@@ -44,9 +36,13 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
+// SMART SORTING LOGIC 
 const getSortTime = (item: any) => {
-    const t = item.receivedAt || item.updatedAt || item.createdAt;
-    return new Date(t).getTime() || 0;
+    if (item.status === 'DONE') {
+        const t = item.receivedAt || item.updatedAt || item.createdAt;
+        return new Date(t).getTime() || 0;
+    }
+    return new Date(item.createdAt).getTime() || 0;
 };
 
 export default function GetNumber() {
@@ -61,9 +57,12 @@ export default function GetNumber() {
   
   const [toasts, setToasts] = useState<{id: number, msg: string}[]>([]);
   const [numbersList, setNumbersList] = useState<any[]>([]);
+  
+  // TIME SYNC STATES 
   const [currentTime, setCurrentTime] = useState(Date.now());
-  const [selectedDate, setSelectedDate] = useState(getUTCDateString());
+  const [timeOffset, setTimeOffset] = useState(0); 
 
+  const [selectedDate, setSelectedDate] = useState(getUTCDateString());
   const [stats, setStats] = useState({ total: 0, success: 0, wait: 0, fail: 0 });
 
   const [page, setPage] = useState(1);
@@ -71,6 +70,9 @@ export default function GetNumber() {
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const observerRef = useRef<HTMLDivElement>(null);
+
+  // ADJUSTED TRUE SERVER TIME 
+  const adjustedTime = currentTime + timeOffset;
 
   const getUserEmail = () => {
     const storedUser = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
@@ -80,10 +82,8 @@ export default function GetNumber() {
   useEffect(() => {
     const savedRange = localStorage.getItem("zenex_saved_range");
     if (savedRange) setRangeInput(savedRange);
-
     const savedNational = localStorage.getItem("zenex_saved_national");
     if (savedNational === "true") setIsNational(true);
-
     const savedRemovePlus = localStorage.getItem("zenex_saved_remove_plus");
     if (savedRemovePlus === "true") setRemovePlus(true);
   }, []);
@@ -132,9 +132,7 @@ export default function GetNumber() {
       const updatedToasts = [...prev, { id, msg }];
       return updatedToasts.slice(-2); 
     });
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
 
   const getTimeAgo = (timestamp: any) => {
@@ -142,7 +140,7 @@ export default function GetNumber() {
     const timeMs = new Date(timestamp).getTime();
     if (isNaN(timeMs)) return "Just Now";
 
-    const secondsPast = Math.floor((currentTime - timeMs) / 1000);
+    const secondsPast = Math.floor((adjustedTime - timeMs) / 1000);
     if (secondsPast < 60) return "Just Now";
     if (secondsPast < 3600) return `${Math.floor(secondsPast / 60)} min ago`;
     if (secondsPast < 86400) return `${Math.floor(secondsPast / 3600)} hour ago`;
@@ -153,7 +151,7 @@ export default function GetNumber() {
   const getDisplayTime = (item: any) => {
       const cTime = new Date(item.createdAt).getTime();
       if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
-      if (item.status === 'FAIL' || (item.status === 'WAIT' && (currentTime - cTime) >= 20 * 60 * 1000)) {
+      if (item.status === 'FAIL' || (item.status === 'WAIT' && (adjustedTime - cTime) >= 20 * 60 * 1000)) {
           if (item.otp === "Timeout") return cTime + (20 * 60 * 1000); 
           return item.updatedAt || item.createdAt;
       }
@@ -165,31 +163,25 @@ export default function GetNumber() {
     if(!email) return;
     try {
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
-        method: "POST", 
-        headers: { "Content-Type": "application/json" },
-        cache: 'no-store',
-        body: JSON.stringify({ 
-            action: "FETCH", 
-            email, 
-            page: pageNum, 
-            limit: 30, 
-            targetDate: selectedDate,
-            filterStatus: activeFilter !== "ALL" ? activeFilter : undefined 
-        })
+        method: "POST", headers: { "Content-Type": "application/json" }, cache: 'no-store',
+        body: JSON.stringify({ action: "FETCH", email, page: pageNum, limit: 30, targetDate: selectedDate, filterStatus: activeFilter !== "ALL" ? activeFilter : undefined })
       });
+
+      const serverDateStr = res.headers.get('date');
+      if (serverDateStr) {
+          const serverTimeMs = new Date(serverDateStr).getTime();
+          if (!isNaN(serverTimeMs)) setTimeOffset(serverTimeMs - Date.now());
+      }
+
       const data = await res.json();
-      
       if(data.success && data.orders) {
         if (data.stats) setStats(data.stats); 
-
         setNumbersList((prev) => {
            const prevMap = new Map();
            prev.forEach(item => prevMap.set(item._id || item.id, item));
-           
            data.orders.forEach((fetchedItem: any) => {
               const itemId = fetchedItem._id || fetchedItem.id;
               const existingItem = prevMap.get(itemId);
-              
               if (existingItem) {
                  if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
                  prevMap.set(itemId, { ...existingItem, ...fetchedItem });
@@ -200,34 +192,22 @@ export default function GetNumber() {
                  prevMap.set(itemId, fetchedItem);
               }
            });
-
            return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
         });
-
         if(data.pagination) setHasMore(data.pagination.hasMore);
       }
-    } catch (err) {} 
-    finally {
-      setIsInitialLoad(false); 
-    }
+    } catch (err) {} finally { setIsInitialLoad(false); }
   }, [selectedDate, activeFilter, showToast]); 
 
   const handleFilterClick = (filterName: string) => {
     if (activeFilter === filterName) return;
     setActiveFilter(filterName);
-    setNumbersList([]);     
-    setIsInitialLoad(true); 
-    setPage(1);             
-    setHasMore(true);       
+    setNumbersList([]); setIsInitialLoad(true); setPage(1); setHasMore(true);       
   };
 
   const checkOtps = async () => {
     setIsRefreshing(true);
-    try {
-      await fetchDbOrders(1, false); 
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 500); 
-    }
+    try { await fetchDbOrders(1, false); } finally { setTimeout(() => setIsRefreshing(false), 500); }
   };
 
   const loadMoreNumbers = useCallback(async () => {
@@ -241,17 +221,16 @@ export default function GetNumber() {
   useEffect(() => {
     const handleInstantOtp = (e: any) => {
       const { searchNumber, otp, fullMessage, isMulti } = e.detail;
-      
       setNumbersList((prev) => prev.map((item) => {
         if (item.searchNumber === searchNumber) {
            if (!isMulti && item.status === "WAIT") {
              setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
              showToast(`OTP Received: ${cleanOTPDisplay(otp)}`);
-             return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
+             return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() + timeOffset };
            } else if (isMulti) {
              const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
              showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
-             return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now(), isMulti: true };
+             return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now() + timeOffset, isMulti: true };
            }
         }
         return item;
@@ -259,7 +238,6 @@ export default function GetNumber() {
     };
 
     window.addEventListener('otp-received-instant', handleInstantOtp);
-
     fetchDbOrders(1, false);
     const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
@@ -269,38 +247,29 @@ export default function GetNumber() {
        clearInterval(syncInterval);
        clearInterval(timeInterval);
     };
-  }, [fetchDbOrders, showToast]);
+  }, [fetchDbOrders, showToast, timeOffset]);
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasMore && !isFetchingMore && !isInitialLoad) {
-         loadMoreNumbers();
-      }
+      if (entries[0].isIntersecting && hasMore && !isFetchingMore && !isInitialLoad) loadMoreNumbers();
     }, { threshold: 0.1, rootMargin: "100px" });
-    
     if (observerRef.current) observer.observe(observerRef.current);
     return () => observer.disconnect();
   }, [hasMore, isFetchingMore, isInitialLoad, loadMoreNumbers]);
 
   const fetchNewNumber = async () => {
-    if (!rangeInput) {
-      showToast("Please enter a Range!");
-      return;
-    }
+    if (!rangeInput) { showToast("Please enter a Range!"); return; }
     setIsLoading(true);
     try {
       const response = await fetch("/api/getnum", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        cache: 'no-store',
+        method: "POST", headers: { "Content-Type": "application/json" }, cache: 'no-store',
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
       const result = await response.json();
       
       if (response.ok && result.success) {
-        
         const rawServerNumber = result.data.full_number || result.data.number || result.data.copy || "";
         const pureFeedNumber = String(rawServerNumber).replace(/\D/g, ''); 
-        
         const textToCopy = formatCopyNumber(pureFeedNumber, isNational, removePlus);
         navigator.clipboard.writeText(textToCopy);
         showToast(`Copied: ${textToCopy}`);
@@ -309,35 +278,21 @@ export default function GetNumber() {
         const realId = result.orderId || Date.now().toString();
 
         const newEntry = {
-          id: realId,
-          _id: realId, 
-          dateString: todayStr, 
-          displayNumber: pureFeedNumber, 
-          searchNumber: pureFeedNumber,  
-          copyNumber: textToCopy,
-          country: result.data.country || "Unknown",
-          operator: result.data.operator || "Any", 
-          status: "WAIT", 
-          otp: "Waiting...",
-          fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
-          createdAt: new Date().toISOString(), receivedAt: null 
+          id: realId, _id: realId, dateString: todayStr, displayNumber: pureFeedNumber, searchNumber: pureFeedNumber,  
+          copyNumber: textToCopy, country: result.data.country || "Unknown", operator: result.data.operator || "Any", 
+          status: "WAIT", otp: "Waiting...", fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
+          createdAt: new Date(Date.now() + timeOffset).toISOString(), receivedAt: null 
         };
         
         if (activeFilter === "ALL" || activeFilter === "WAIT") {
            setNumbersList((prev) => [newEntry, ...prev].sort((a, b) => getSortTime(b) - getSortTime(a)));
         }
-        
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
-
       } else {
         showToast(result.error || "Failed!");
       }
-    } catch (error) {
-      showToast("Error occurred!");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { showToast("Error occurred!"); } finally { setIsLoading(false); }
   };
 
   const isToday = selectedDate === getUTCDateString();
@@ -345,7 +300,7 @@ export default function GetNumber() {
     
   const finalFilteredNumbers = dateFilteredNumbers.map((item) => {
       const cTime = new Date(item.createdAt).getTime();
-      if (item.status === "WAIT" && (currentTime - cTime) >= 20 * 60 * 1000) {
+      if (item.status === "WAIT" && (adjustedTime - cTime) >= 20 * 60 * 1000) {
           return { ...item, status: "FAIL", otp: "Timeout" };
       }
       return item;
@@ -369,13 +324,7 @@ export default function GetNumber() {
           const msgsArray = item.fullMessage.split("_||_").map((m: string) => m.trim()).filter(Boolean);
           msgsArray.forEach((msg: string, idx: number) => {
               const extracted = cleanOTPDisplay(msg);
-              expandedNumbers.push({
-                  ...item,
-                  id: `${item._id || item.id}_${idx}`, 
-                  otp: extracted !== "Waiting..." ? extracted : item.otp,
-                  fullMessage: msg,
-                  isMulti: true 
-              });
+              expandedNumbers.push({ ...item, id: `${item._id || item.id}_${idx}`, otp: extracted !== "Waiting..." ? extracted : item.otp, fullMessage: msg, isMulti: true });
           });
       } else {
           expandedNumbers.push({ ...item, id: item._id || item.id });
@@ -388,44 +337,27 @@ export default function GetNumber() {
   const downloadAllSuccessOTPs = async () => {
     const email = getUserEmail();
     if (!email) return;
-
-    if (stats.success === 0) {
-      showToast("No successful OTPs to download!");
-      return;
-    }
+    if (stats.success === 0) { showToast("No successful OTPs to download!"); return; }
 
     setIsDownloading(true);
     showToast("Preparing Full Download...");
 
     try {
       const res = await fetch(`/api/download-otps`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        cache: 'no-store',
+        method: "POST", headers: { "Content-Type": "application/json" }, cache: 'no-store',
         body: JSON.stringify({ email, targetDate: selectedDate })
       });
-      
       const data = await res.json();
-
       if (data.success && data.textData) {
         const blob = new Blob([data.textData], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.href = url;
-        link.download = `ZENEX_DONE_OTPS_${selectedDate}.txt`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        link.href = url; link.download = `ZENEX_DONE_OTPS_${selectedDate}.txt`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        
         showToast(`Success! Downloaded All OTPs.`);
-      } else {
-        showToast("Error: No data found for this date.");
-      }
-    } catch (err) {
-      showToast("Download failed! Try again.");
-    } finally {
-      setIsDownloading(false);
-    }
+      } else { showToast("Error: No data found for this date."); }
+    } catch (err) { showToast("Download failed! Try again."); } finally { setIsDownloading(false); }
   };
 
   return (
@@ -528,13 +460,18 @@ export default function GetNumber() {
                  </button>
                )}
              </div>
+             
+             {/* 💥 FILTER TABS 💥 */}
              <div className="flex gap-1 bg-[#0B0F19] p-0.5 rounded border border-[#334155]">
-               {["ALL", "DONE", "WAIT", "FAIL"].map((filterName) => (
-                 <button key={filterName} onClick={() => handleFilterClick(filterName)}
-                   className={`px-2 py-1 text-[9px] font-black rounded uppercase transition-colors ${activeFilter === filterName ? "bg-[#3B82F6] text-white" : "text-[#64748B] hover:text-[#E2E8F0]"}`}>
-                   {filterName}
-                 </button>
-               ))}
+               {["ALL", "DONE", "WAIT", "FAIL"].map((filterName) => {
+                 const displayLabel = filterName === "DONE" ? "SUCCESS" : filterName === "WAIT" ? "PENDING" : filterName === "FAIL" ? "FAILED" : filterName;
+                 return (
+                   <button key={filterName} onClick={() => handleFilterClick(filterName)}
+                     className={`px-2 py-1 text-[9px] font-black rounded uppercase transition-colors ${activeFilter === filterName ? "bg-[#3B82F6] text-white" : "text-[#64748B] hover:text-[#E2E8F0]"}`}>
+                     {displayLabel}
+                   </button>
+                 );
+               })}
              </div>
            </div>
 
@@ -561,36 +498,46 @@ export default function GetNumber() {
                  <>
                    {sortedFilteredNumbers.map((item) => {
                       const isMultiTag = item.isMulti || item.isDup;
+                      
+                      // 💥 STATUS BADGE MAPPING 💥
+                      let displayStatus = item.status;
+                      if (item.status === "DONE") displayStatus = "SUCCESS";
+                      if (item.status === "WAIT") displayStatus = "PENDING";
+                      if (item.status === "FAIL") displayStatus = "FAILED";
+
+                      const badgeClasses = `px-1.5 py-[1px] border text-[8px] font-black rounded uppercase tracking-wider ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
 
                       return (
-                      <div key={item.id} className={`flex flex-col p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (currentTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
-                         <div className="flex justify-between items-center mb-1.5">
+                      // 💥 SINGLE ROW WRAPPER: Ensures the card remains perfectly slim 💥
+                      <div key={item.id} className={`flex justify-between items-center p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
+                         
+                         {/* 💥 LEFT COLUMN: Number & OTP 💥 */}
+                         <div className="flex flex-col justify-center items-start gap-1.5 md:gap-2 flex-1 min-w-0 pr-2">
                             
-                            <div onClick={() => { 
-                               const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
-                               navigator.clipboard.writeText(textToCopy); 
-                               showToast("Number Copied!"); 
-                            }} className="flex items-center gap-1.5 cursor-pointer group">
-                              <span className="text-sm md:text-base font-black text-white tracking-wide group-hover:text-[#3B82F6] transition-colors">{String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}</span>
+                            {/* Number Row */}
+                            <div className="flex items-center gap-1.5">
+                              <div onClick={() => { 
+                                 const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
+                                 navigator.clipboard.writeText(textToCopy); 
+                                 showToast("Number Copied!"); 
+                              }} className="text-sm md:text-base font-black text-white tracking-wide cursor-pointer hover:text-[#3B82F6] transition-colors truncate">
+                                {String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}
+                              </div>
                               
+                              {/* PC ONLY: Country name block next to number */}
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
+
                               {isMultiTag && (
                                  <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[8px] font-black rounded uppercase tracking-widest">
                                    MULTI
                                  </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
-                               <span className="text-[9px] font-bold text-[#64748B] hidden md:block">{getTimeAgo(getDisplayTime(item))}</span>
-                               <span className={`px-1.5 py-0.5 border text-[8px] font-black rounded uppercase ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/20 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/20 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/20 text-[#F43F5E]"}`}>{item.status}</span>
-                            </div>
-                         </div>
-                         
-                         <div className="flex justify-between items-center w-full gap-2">
                             
-                            <div className="flex-1 overflow-hidden min-w-0">
+                            {/* OTP Box Row */}
+                            <div className="w-full">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
@@ -610,23 +557,58 @@ export default function GetNumber() {
                                          <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                       </div>
                                    </button>
-                                   
                                    {item.fullMessage && <span className="text-[9px] text-[#64748B] mt-0.5 line-clamp-1">{item.fullMessage}</span>}
                                  </div>
                                )}
                             </div>
+                         </div>
+                         
+                         {/* 💥 RIGHT COLUMN: Mobile Centered Stack | PC Split Logic 💥 */}
+                         <div className="flex flex-col justify-center shrink-0 min-w-[90px] max-w-[50%]">
                             
-                            {/* 💥 SMART FLEXBOX: Uses all empty space! Only truncates if absolutely needed 💥 */}
-                            <div className="flex flex-col items-end text-right shrink min-w-0 max-w-[60%] md:max-w-[70%]">
-                              <div className="flex items-center justify-end w-full text-[9px] md:text-[10px] font-bold text-[#E2E8F0] uppercase">
-                                 <span className="sm:hidden text-[#94A3B8] truncate min-w-0" title={item.country}>{item.country}</span>
-                                 {item.operator && item.operator !== "Any" && <span className="sm:hidden text-[#94A3B8] mx-1 shrink-0">•</span>}
-                                 <span className="truncate shrink-0 text-right max-w-[120px] sm:max-w-none" title={item.operator}>{item.operator}</span>
-                              </div>
-                              <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5 truncate w-full text-right">{getTimeAgo(getDisplayTime(item))}</span>
+                            {/* 💥 MOBILE ONLY VIEW (Perfectly Centered Stack, Slim Height) 💥 */}
+                            <div className="flex sm:hidden flex-col items-center justify-center w-full">
+                               <span className={`${badgeClasses} mb-[3px]`}>{displayStatus}</span>
+                               
+                               <span className="text-[10px] font-bold text-[#E2E8F0] uppercase text-center w-full truncate leading-tight">
+                                  {item.country}
+                               </span>
+                               
+                               {item.operator && item.operator !== "Any" && (
+                                  <span className="flex items-center justify-center gap-1 text-[8.5px] font-medium text-[#94A3B8] uppercase w-full mt-[2px]">
+                                     <svg className="w-[11px] h-[11px] shrink-0 text-[#94A3B8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                         <circle cx="12" cy="12" r="2"></circle>
+                                         <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
+                                     </svg>
+                                     <span className="truncate">{item.operator}</span>
+                                  </span>
+                               )}
+                               
+                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-center mt-[3px]">
+                                  {getTimeAgo(getDisplayTime(item))}
+                               </span>
+                            </div>
+
+                            {/* 💥 PC ONLY VIEW (Badge+Time on Top, Operator on Bottom) 💥 */}
+                            <div className="hidden sm:flex flex-col items-end justify-center w-full gap-1.5">
+                               <div className="flex items-center gap-2">
+                                  <span className={badgeClasses}>{displayStatus}</span>
+                                  <span className="text-[9px] font-bold text-[#64748B] whitespace-nowrap">{getTimeAgo(getDisplayTime(item))}</span>
+                               </div>
+                               
+                               {item.operator && item.operator !== "Any" && (
+                                  <div className="flex items-center justify-end w-full text-[10px] font-bold text-[#E2E8F0] uppercase">
+                                     <svg className="w-3 h-3 shrink-0 text-[#94A3B8] mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="12" cy="12" r="2"></circle>
+                                        <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
+                                     </svg>
+                                     <span className="truncate shrink-0 text-right max-w-[150px]" title={item.operator}>{item.operator}</span>
+                                  </div>
+                               )}
                             </div>
 
                          </div>
+
                       </div>
                       )
                    })}
