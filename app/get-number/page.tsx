@@ -505,13 +505,14 @@ export default function GetNumber() {
                       if (item.status === "WAIT") displayStatus = "PENDING";
                       if (item.status === "FAIL") displayStatus = "FAILED";
 
-                      const badgeClasses = `px-1.5 py-[1px] border text-[8px] font-black rounded uppercase tracking-wider ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
+                      // 💥 BIGGER BADGE (MATCHING OLD 'DONE' SIZE) 💥
+                      const badgeClasses = `px-2 py-0.5 md:px-2.5 md:py-1 border text-[9px] md:text-[10px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
 
                       return (
                       // 💥 SINGLE ROW WRAPPER: Ensures the card remains perfectly slim 💥
                       <div key={item.id} className={`flex justify-between items-center p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          
-                         {/* 💥 LEFT COLUMN: Number & OTP 💥 */}
+                         {/* 💥 LEFT COLUMN: Number & Fixed Height OTP Box 💥 */}
                          <div className="flex flex-col justify-center items-start gap-1.5 md:gap-2 flex-1 min-w-0 pr-2">
                             
                             {/* Number Row */}
@@ -536,17 +537,19 @@ export default function GetNumber() {
                               )}
                             </div>
                             
-                            {/* OTP Box Row */}
-                            <div className="w-full">
+                            {/* 💥 OTP Box Row (FIXED MIN-HEIGHT TO PREVENT LAYOUT SHIFT / JUMPING) 💥 */}
+                            <div className="w-full min-h-[26px] md:min-h-[28px] flex flex-col justify-center">
                                {item.status === "WAIT" ? (
-                                 <div className="flex items-center gap-1.5">
+                                 <div className="flex items-center gap-1.5 min-h-[26px] md:min-h-[28px]">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
-                                   <span className="text-[10px] italic text-[#64748B]">{item.otp}</span>
+                                   <span className="text-[10px] md:text-[11px] italic text-[#64748B]">{item.otp}</span>
                                  </div>
                                ) : item.status === "FAIL" ? (
-                                 <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
+                                 <div className="flex items-center min-h-[26px] md:min-h-[28px]">
+                                    <span className="text-[10px] md:text-[11px] font-bold text-[#F43F5E]">{item.otp}</span>
+                                 </div>
                                ) : (
-                                 <div className="flex flex-col items-start gap-1">
+                                 <div className="flex flex-col items-start gap-1 py-0.5">
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
@@ -557,18 +560,18 @@ export default function GetNumber() {
                                          <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                       </div>
                                    </button>
-                                   {item.fullMessage && <span className="text-[9px] text-[#64748B] mt-0.5 line-clamp-1">{item.fullMessage}</span>}
+                                   {item.fullMessage && <span className="text-[9px] text-[#64748B] line-clamp-1">{item.fullMessage}</span>}
                                  </div>
                                )}
                             </div>
                          </div>
                          
-                         {/* 💥 RIGHT COLUMN: Mobile Centered Stack | PC Split Logic 💥 */}
+                         {/* 💥 RIGHT COLUMN: Mobile Centered Stack | PC Right Aligned 💥 */}
                          <div className="flex flex-col justify-center shrink-0 min-w-[90px] max-w-[50%]">
                             
                             {/* 💥 MOBILE ONLY VIEW (Perfectly Centered Stack, Slim Height) 💥 */}
                             <div className="flex sm:hidden flex-col items-center justify-center w-full">
-                               <span className={`${badgeClasses} mb-[3px]`}>{displayStatus}</span>
+                               <span className={`${badgeClasses} mb-1`}>{displayStatus}</span>
                                
                                <span className="text-[10px] font-bold text-[#E2E8F0] uppercase text-center w-full truncate leading-tight">
                                   {item.country}
@@ -580,7 +583,7 @@ export default function GetNumber() {
                                          <circle cx="12" cy="12" r="2"></circle>
                                          <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
                                      </svg>
-                                     <span className="truncate">{item.operator}</span>
+                                     <span className="truncate uppercase">{item.operator}</span>
                                   </span>
                                )}
                                
@@ -593,7 +596,7 @@ export default function GetNumber() {
                             <div className="hidden sm:flex flex-col items-end justify-center w-full gap-1.5">
                                <div className="flex items-center gap-2">
                                   <span className={badgeClasses}>{displayStatus}</span>
-                                  <span className="text-[9px] font-bold text-[#64748B] whitespace-nowrap">{getTimeAgo(getDisplayTime(item))}</span>
+                                  <span className="text-[10px] font-bold text-[#64748B] whitespace-nowrap">{getTimeAgo(getDisplayTime(item))}</span>
                                </div>
                                
                                {item.operator && item.operator !== "Any" && (
@@ -602,7 +605,7 @@ export default function GetNumber() {
                                         <circle cx="12" cy="12" r="2"></circle>
                                         <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
                                      </svg>
-                                     <span className="truncate shrink-0 text-right max-w-[150px]" title={item.operator}>{item.operator}</span>
+                                     <span className="truncate shrink-0 text-right max-w-[150px] uppercase" title={item.operator}>{item.operator}</span>
                                   </div>
                                )}
                             </div>
