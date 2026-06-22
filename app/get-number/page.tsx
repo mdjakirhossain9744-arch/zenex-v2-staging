@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DashboardLayout from "../DashboardLayout"; 
 
-// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR (Sorted by length to match properly) 💥
+// 💥 SMART GLOBAL COUNTRY CODE EXTRACTOR 💥
 const GLOBAL_COUNTRY_CODES = [
   "225", "236", "234", "212", "254", "221", "222", "223", "224", "226", "227", "228", "229", "231", "232", "233", "235", "237", "238", "239", "240", "241", "242", "243", "244", "245", "246", "247", "250", "251", "252", "253", "255", "256", "257", "258", "260", "261", "262", "263", "264", "265", "266", "269", "20", "27", 
   "880", "91", "92", "93", "94", "95", "86", "81", "82", "84", "62", "60", "63", "66", "65", "855", "856", "886", "976", "977", "960", "961", "962", "963", "964", "965", "966", "967", "968", "971", "972", "973", "974", "975", 
@@ -11,7 +11,6 @@ const GLOBAL_COUNTRY_CODES = [
   "1", "51", "52", "53", "54", "55", "56", "57", "58", "590", "591", "592", "593", "594", "595", "596", "597", "598", "599", "61", "64"
 ].sort((a, b) => b.length - a.length);
 
-// 💥 BULLETPROOF COPY FORMATTER 💥
 const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
   let digitsOnly = String(rawNum).replace(/\D/g, ''); 
 
@@ -161,7 +160,7 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
-  // 💥 SMART CACHE-BUSTING FETCH (Fixes the 8-10 Min Delay) 💥
+  // 💥 SMART CACHE-BUSTING FETCH (Fixes the 8-10 Min Delay for Web) 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
@@ -169,7 +168,7 @@ export default function GetNumber() {
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
         method: "POST", 
         headers: { "Content-Type": "application/json" },
-        cache: 'no-store', // 💥 CRITICAL FIX: Stops Next.js from caching the old "Waiting..." data
+        cache: 'no-store', // 💥 CRITICAL FIX: No more caching old "Waiting..." data
         body: JSON.stringify({ 
             action: "FETCH", 
             email, 
@@ -241,11 +240,33 @@ export default function GetNumber() {
   }, [page, fetchDbOrders]);
 
   useEffect(() => {
+    const handleInstantOtp = (e: any) => {
+      const { searchNumber, otp, fullMessage, isMulti } = e.detail;
+      
+      setNumbersList((prev) => prev.map((item) => {
+        if (item.searchNumber === searchNumber) {
+           if (!isMulti && item.status === "WAIT") {
+             setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
+             showToast(`OTP Received: ${cleanOTPDisplay(otp)}`);
+             return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
+           } else if (isMulti) {
+             const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
+             showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
+             return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now(), isMulti: true };
+           }
+        }
+        return item;
+      }).sort((a, b) => getSortTime(b) - getSortTime(a))); 
+    };
+
+    window.addEventListener('otp-received-instant', handleInstantOtp);
+
     fetchDbOrders(1, false);
     const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
     return () => {
+       window.removeEventListener('otp-received-instant', handleInstantOtp);
        clearInterval(syncInterval);
        clearInterval(timeInterval);
     };
@@ -271,7 +292,7 @@ export default function GetNumber() {
     try {
       const response = await fetch("/api/getnum", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        cache: 'no-store', // Cache prevention here too
+        cache: 'no-store', // 💥 CRITICAL FIX: No cache here either
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
       const result = await response.json();
@@ -568,10 +589,9 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         {/* 💥 FIX: Adjusted Mobile Flexbox & Width to prevent Layout Shift 💥 */}
-                         <div className="flex justify-between items-center w-full gap-2">
+                         <div className="flex justify-between items-center w-full">
                             
-                            <div className="flex-1 overflow-hidden min-w-0">
+                            <div className="flex-1 overflow-hidden pr-2 min-w-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
@@ -581,7 +601,6 @@ export default function GetNumber() {
                                  <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
-                                   {/* 💥 FIX: Made OTP Box Slimmer and More Compact 💥 */}
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
                                       className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
@@ -598,9 +617,9 @@ export default function GetNumber() {
                                )}
                             </div>
                             
-                            {/* 💥 FIX: Fixed width and shrink-0 to force long country names to truncate 💥 */}
-                            <div className="flex flex-col items-end text-right w-[90px] md:w-[150px] shrink-0">
-                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase truncate w-full">
+                            <div className="flex flex-col items-end text-right min-w-[70px] max-w-[120px] md:max-w-[200px] flex-shrink-0">
+                              {/* 💥 FIX: Removed truncate, Added line-clamp-2 so Provider Name never hides! 💥 */}
+                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase text-right w-full leading-tight line-clamp-2 break-words">
                                  <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
                                  {item.operator}
                               </span>
@@ -630,7 +649,6 @@ export default function GetNumber() {
              
              <div className="w-[1px] h-4 bg-[#334155] mx-1"></div>
              
-             {/* 💥 One-Click Download Button 💥 */}
              <button 
                 onClick={downloadAllSuccessOTPs} 
                 disabled={isDownloading || stats.success === 0}
