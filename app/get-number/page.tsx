@@ -160,7 +160,7 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
-  // 💥 SMART CACHE-BUSTING FETCH (Fixes the 8-10 Min Delay for Web) 💥
+  // 💥 ZERO-DELAY FETCH WITH CACHE-BUSTING 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
@@ -168,7 +168,7 @@ export default function GetNumber() {
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
         method: "POST", 
         headers: { "Content-Type": "application/json" },
-        cache: 'no-store', // 💥 CRITICAL FIX: No more caching old "Waiting..." data
+        cache: 'no-store',
         body: JSON.stringify({ 
             action: "FETCH", 
             email, 
@@ -292,7 +292,7 @@ export default function GetNumber() {
     try {
       const response = await fetch("/api/getnum", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        cache: 'no-store', // 💥 CRITICAL FIX: No cache here either
+        cache: 'no-store',
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
       const result = await response.json();
@@ -589,9 +589,9 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         <div className="flex justify-between items-center w-full">
+                         <div className="flex justify-between items-center w-full gap-2">
                             
-                            <div className="flex-1 overflow-hidden pr-2 min-w-0">
+                            <div className="flex-1 overflow-hidden min-w-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
@@ -617,12 +617,13 @@ export default function GetNumber() {
                                )}
                             </div>
                             
-                            <div className="flex flex-col items-end text-right min-w-[70px] max-w-[120px] md:max-w-[200px] flex-shrink-0">
-                              {/* 💥 FIX: Removed truncate, Added line-clamp-2 so Provider Name never hides! 💥 */}
-                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase text-right w-full leading-tight line-clamp-2 break-words">
-                                 <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
-                                 {item.operator}
-                              </span>
+                            {/* 💥 SMART 1-LINE SHRINK LOGIC: Country truncates first, Operator stays safe! 💥 */}
+                            <div className="flex flex-col items-end text-right w-[105px] md:w-[160px] shrink-0">
+                              <div className="flex items-center justify-end w-full text-[9px] font-bold text-[#E2E8F0] uppercase">
+                                 <span className="sm:hidden text-[#94A3B8] truncate min-w-0 shrink" title={item.country}>{item.country}</span>
+                                 <span className="sm:hidden text-[#94A3B8] mx-1 shrink-0">•</span>
+                                 <span className="truncate shrink-0 text-right max-w-[60px] md:max-w-[150px]" title={item.operator}>{item.operator}</span>
+                              </div>
                               <span className="text-[8px] font-bold text-[#64748B] md:hidden mt-0.5 truncate w-full text-right">{getTimeAgo(getDisplayTime(item))}</span>
                             </div>
                          </div>
