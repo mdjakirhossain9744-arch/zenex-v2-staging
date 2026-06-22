@@ -448,37 +448,42 @@ export default function GetNumber() {
         </div>
 
         <div className="rounded-xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl overflow-hidden shadow-md w-full mb-4 flex flex-col h-[75vh] md:h-[900px] min-h-[500px]">
-           <div className="flex justify-between items-center p-3 bg-[#0F172A]/50 border-b border-[#334155] flex-shrink-0">
-             <div className="flex items-center gap-2">
-               <h3 className="text-[10px] md:text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
+           
+           {/* 💥 RESPONSIVE HEADER FIX: 1 Row Layout (Original Clean Look) + Small DPI Safe 💥 */}
+           <div className="flex justify-between items-center p-2.5 md:p-3 bg-[#0F172A]/50 border-b border-[#334155] flex-shrink-0 w-full overflow-hidden">
+             
+             {/* Left Area: Fixed, never shrinks */}
+             <div className="flex items-center gap-1.5 md:gap-2 shrink-0 pr-2">
+               <h3 className="text-[11px] md:text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
                  {isToday ? <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></span> : <span className="w-1.5 h-1.5 rounded-full bg-[#64748B]"></span>}
                  Feed
                </h3>
                {isToday && (
-                 <button onClick={checkOtps} className="ml-2 p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20 transition-colors">
-                   <svg className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                 <button onClick={checkOtps} className="p-1 bg-[#3B82F6]/10 text-[#3B82F6] rounded border border-[#3B82F6]/30 hover:bg-[#3B82F6]/20 transition-colors shrink-0">
+                   <svg className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                  </button>
                )}
              </div>
              
-             {/* 💥 FILTER TABS 💥 */}
-             <div className="flex gap-1 bg-[#0B0F19] p-0.5 rounded border border-[#334155]">
+             {/* Right Area: Horizontal scroll if space is too tight on 320px screens */}
+             <div className="flex gap-0.5 sm:gap-1 bg-[#0B0F19] p-0.5 rounded border border-[#334155] overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-w-[70%] sm:max-w-none">
                {["ALL", "DONE", "WAIT", "FAIL"].map((filterName) => {
                  const displayLabel = filterName === "DONE" ? "SUCCESS" : filterName === "WAIT" ? "PENDING" : filterName === "FAIL" ? "FAILED" : filterName;
                  return (
                    <button key={filterName} onClick={() => handleFilterClick(filterName)}
-                     className={`px-2 py-1 text-[9px] font-black rounded uppercase transition-colors ${activeFilter === filterName ? "bg-[#3B82F6] text-white" : "text-[#64748B] hover:text-[#E2E8F0]"}`}>
+                     className={`px-1.5 py-1 md:px-2 md:py-1 text-[8.5px] md:text-[9.5px] font-black rounded uppercase transition-colors shrink-0 ${activeFilter === filterName ? "bg-[#3B82F6] text-white" : "text-[#64748B] hover:text-[#E2E8F0]"}`}>
                      {displayLabel}
                    </button>
                  );
                })}
              </div>
+
            </div>
 
            <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar w-full">
               {isInitialLoad ? (
                  Array(5).fill(0).map((_, i) => (
-                   <div key={i} className="flex flex-col p-3 border-b border-[#334155] w-full animate-pulse bg-[#1E293B]/40">
+                   <div key={i} className="flex flex-col p-3 border-b border-[#334155] w-full animate-pulse bg-[#1E293B]/40 h-[80px]">
                       <div className="flex justify-between items-center mb-2">
                         <div className="h-4 bg-[#334155] rounded w-32 md:w-48"></div>
                         <div className="h-3 bg-[#334155] rounded w-16"></div>
@@ -504,16 +509,17 @@ export default function GetNumber() {
                       if (item.status === "WAIT") displayStatus = "PENDING";
                       if (item.status === "FAIL") displayStatus = "FAILED";
 
-                      // 💥 PERFECTLY BALANCED BADGE SIZE: Not too big, not too small 💥
-                      const badgeClasses = `px-1.5 py-[2px] md:px-2 md:py-[3px] border text-[8.5px] md:text-[9.5px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
+                      const badgeClasses = `px-1.5 py-[2px] md:px-2 md:py-[3px] border text-[8px] md:text-[9px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
 
                       return (
-                      <div key={item.id} className={`flex justify-between items-center p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
+                      // 💥 STRICT FIXED HEIGHT (h-80px): No Layout Shift allowed here! 💥
+                      <div key={item.id} className={`h-[80px] md:h-[85px] shrink-0 flex justify-between items-center px-2.5 md:px-3 border-b border-[#334155] transition-colors w-full overflow-hidden ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          
-                         {/* 💥 LEFT COLUMN: Number & Fixed Height OTP Box 💥 */}
-                         <div className="flex flex-col justify-center items-start gap-1.5 md:gap-2 flex-1 min-w-0 pr-2">
+                         {/* 💥 LEFT COLUMN: Height strictly managed 💥 */}
+                         <div className="flex flex-col justify-center items-start h-full flex-1 min-w-0 pr-2">
                             
-                            <div className="flex items-center gap-1.5">
+                            {/* STRICT Number Area (Height: 24px) */}
+                            <div className="flex items-center gap-1.5 h-[24px] w-full">
                               <div onClick={() => { 
                                  const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
                                  navigator.clipboard.writeText(textToCopy); 
@@ -533,21 +539,22 @@ export default function GetNumber() {
                               )}
                             </div>
                             
-                            <div className="w-full min-h-[26px] md:min-h-[28px] flex flex-col justify-center">
+                            {/* STRICT OTP Area (Height: 36px) - Space reserved forever! */}
+                            <div className="w-full h-[36px] flex flex-col justify-center overflow-hidden">
                                {item.status === "WAIT" ? (
-                                 <div className="flex items-center gap-1.5 min-h-[26px] md:min-h-[28px]">
+                                 <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
-                                   <span className="text-[10px] md:text-[11px] italic text-[#64748B]">{item.otp}</span>
+                                   <span className="text-[10px] md:text-[11px] italic text-[#64748B]">Waiting...</span>
                                  </div>
                                ) : item.status === "FAIL" ? (
-                                 <div className="flex items-center min-h-[26px] md:min-h-[28px]">
+                                 <div className="flex items-center">
                                     <span className="text-[10px] md:text-[11px] font-bold text-[#F43F5E]">{item.otp}</span>
                                  </div>
                                ) : (
-                                 <div className="flex flex-col items-start gap-1 py-0.5">
+                                 <div className="flex flex-col items-start gap-1 justify-center">
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
-                                      className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
+                                      className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden shrink-0"
                                    >
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                       <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
@@ -555,26 +562,26 @@ export default function GetNumber() {
                                          <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                       </div>
                                    </button>
-                                   {item.fullMessage && <span className="text-[9px] text-[#64748B] line-clamp-1">{item.fullMessage}</span>}
+                                   {item.fullMessage && <span className="text-[9px] text-[#64748B] w-full truncate leading-none block">{item.fullMessage}</span>}
                                  </div>
                                )}
                             </div>
                          </div>
                          
-                         {/* 💥 RIGHT COLUMN: STRICT FIXED WIDTH TO PREVENT LAYOUT SHIFT 💥 */}
-                         <div className="flex flex-col justify-center shrink-0 w-[110px] sm:w-[130px] md:w-[150px]">
+                         {/* 💥 RIGHT COLUMN: strictly formatted to fit inside h-80px 💥 */}
+                         <div className="flex flex-col justify-center shrink-0 w-[110px] sm:w-[130px] md:w-[150px] h-full">
                             
-                            {/* 💥 MOBILE ONLY VIEW (Text Align Right + Truncate Ellipsis) 💥 */}
-                            <div className="flex sm:hidden flex-col items-end justify-center w-full">
-                               <span className={`${badgeClasses} mb-1`}>{displayStatus}</span>
+                            {/* MOBILE ONLY VIEW (Stack fits exactly) */}
+                            <div className="flex sm:hidden flex-col items-end justify-center w-full h-full space-y-[2px]">
+                               <span className={`${badgeClasses}`}>{displayStatus}</span>
                                
-                               <span className="text-[10px] font-bold text-[#E2E8F0] uppercase text-right w-full block truncate leading-tight">
+                               <span className="text-[9.5px] font-bold text-[#E2E8F0] uppercase text-right w-full block truncate leading-tight mt-1">
                                   {item.country}
                                </span>
                                
                                {item.operator && item.operator !== "Any" && (
-                                  <span className="flex items-center justify-end gap-1 text-[8.5px] font-medium text-[#94A3B8] uppercase w-full mt-[2px]">
-                                     <svg className="w-[10px] h-[10px] shrink-0 text-[#94A3B8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <span className="flex items-center justify-end gap-1 text-[8px] font-medium text-[#94A3B8] uppercase w-full">
+                                     <svg className="w-[9px] h-[9px] shrink-0 text-[#94A3B8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                          <circle cx="12" cy="12" r="2"></circle>
                                          <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
                                      </svg>
@@ -582,13 +589,13 @@ export default function GetNumber() {
                                   </span>
                                )}
                                
-                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right mt-[3px] block truncate">
+                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right block truncate mt-0.5">
                                   {getTimeAgo(getDisplayTime(item))}
                                </span>
                             </div>
 
-                            {/* 💥 PC ONLY VIEW (Right Aligned) 💥 */}
-                            <div className="hidden sm:flex flex-col items-end justify-center w-full gap-1.5">
+                            {/* PC ONLY VIEW */}
+                            <div className="hidden sm:flex flex-col items-end justify-center w-full gap-1.5 h-full">
                                <div className="flex items-center gap-2">
                                   <span className={badgeClasses}>{displayStatus}</span>
                                   <span className="text-[10px] font-bold text-[#64748B] whitespace-nowrap">{getTimeAgo(getDisplayTime(item))}</span>
