@@ -499,23 +499,20 @@ export default function GetNumber() {
                    {sortedFilteredNumbers.map((item) => {
                       const isMultiTag = item.isMulti || item.isDup;
                       
-                      // 💥 STATUS BADGE MAPPING 💥
                       let displayStatus = item.status;
                       if (item.status === "DONE") displayStatus = "SUCCESS";
                       if (item.status === "WAIT") displayStatus = "PENDING";
                       if (item.status === "FAIL") displayStatus = "FAILED";
 
-                      // 💥 BIGGER BADGE (MATCHING OLD 'DONE' SIZE) 💥
-                      const badgeClasses = `px-2 py-0.5 md:px-2.5 md:py-1 border text-[9px] md:text-[10px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
+                      // 💥 PERFECTLY BALANCED BADGE SIZE: Not too big, not too small 💥
+                      const badgeClasses = `px-1.5 py-[2px] md:px-2 md:py-[3px] border text-[8.5px] md:text-[9.5px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
 
                       return (
-                      // 💥 SINGLE ROW WRAPPER: Ensures the card remains perfectly slim 💥
                       <div key={item.id} className={`flex justify-between items-center p-2.5 md:p-3 border-b border-[#334155] transition-colors w-full ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          
                          {/* 💥 LEFT COLUMN: Number & Fixed Height OTP Box 💥 */}
                          <div className="flex flex-col justify-center items-start gap-1.5 md:gap-2 flex-1 min-w-0 pr-2">
                             
-                            {/* Number Row */}
                             <div className="flex items-center gap-1.5">
                               <div onClick={() => { 
                                  const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
@@ -525,7 +522,6 @@ export default function GetNumber() {
                                 {String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}
                               </div>
                               
-                              {/* PC ONLY: Country name block next to number */}
                               <span className="px-1.5 py-0.5 bg-[#334155]/50 text-[#94A3B8] border border-[#334155] text-[8px] font-black rounded uppercase tracking-widest hidden sm:inline-block">
                                 {item.country}
                               </span>
@@ -537,7 +533,6 @@ export default function GetNumber() {
                               )}
                             </div>
                             
-                            {/* 💥 OTP Box Row (FIXED MIN-HEIGHT TO PREVENT LAYOUT SHIFT / JUMPING) 💥 */}
                             <div className="w-full min-h-[26px] md:min-h-[28px] flex flex-col justify-center">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5 min-h-[26px] md:min-h-[28px]">
@@ -566,33 +561,33 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         {/* 💥 RIGHT COLUMN: Mobile Centered Stack | PC Right Aligned 💥 */}
-                         <div className="flex flex-col justify-center shrink-0 min-w-[90px] max-w-[50%]">
+                         {/* 💥 RIGHT COLUMN: STRICT FIXED WIDTH TO PREVENT LAYOUT SHIFT 💥 */}
+                         <div className="flex flex-col justify-center shrink-0 w-[110px] sm:w-[130px] md:w-[150px]">
                             
-                            {/* 💥 MOBILE ONLY VIEW (Perfectly Centered Stack, Slim Height) 💥 */}
-                            <div className="flex sm:hidden flex-col items-center justify-center w-full">
+                            {/* 💥 MOBILE ONLY VIEW (Text Align Right + Truncate Ellipsis) 💥 */}
+                            <div className="flex sm:hidden flex-col items-end justify-center w-full">
                                <span className={`${badgeClasses} mb-1`}>{displayStatus}</span>
                                
-                               <span className="text-[10px] font-bold text-[#E2E8F0] uppercase text-center w-full truncate leading-tight">
+                               <span className="text-[10px] font-bold text-[#E2E8F0] uppercase text-right w-full block truncate leading-tight">
                                   {item.country}
                                </span>
                                
                                {item.operator && item.operator !== "Any" && (
-                                  <span className="flex items-center justify-center gap-1 text-[8.5px] font-medium text-[#94A3B8] uppercase w-full mt-[2px]">
-                                     <svg className="w-[11px] h-[11px] shrink-0 text-[#94A3B8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <span className="flex items-center justify-end gap-1 text-[8.5px] font-medium text-[#94A3B8] uppercase w-full mt-[2px]">
+                                     <svg className="w-[10px] h-[10px] shrink-0 text-[#94A3B8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                          <circle cx="12" cy="12" r="2"></circle>
                                          <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
                                      </svg>
-                                     <span className="truncate uppercase">{item.operator}</span>
+                                     <span className="block truncate max-w-[85px]">{item.operator}</span>
                                   </span>
                                )}
                                
-                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-center mt-[3px]">
+                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right mt-[3px] block truncate">
                                   {getTimeAgo(getDisplayTime(item))}
                                </span>
                             </div>
 
-                            {/* 💥 PC ONLY VIEW (Badge+Time on Top, Operator on Bottom) 💥 */}
+                            {/* 💥 PC ONLY VIEW (Right Aligned) 💥 */}
                             <div className="hidden sm:flex flex-col items-end justify-center w-full gap-1.5">
                                <div className="flex items-center gap-2">
                                   <span className={badgeClasses}>{displayStatus}</span>
@@ -605,7 +600,7 @@ export default function GetNumber() {
                                         <circle cx="12" cy="12" r="2"></circle>
                                         <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
                                      </svg>
-                                     <span className="truncate shrink-0 text-right max-w-[150px] uppercase" title={item.operator}>{item.operator}</span>
+                                     <span className="truncate shrink-0 text-right max-w-[120px] md:max-w-[150px] uppercase" title={item.operator}>{item.operator}</span>
                                   </div>
                                )}
                             </div>
