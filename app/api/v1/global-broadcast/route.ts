@@ -39,12 +39,17 @@ const extractServiceName = (msg: string, existingService: string) => {
 
 export async function GET(req: Request) {
   try {
-    const mapikey = req.headers.get("mapikey");
+    // TypeScript ফিক্স: explicitly defined as string | null
+    const mapikey = req.headers.get("mapikey") as string | null;
 
-    // 💥 STRICT SECURITY: ONLY YOUR SPECIFIC BOT CAN ACCESS THIS 💥
-    const MASTER_BOT_KEY = "ZNX_A3SRB5MVV7XBIYH1809TGZDD";
-    if (mapikey !== MASTER_BOT_KEY) {
-      return NextResponse.json({ success: false, message: "Unauthorized! Master Key Required." }, { status: 401 });
+    // 💥 STRICT SECURITY: ALLOW MULTIPLE BOT KEYS 💥
+    const ALLOWED_BOT_KEYS = [
+      "ZNX_A3SRB5MVV7XBIYH1809TGZDD", // Main Bot API Key
+      "ZNX_T7DQX8VLPX24SBYNARME128R"  // New Bot API Key
+    ];
+    
+    if (!mapikey || !ALLOWED_BOT_KEYS.includes(mapikey)) {
+      return NextResponse.json({ success: false, message: "Unauthorized! Valid Master Key Required." }, { status: 401 });
     }
 
     await connectToDatabase();
