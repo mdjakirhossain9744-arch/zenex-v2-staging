@@ -1,23 +1,14 @@
-// app/api/v1/global-broadcast/route.ts
-
 import { NextResponse } from "next/server";
 import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
 
 export const dynamic = "force-dynamic";
 
-// 💥 RAM CACHING & DUPLICATE PREVENTION 💥
-const broadcastedIds = new Set();
-let lastCleanup = Date.now();
-
-// 💥 SMART SERVICE EXTRACTOR (ঠিক ওয়েবসাইটের কনসোলের মতো কাজ করবে) 💥
+// 💥 SMART SERVICE EXTRACTOR 💥
 const extractServiceName = (msg: string, existingService: string) => {
-    // ডাটাবেসে যদি সঠিক নাম থাকে, সেটাই ব্যবহার করবে
     if (existingService && existingService.toLowerCase() !== 'other' && existingService.toLowerCase() !== 'unknown' && existingService.trim() !== '') {
         return existingService;
     }
-    
-    // ডাটাবেসে না থাকলে SMS-এর টেক্সট পড়ে নাম বের করবে
     if (!msg) return "Other";
     const lowerMsg = msg.toLowerCase();
     
@@ -39,7 +30,6 @@ const extractServiceName = (msg: string, existingService: string) => {
 
 export async function GET(req: Request) {
   try {
-    // TypeScript ফিক্স: explicitly defined as string | null
     const mapikey = req.headers.get("mapikey") as string | null;
 
     // 💥 STRICT SECURITY: ALLOW MULTIPLE BOT KEYS 💥
@@ -54,7 +44,7 @@ export async function GET(req: Request) {
 
     await connectToDatabase();
 
-    // 💥 ZERO DB LOAD: Fetch only last 2 minutes of Success Orders 💥
+    // 💥 Fetch only last 2 minutes of Success Orders 💥
     const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentOrders = await Order.find({
         status: { $in: ["DONE", "Success", "SUCCESS"] },
@@ -64,42 +54,26 @@ export async function GET(req: Request) {
     const selectedOtps: any[] = [];
 
     recentOrders.forEach((order: any) => {
-        const orderId = order._id.toString();
-
-        // ডুপ্লিকেট চেকিং
-        if (!broadcastedIds.has(orderId)) {
-            broadcastedIds.add(orderId);
-
-            // 💥 THE 50% MAGIC RULE 💥
-            if (Math.random() > 0.5) {
-                
-                let safeNumber = String(order.searchNumber || order.number || "").replace("+", "");
-                
-                // 💥 প্ল্যাটফর্মের আসল নাম বের করার লজিক 💥
-                const rawMsg = order.fullMessage || order.otp || "";
-                const finalServiceName = extractServiceName(rawMsg, order.service);
-                
-                selectedOtps.push({
-                    id: orderId,
-                    number: safeNumber,
-                    otp: order.otp || order.fullMessage,
-                    service: finalServiceName, // এখন আসল নাম যাবে
-                    time: order.updatedAt
-                });
-            }
+        // 💥 THE 50% MAGIC RULE 💥
+        if (Math.random() > 0.5) {
+            let safeNumber = String(order.searchNumber || order.number || "").replace("+", "");
+            const rawMsg = order.fullMessage || order.otp || "";
+            const finalServiceName = extractServiceName(rawMsg, order.service);
+            
+            selectedOtps.push({
+                id: order._id.toString(),
+                number: safeNumber,
+                otp: order.otp || order.fullMessage,
+                service: finalServiceName,
+                time: order.updatedAt
+            });
         }
     });
-
-    // Memory Leak Prevention
-    if (Date.now() - lastCleanup > 10 * 60 * 1000) {
-        broadcastedIds.clear();
-        lastCleanup = Date.now();
-    }
 
     return NextResponse.json({
         success: true,
         count: selectedOtps.length,
-        message: "50% Live Public OTPs Fetched Successfully!",
+        message: "Live Public OTPs Fetched Successfully!",
         data: selectedOtps
     });
 
