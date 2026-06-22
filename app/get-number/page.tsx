@@ -17,7 +17,6 @@ const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
 
   if (!digitsOnly) return rawNum;
 
-  // Rule 1: National (Strip Country Code)
   if (isNat) {
       for (let code of GLOBAL_COUNTRY_CODES) {
           if (digitsOnly.startsWith(code)) {
@@ -27,12 +26,10 @@ const formatCopyNumber = (rawNum: string, isNat: boolean, noPlus: boolean) => {
       return digitsOnly;
   }
 
-  // Rule 2: No (+) (Return plain digits)
   if (noPlus) {
       return digitsOnly;
   }
 
-  // Rule 3: Default (Add +)
   return '+' + digitsOnly;
 };
 
@@ -164,12 +161,15 @@ export default function GetNumber() {
       return item.createdAt; 
   };
 
+  // 💥 SMART CACHE-BUSTING FETCH (Fixes the 8-10 Min Delay) 💥
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
     const email = getUserEmail();
     if(!email) return;
     try {
       const res = await fetch(`/api/sync-orders?t=${Date.now()}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        cache: 'no-store', // 💥 CRITICAL FIX: Stops Next.js from caching the old "Waiting..." data
         body: JSON.stringify({ 
             action: "FETCH", 
             email, 
@@ -186,7 +186,6 @@ export default function GetNumber() {
 
         setNumbersList((prev) => {
            const prevMap = new Map();
-
            prev.forEach(item => prevMap.set(item._id || item.id, item));
            
            data.orders.forEach((fetchedItem: any) => {
@@ -242,33 +241,11 @@ export default function GetNumber() {
   }, [page, fetchDbOrders]);
 
   useEffect(() => {
-    const handleInstantOtp = (e: any) => {
-      const { searchNumber, otp, fullMessage, isMulti } = e.detail;
-      
-      setNumbersList((prev) => prev.map((item) => {
-        if (item.searchNumber === searchNumber) {
-           if (!isMulti && item.status === "WAIT") {
-             setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
-             showToast(`OTP Received: ${cleanOTPDisplay(otp)}`);
-             return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() };
-           } else if (isMulti) {
-             const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
-             showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
-             return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now(), isMulti: true };
-           }
-        }
-        return item;
-      }).sort((a, b) => getSortTime(b) - getSortTime(a))); 
-    };
-
-    window.addEventListener('otp-received-instant', handleInstantOtp);
-
     fetchDbOrders(1, false);
     const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
     const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
     return () => {
-       window.removeEventListener('otp-received-instant', handleInstantOtp);
        clearInterval(syncInterval);
        clearInterval(timeInterval);
     };
@@ -294,6 +271,7 @@ export default function GetNumber() {
     try {
       const response = await fetch("/api/getnum", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        cache: 'no-store', // Cache prevention here too
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
       const result = await response.json();
@@ -387,7 +365,6 @@ export default function GetNumber() {
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
-  // 💥 NEW: ZERO-LOAD BULK DOWNLOAD LOGIC (Calls the Next.js Proxy -> Fastify DB) 💥
   const downloadAllSuccessOTPs = async () => {
     const email = getUserEmail();
     if (!email) return;
@@ -401,9 +378,9 @@ export default function GetNumber() {
     showToast("Preparing Full Download...");
 
     try {
-      // Calls the new Zero-Load Proxy API
       const res = await fetch(`/api/download-otps`, {
         method: "POST", headers: { "Content-Type": "application/json" },
+        cache: 'no-store',
         body: JSON.stringify({ email, targetDate: selectedDate })
       });
       
@@ -591,9 +568,10 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         <div className="flex justify-between items-center w-full">
+                         {/* 💥 FIX: Adjusted Mobile Flexbox & Width to prevent Layout Shift 💥 */}
+                         <div className="flex justify-between items-center w-full gap-2">
                             
-                            <div className="flex-1 overflow-hidden pr-2 min-w-0">
+                            <div className="flex-1 overflow-hidden min-w-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#EAB308] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#EAB308]"></span></span>
@@ -603,14 +581,15 @@ export default function GetNumber() {
                                  <span className="text-[10px] font-bold text-[#F43F5E]">{item.otp}</span>
                                ) : (
                                  <div className="flex flex-col items-start gap-1">
+                                   {/* 💥 FIX: Made OTP Box Slimmer and More Compact 💥 */}
                                    <button 
                                       onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
-                                      className="group relative inline-flex items-center gap-1 md:gap-1.5 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-0.5 md:px-2 md:py-1 rounded-md cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
+                                      className="group relative inline-flex items-center gap-1 bg-[#0F172A] border border-[#10B981]/30 hover:border-[#10B981] px-1.5 py-[1px] md:px-2 md:py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] overflow-hidden"
                                    >
                                       <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                       <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
                                       <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
-                                         <svg className="w-3 h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                         <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                       </div>
                                    </button>
                                    
@@ -619,8 +598,9 @@ export default function GetNumber() {
                                )}
                             </div>
                             
-                            <div className="flex flex-col items-end text-right min-w-[70px] max-w-[120px] md:max-w-[200px] flex-shrink-0">
-                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase truncate w-full text-right">
+                            {/* 💥 FIX: Fixed width and shrink-0 to force long country names to truncate 💥 */}
+                            <div className="flex flex-col items-end text-right w-[90px] md:w-[150px] shrink-0">
+                              <span className="text-[9px] font-bold text-[#E2E8F0] uppercase truncate w-full">
                                  <span className="sm:hidden text-[#94A3B8]">{item.country} • </span>
                                  {item.operator}
                               </span>
@@ -650,6 +630,7 @@ export default function GetNumber() {
              
              <div className="w-[1px] h-4 bg-[#334155] mx-1"></div>
              
+             {/* 💥 One-Click Download Button 💥 */}
              <button 
                 onClick={downloadAllSuccessOTPs} 
                 disabled={isDownloading || stats.success === 0}
