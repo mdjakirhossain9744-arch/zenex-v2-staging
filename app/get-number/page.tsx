@@ -88,6 +88,14 @@ export default function GetNumber() {
     if (savedRemovePlus === "true") setRemovePlus(true);
   }, []);
 
+  // 💥 SEPARATE LIVE TIME TICKER (Updates Every Second) 💥
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setRangeInput(val);
@@ -240,12 +248,10 @@ export default function GetNumber() {
     window.addEventListener('otp-received-instant', handleInstantOtp);
     fetchDbOrders(1, false);
     const syncInterval = setInterval(() => fetchDbOrders(1, true), 3000); 
-    const timeInterval = setInterval(() => setCurrentTime(Date.now()), 10000);
     
     return () => {
        window.removeEventListener('otp-received-instant', handleInstantOtp);
        clearInterval(syncInterval);
-       clearInterval(timeInterval);
     };
   }, [fetchDbOrders, showToast, timeOffset]);
 
@@ -507,13 +513,10 @@ export default function GetNumber() {
                       const badgeClasses = `px-1.5 py-[2px] md:px-2 md:py-[3px] border text-[8px] md:text-[9px] font-black rounded uppercase tracking-widest ${item.status === "WAIT" ? "bg-[#EAB308]/10 border-[#EAB308]/30 text-[#EAB308]" : item.status === "DONE" ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-[#F43F5E]/10 border-[#F43F5E]/30 text-[#F43F5E]"}`;
 
                       return (
-                      // 💥 STRICT FIXED HEIGHT (h-90px): Increased slightly to hold all 3 rows perfectly 💥
                       <div key={item.id} className={`h-[90px] shrink-0 flex justify-between items-center px-2.5 md:px-3 py-2 border-b border-[#334155] transition-colors w-full overflow-hidden ${item.status === 'DONE' && (adjustedTime - new Date(item.receivedAt||0).getTime() < 5000) ? 'bg-[#10B981]/10' : 'hover:bg-[#334155]/20'}`}>
                          
-                         {/* 💥 LEFT COLUMN: 3 Dedicated Independent Rows 💥 */}
                          <div className="flex flex-col justify-between items-start h-full flex-1 min-w-0 pr-2">
                             
-                            {/* Row 1: NUMBER (Fixed h-24px) */}
                             <div className="flex items-center gap-1.5 h-[24px] w-full shrink-0">
                               <div onClick={() => { 
                                  const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
@@ -532,7 +535,6 @@ export default function GetNumber() {
                               )}
                             </div>
                             
-                            {/* Row 2: OTP AREA (Fixed h-28px) */}
                             <div className="flex items-center h-[28px] w-full shrink-0">
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-1.5">
@@ -555,7 +557,6 @@ export default function GetNumber() {
                                )}
                             </div>
 
-                            {/* Row 3: MESSAGE TEXT (Fixed h-18px) */}
                             <div className="flex items-center h-[18px] w-full shrink-0 overflow-hidden">
                                {item.status === "DONE" && item.fullMessage ? (
                                   <span className="text-[9px] text-[#64748B] w-full truncate leading-none block">{item.fullMessage}</span>
@@ -563,10 +564,8 @@ export default function GetNumber() {
                             </div>
                          </div>
                          
-                         {/* 💥 RIGHT COLUMN: Adjusted to fit beautifully inside the 90px container 💥 */}
                          <div className="flex flex-col justify-between shrink-0 w-[110px] sm:w-[130px] md:w-[150px] h-full">
                             
-                            {/* MOBILE ONLY VIEW */}
                             <div className="flex sm:hidden flex-col items-end justify-between w-full h-full py-0.5">
                                <span className={`${badgeClasses}`}>{displayStatus}</span>
                                
@@ -589,7 +588,6 @@ export default function GetNumber() {
                                </span>
                             </div>
 
-                            {/* PC ONLY VIEW */}
                             <div className="hidden sm:flex flex-col items-end justify-between w-full h-full py-0.5">
                                <div className="flex flex-col items-end gap-1">
                                   <span className={badgeClasses}>{displayStatus}</span>
