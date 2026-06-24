@@ -178,7 +178,14 @@ export default function GetNumber() {
       const serverDateStr = res.headers.get('date');
       if (serverDateStr) {
           const serverTimeMs = new Date(serverDateStr).getTime();
-          if (!isNaN(serverTimeMs)) setTimeOffset(serverTimeMs - Date.now());
+          if (!isNaN(serverTimeMs)) {
+              // 💥 ANTI-JITTER LATENCY FILTER 💥
+              // Ignore ping variations under 2 seconds to prevent time flickering
+              setTimeOffset(prevOffset => {
+                  const newOffset = serverTimeMs - Date.now();
+                  return Math.abs(prevOffset - newOffset) > 2000 ? newOffset : prevOffset;
+              });
+          }
       }
 
       const data = await res.json();
@@ -583,7 +590,7 @@ export default function GetNumber() {
                                   </span>
                                )}
                                
-                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right block truncate">
+                               <span className="text-[7.5px] font-medium text-[#64748B] w-full text-right block truncate transition-all duration-300">
                                   {getTimeAgo(getDisplayTime(item))}
                                </span>
                             </div>
@@ -591,7 +598,7 @@ export default function GetNumber() {
                             <div className="hidden sm:flex flex-col items-end justify-between w-full h-full py-0.5">
                                <div className="flex flex-col items-end gap-1">
                                   <span className={badgeClasses}>{displayStatus}</span>
-                                  <span className="text-[10px] font-bold text-[#64748B] whitespace-nowrap mt-1">{getTimeAgo(getDisplayTime(item))}</span>
+                                  <span className="text-[10px] font-bold text-[#64748B] whitespace-nowrap mt-1 transition-all duration-300">{getTimeAgo(getDisplayTime(item))}</span>
                                </div>
                                
                                {item.operator && item.operator !== "Any" && (
