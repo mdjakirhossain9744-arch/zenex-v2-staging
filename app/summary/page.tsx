@@ -9,6 +9,7 @@ export default function UserSummary() {
   const router = useRouter();
 
   const [dateFilter, setDateFilter] = useState("7"); 
+  // 💥 FIX 1: Initial state changed to 0
   const [userRate, setUserRate] = useState(0);
   const [dbEarnings, setDbEarnings] = useState("0.00"); 
 
@@ -50,7 +51,8 @@ export default function UserSummary() {
       const data = await res.json();
       
       if (data.success) {
-        setUserRate(data.userRate || 0.50);
+        // 💥 FIX 2: Javascript fallback changed from 0.50 to 0 (Prevents 0 from being overwritten)
+        setUserRate(data.userRate !== undefined ? data.userRate : 0);
         setDbEarnings(Number(data.balance || 0).toFixed(2));
 
         let daysToShow = dateFilter === "today" ? 1 : dateFilter === "15" ? 15 : dateFilter === "30" ? 30 : dateFilter === "all" ? 60 : 7;
