@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     if (!currentUser) return NextResponse.json({ success: false });
 
     const exactDbEmail = currentUser.email; 
-    let userRate = role === "admin" ? 0 : (currentUser.otpRate || 0.50);
+    let userRate = role === "admin" ? 0 : (currentUser.otpRate || 0);
     let balance = role === "admin" ? 0 : (currentUser.balance || 0);
     
     const todayStrUTC = getUTCDateString(new Date());
@@ -77,14 +77,13 @@ export async function POST(req: Request) {
         dailyStatQuery.userEmail = exactDbEmail; 
     }
 
-    const orderQuery: any = { dateString: { $gte: liveQueryDateStr } }; // 💥 FIXED: Using Covering Index! 
+    const orderQuery: any = { dateString: { $gte: liveQueryDateStr } }; 
     if (role !== "admin") {
         orderQuery.userEmail = exactDbEmail; 
     }
 
     // 💥 PARALLEL EXECUTION: Running Aggregation and Live Orders query at the same time! 💥
     const [dailyStatsAgg, orders] = await Promise.all([
-        // 1. MONGODB AGGREGATION: Processes 60 days of historical data in 0.01 seconds
         DailyStat.aggregate([
             { $match: dailyStatQuery },
             { $group: {
@@ -100,7 +99,6 @@ export async function POST(req: Request) {
                 }
             }}
         ]),
-        // 2. LIVE ORDERS: Fetching ONLY today's records (very small payload)
         Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage userEmail orderCost orderCommission").lean()
     ]);
 
@@ -108,7 +106,6 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // Load instantly processed Aggregation Data
     dailyStatsAgg.forEach((ds: any) => {
         groupedRawData[ds._id] = {
             total: ds.total, allocation: ds.allocation,
@@ -116,7 +113,6 @@ export async function POST(req: Request) {
         };
     });
 
-    // Process Today's Live Orders
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
@@ -129,15 +125,14 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].allocation += 1;
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-          const uniqueCodes = new Set();
-          msgArray.forEach((msg: string) => {
-              const match = msg.match(/\b\d{4,8}\b/);
-              uniqueCodes.add(match ? match[0] : msg.trim());
-          });
-          const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+          
+          // 💥 FIX: ACCURATE MULTI-OTP COUNTING WITHOUT DUPLICATE FILTERING 💥
+          const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
+          // Count every single OTP block correctly
+          const validMsgArray = msgArray.filter((m: string) => m.trim() !== "");
+          const finalValidCount = validMsgArray.length > 0 ? validMsgArray.length : 1;
 
-          groupedRawData[finalDateStr].success += validMsgCount;
+          groupedRawData[finalDateStr].success += finalValidCount;
           
           if (role === "admin") {
               groupedRawData[finalDateStr].amount += ((o.orderCost || 0) + (o.orderCommission || 0));
@@ -148,11 +143,11 @@ export async function POST(req: Request) {
           if (finalDateStr === todayStrUTC) {
               const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
               const bIdx = Math.floor(hour / 4);
-              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
+              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += finalValidCount;
 
               let sName = extractServiceName(o.fullMessage);
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
-              todayAppCounts[sName] += validMsgCount;
+              todayAppCounts[sName] += finalValidCount;
           }
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
           groupedRawData[finalDateStr].failed += 1;
@@ -174,5 +169,7 @@ export async function POST(req: Request) {
        yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
     });
 
-  } catch (error) { return NextResponse.json({ success: false }); }
+  } catch (error) { 
+      return NextResponse.json({ success: false }); 
+  }
 }
