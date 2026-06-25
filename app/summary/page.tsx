@@ -9,7 +9,7 @@ export default function UserSummary() {
   const router = useRouter();
 
   const [dateFilter, setDateFilter] = useState("7"); 
-  const [userRate, setUserRate] = useState(0.50);
+  const [userRate, setUserRate] = useState(0);
   const [dbEarnings, setDbEarnings] = useState("0.00"); 
 
   const [reportData, setReportData] = useState<any[]>([]);
