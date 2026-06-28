@@ -13,22 +13,28 @@ const firebaseConfig = {
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-let messaging: any = null;
-
-if (typeof window !== "undefined") {
-  isSupported().then((supported) => {
-    if (supported) messaging = getMessaging(app);
-  });
-}
+// 💥 FIX 1: Promise Wrapper - ফায়ারবেস ঘুম থেকে না ওঠা পর্যন্ত অপেক্ষা করবে! 💥
+export const getMessagingInstance = async () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const supported = await isSupported();
+    if (supported) return getMessaging(app);
+    return null;
+  } catch (err) {
+    return null;
+  }
+};
 
 export const generateFCMToken = async () => {
   try {
-    if (!messaging) return null;
+    // 💥 FIX 2: Messaging রেডি হওয়া পর্যন্ত অপেক্ষা করবে 💥
+    const msg = await getMessagingInstance();
+    if (!msg) return null;
+
     const permission = await Notification.requestPermission();
     
     if (permission === "granted") {
-      const token = await getToken(messaging, {
-        // ফায়ারবেস কনসোল থেকে VAPID Key এনে পরে এখানে বসাবো
+      const token = await getToken(msg, {
         vapidKey: "BAcYRYmezszxBlLvihJhwlN2NmXH6kaMG-CUR1-rfrhHa7TiFLVK557bs4vUksUSRJlhfzGy87GzyehHHgx3uUE" 
       });
       return token;
@@ -40,4 +46,12 @@ export const generateFCMToken = async () => {
   }
 };
 
-export { app, messaging, onMessage };
+// 💥 FIX 3: Dynamic Exporter for onMessage 💥
+export const setupOnMessage = async (callback: (payload: any) => void) => {
+  const msg = await getMessagingInstance();
+  if (msg) {
+    onMessage(msg, callback);
+  }
+};
+
+export { app };
