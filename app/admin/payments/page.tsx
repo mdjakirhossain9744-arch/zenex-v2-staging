@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../DashboardLayout"; 
 import { useRouter } from "next/navigation";
-import { messaging, onMessage } from "../../lib/firebase"; // 👈 Firebase import
+// 💥 FIX: নতুন স্মার্ট ফায়ারবেস ইমপোর্ট 💥
+import { setupOnMessage } from "../../lib/firebase"; 
 
 export default function AdminPayments() {
   const router = useRouter();
@@ -55,18 +56,16 @@ export default function AdminPayments() {
   }, [role, activeAdminTab, timeFilter, debouncedSearch, currentPage]);
 
   // ==========================================
-  // 🚀 FCM: REAL-TIME AUTO REFRESH MAGIC
+  // 🚀 FCM: REAL-TIME AUTO REFRESH MAGIC (FIXED)
   // ==========================================
   useEffect(() => {
-    if (role === "admin" && typeof window !== "undefined" && messaging) {
-      const unsubscribe = onMessage(messaging, (payload) => {
+    if (role === "admin" && typeof window !== "undefined") {
+      setupOnMessage((payload: any) => {
         console.log("🔥 Live Withdraw Detected! Auto-Refreshing Table...", payload);
-        // যখনই নতুন পুশ নোটিফিকেশন আসবে, টেবিল অটো রিফ্রেশ হবে!
         fetchRealData(); 
       });
-      return () => unsubscribe(); // Cleanup
     }
-  }, [role, messaging]); // Added to active listeners
+  }, [role]); 
   // ==========================================
 
   const fetchPaymentSettings = async () => {
@@ -207,6 +206,7 @@ export default function AdminPayments() {
                  </button>
               </div>
 
+              {/* 💥 অটো বিন্যান্স পে বাটন 💥 */}
               <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                  <span className="text-[10px] text-[#FCD34D] uppercase font-black">⚡ Auto-Pay</span>
                  <button onClick={toggleAutoPayEngine} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${binanceAutoPayActive ? 'bg-[#F59E0B]' : 'bg-[#334155]'}`}>

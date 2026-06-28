@@ -4,7 +4,6 @@ import Withdraw from "../../../models/Withdraw";
 import User from "../../../models/User"; 
 import PaymentSetting from "../../../models/PaymentSetting"; 
 import Notification from "../../../models/Notification";
-// 🔥 Added `validateSolanaAddress` to imports
 import { getLiveUsdtRate, sendBinancePay, validateSolanaAddress } from "../../lib/binance"; 
 import { adminMessaging } from "../../lib/firebase-admin"; 
 
@@ -19,9 +18,10 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action, email, name, role, amount, method, accountNumber, withdrawPin, withdrawId, newStatus, selectedIds, actionType } = body; 
 
-    // 💥 1. CREATE CUSTOM WITHDRAW (With 1 Hour Cooldown & 50TK Min Logic) 💥
+    // 💥 1. CREATE CUSTOM WITHDRAW (WITH AUTO-PAY ENGINE & 1-HOUR LOCK) 💥
     if (action === "CREATE") {
       const safeAmount = Number(amount);
+      // 💥 FIX: Binance Minimum restored to 50 TK for Manual Requests 💥
       const minRequired = method === "Binance" ? 50 : 100;
 
       if (!safeAmount || isNaN(safeAmount) || safeAmount < minRequired) {
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       }
       if (!withdrawPin) return NextResponse.json({ success: false, message: "Security PIN is required!" }, { status: 400 });
 
-      // 🔥 THE BOSS FIX: Pre-flight Address Validation & Blacklist Checker 🔥
+      // 🛡️ SECURITY 1: Pre-flight Solana Address Validation
       if (method === "Binance") {
           const addressCheck = validateSolanaAddress(accountNumber);
           if (!addressCheck.isValid) {
@@ -37,18 +37,23 @@ export async function POST(req: Request) {
           }
       }
 
-      // Zero DB Load: 1 Hour Cooldown Check
+      // 🛡️ SECURITY 2: STRICT 1 HOUR COOLDOWN (User can withdraw 24 times a day)
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const recentWithdraw = await Withdraw.findOne({
-          email: email,
-          createdAt: { $gte: oneHourAgo },
+      const recentWithdraw = await Withdraw.findOne({ 
+          email: email, 
+          createdAt: { $gte: oneHourAgo }, 
           status: { $ne: "REJECTED" } 
       }).lean();
 
       if (recentWithdraw) {
-          return NextResponse.json({ success: false, message: "⏳ Please wait 1 hour before making another withdrawal." }, { status: 429 });
+          // 🚨 1-Hour Lock Detected: Do not disable system, just reject the duplicate request
+          return NextResponse.json({ 
+              success: false, 
+              message: "⏳ Please wait 1 hour between withdrawals. You can withdraw up to 24 times a day!" 
+          }, { status: 429 });
       }
 
+      // 🛡️ SECURITY 3: PIN Check & Atomic Balance Deduction
       const user = await User.findOne({ email });
       if (!user) return NextResponse.json({ success: false, message: "User not found!" }, { status: 404 });
       if ((user.withdrawPin || "1234") !== withdrawPin.trim()) return NextResponse.json({ success: false, message: "🔴 Invalid Security PIN!" }, { status: 403 });
@@ -58,6 +63,7 @@ export async function POST(req: Request) {
          return NextResponse.json({ success: false, message: "Gateway is closed by Admin!" }, { status: 400 });
       }
 
+      // 💥 THE ATOMIC LOCK: Takes money ONLY if they have the exact balance RIGHT NOW
       const updatedUser = await User.findOneAndUpdate(
           { email: email, balance: { $gte: safeAmount } }, 
           { $inc: { balance: -safeAmount } }, 
@@ -66,38 +72,97 @@ export async function POST(req: Request) {
       if (!updatedUser) return NextResponse.json({ success: false, message: "Insufficient Balance!" }, { status: 400 });
 
       const generatedWid = "ZX-" + Math.random().toString(36).substring(2, 9).toUpperCase();
+      let finalStatus = "PENDING";
+      let finalAdminNote = "Processing request...";
+      let autoPaySuccess = false;
 
+      // ==============================================================
+      // 🚀 THE OFFLINE AUTO-PAY ENGINE (BINANCE INSTANT TRANSFER)
+      // ==============================================================
+      if (method === "Binance" && settings?.binanceAutoPayActive === true) {
+          if (updatedUser.isAutoWithdraw === false) {
+              finalStatus = "PROCESSING";
+              finalAdminNote = "⚠️ Auto-Pay disabled for this user. Waiting for Manual Admin Review.";
+          } else {
+              try {
+                  const rate = await getLiveUsdtRate();
+                  const usdAmount = Number((safeAmount / rate).toFixed(2));
+                  
+                  // 🔥 Send real USD instantly
+                  const binanceRes = await sendBinancePay(accountNumber, usdAmount, generatedWid);
+
+                  if (binanceRes.success) {
+                      // 💥 SUCCESS: NEVER REFUND BALANCE 💥
+                      finalStatus = "PAID";
+                      finalAdminNote = "⚡ Auto Paid Offline by System. Binance TX Processed.";
+                      autoPaySuccess = true;
+                      
+                      await Notification.create({ userEmail: email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent to your wallet!`, type: "SUCCESS", color: "green" });
+                  } else {
+                      const errorMsg = (binanceRes.message || "Unknown").toLowerCase();
+                      const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
+                      const isAdminFault = adminKeywords.some(kw => errorMsg.includes(kw));
+
+                      if (isAdminFault) {
+                          // 🚨 ADMIN FAULT (No Dollar / API Error): Disable Global Auto Pay, DO NOT REFUND!
+                          finalStatus = "PROCESSING"; 
+                          finalAdminNote = "⚠️ Admin Binance Issue: " + binanceRes.message;
+                          await PaymentSetting.findOneAndUpdate({ type: "global" }, { $set: { binanceAutoPayActive: false } });
+                      } else {
+                          // 🚨 USER FAULT (Bad Address): Reject, Refund Balance, Disable User Auto-Pay
+                          await User.findOneAndUpdate({ email: email }, { $inc: { balance: safeAmount }, $set: { isAutoWithdraw: false } });
+                          await Notification.create({ 
+                              userEmail: email, 
+                              title: "Payment Rejected & Auto-Pay Disabled 🔴", 
+                              description: `Your payout was rejected due to network error (${binanceRes.message}). Balance refunded. Update address and try again.`, 
+                              type: "ERROR", color: "red" 
+                          });
+                          return NextResponse.json({ success: false, message: `Binance Error: ${binanceRes.message}. Balance Refunded.` });
+                      }
+                  }
+              } catch (apiErr: any) {
+                  // 🚨 SEVERE CRASH: Disable Global Auto Pay, DO NOT REFUND, Keep in Processing
+                  finalStatus = "PROCESSING";
+                  finalAdminNote = "API Crash during Auto-Pay: " + apiErr.message;
+                  await PaymentSetting.findOneAndUpdate({ type: "global" }, { $set: { binanceAutoPayActive: false } });
+              }
+          }
+      }
+
+      // Save Final Record
       const newWithdraw = new Withdraw({ 
-          email, 
-          name, 
-          role, 
-          amount: safeAmount, 
-          method, 
-          accountNumber, 
+          email, name, role, amount: safeAmount, method, accountNumber, 
           date: new Date().toLocaleDateString('en-GB'),
           wid: generatedWid,
-          adminNote: "Processing request..."
+          status: finalStatus,
+          adminNote: finalAdminNote
       });
       await newWithdraw.save();
 
       // ==========================================
-      // 🚀 FCM: SEND ALERT TO ADMINS (Fire & Forget)
+      // 🚀 FCM ALERTS (User if Paid, Admin if Pending)
       // ==========================================
       if (adminMessaging) {
-          User.find({ role: "admin", fcmToken: { $exists: true, $ne: "" } }).then(admins => {
-              admins.forEach(adminUser => {
-                  adminMessaging.send({
-                      token: adminUser.fcmToken,
-                      notification: { 
-                          title: "💰 New Withdraw Request!", 
-                          body: `${name} requested ৳${safeAmount} via ${method}.` 
-                      }
-                  }).catch((e: any) => console.error("Admin FCM Error:", e));
-              });
-          }).catch((e: any) => console.error("Admin Find Error:", e));
+          if (autoPaySuccess) {
+             User.findOne({ email: email, fcmToken: { $exists: true, $ne: "" } }).then(u => {
+                 if (u && u.fcmToken) {
+                     adminMessaging.send({ token: u.fcmToken, notification: { title: "🎉 Payment Received!", body: `Your withdraw of ৳${safeAmount} has been auto-paid!` } }).catch(()=>{});
+                 }
+             }).catch(()=>{});
+          } else {
+             User.find({ role: "admin", fcmToken: { $exists: true, $ne: "" } }).then(admins => {
+                 admins.forEach(adminUser => {
+                     adminMessaging.send({ token: adminUser.fcmToken, notification: { title: "💰 New Withdraw Request!", body: `${name} requested ৳${safeAmount} via ${method}.` } }).catch(()=>{});
+                 });
+             }).catch(()=>{});
+          }
       }
 
-      return NextResponse.json({ success: true, message: "Withdraw request submitted successfully!" });
+      const successMsg = autoPaySuccess 
+          ? "Withdraw successful! USD has been sent to your Binance wallet." 
+          : "Withdraw request submitted successfully!";
+          
+      return NextResponse.json({ success: true, message: successMsg });
     }
 
     // 💥 2. BULK ACTION 💥
@@ -148,7 +213,7 @@ export async function POST(req: Request) {
                   await Notification.create({ 
                       userEmail: request.email, 
                       title: "Payment Rejected & Auto-Pay Disabled 🔴", 
-                      description: `Your payout of ৳ ${request.amount} was rejected due to an invalid address or network error (${binanceRes.message}). Your balance has been refunded. Please update your Solana address and try again.`, 
+                      description: `Your payout of ৳ ${request.amount} was rejected due to an invalid address or network error (${binanceRes.message}). Your balance has been refunded.`, 
                       type: "ERROR", 
                       color: "red" 
                   });
@@ -172,16 +237,10 @@ export async function POST(req: Request) {
             successCount++;
           }
 
-          // ==========================================
-          // 🚀 FCM: BULK SUCCESS ALERT TO USER 
-          // ==========================================
           if (paymentSuccessful && adminMessaging) {
               User.findOne({ email: request.email, fcmToken: { $exists: true, $ne: "" } }).then(u => {
                   if (u && u.fcmToken) {
-                      adminMessaging.send({
-                          token: u.fcmToken,
-                          notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmount} has been paid via ${request.method}.` }
-                      }).catch(()=>{});
+                      adminMessaging.send({ token: u.fcmToken, notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmount} has been paid via ${request.method}.` } }).catch(()=>{});
                   }
               }).catch(()=>{});
           }
@@ -241,9 +300,8 @@ export async function POST(req: Request) {
                          await Notification.create({ 
                              userEmail: request.email, 
                              title: "Payment Rejected & Auto-Pay Disabled 🔴", 
-                             description: `Your payout of ৳ ${request.amount} was rejected due to an invalid address or network error (${binanceRes.message}). Your balance has been refunded. Please update your Solana address and try again.`, 
-                             type: "ERROR", 
-                             color: "red" 
+                             description: `Your payout was rejected due to network error (${binanceRes.message}). Balance refunded.`, 
+                             type: "ERROR", color: "red" 
                          });
                          return NextResponse.json({ success: false, message: `Binance Failed: ${binanceRes.message}. Refunded & Disabled.` });
                      }
@@ -261,16 +319,10 @@ export async function POST(req: Request) {
              await Notification.create({ userEmail: request.email, title: "Payment Successful 🎉", description: `৳ ${request.amount} has been paid!`, type: "SUCCESS", color: "green" });
          }
 
-         // ==========================================
-         // 🚀 FCM: SINGLE SUCCESS ALERT TO USER
-         // ==========================================
          if (adminMessaging) {
              User.findOne({ email: request.email, fcmToken: { $exists: true, $ne: "" } }).then(u => {
                  if (u && u.fcmToken) {
-                     adminMessaging.send({
-                         token: u.fcmToken,
-                         notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmountMsg} has been paid via ${request.method}.` }
-                     }).catch(()=>{});
+                     adminMessaging.send({ token: u.fcmToken, notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmountMsg} has been paid via ${request.method}.` } }).catch(()=>{});
                  }
              }).catch(()=>{});
          }
@@ -283,41 +335,16 @@ export async function POST(req: Request) {
 
       if (newStatus === "PROCESSING" && request.status !== "PROCESSING") {
          request.adminNote = "Request is being verified...";
-         
          const googleSheetUrl = process.env.GOOGLE_SHEET_WEBHOOK;
          if (googleSheetUrl && request.method !== "Binance") { 
-             fetch(googleSheetUrl, { 
-                 method: "POST", 
-                 headers: { "Content-Type": "application/json" }, 
-                 body: JSON.stringify({ 
-                     date: request.date, 
-                     name: request.name, 
-                     email: request.email, 
-                     amount: request.amount, 
-                     method: request.method, 
-                     accountNumber: request.accountNumber, 
-                     status: "PROCESSING" 
-                 }) 
-             }).catch(()=>{}); 
+             fetch(googleSheetUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: request.date, name: request.name, email: request.email, amount: request.amount, method: request.method, accountNumber: request.accountNumber, status: "PROCESSING" }) }).catch(()=>{}); 
          }
       }
 
       if (newStatus === "REJECTED" && request.status !== "REJECTED") {
          request.adminNote = "Rejected manually by Admin. Refunded & Auto-Pay Disabled.";
-         await User.findOneAndUpdate(
-            { email: request.email }, 
-            { 
-               $inc: { balance: request.amount }, 
-               $set: { isAutoWithdraw: false } 
-            }
-         );
-         await Notification.create({ 
-            userEmail: request.email, 
-            title: "Withdrawal Rejected & Auto-Pay Off 🔴", 
-            description: `Admin rejected your payout of ৳ ${request.amount}. Your balance has been refunded and Auto-Pay is now disabled. Please check your payment details.`, 
-            type: "ERROR", 
-            color: "red" 
-         });
+         await User.findOneAndUpdate({ email: request.email }, { $inc: { balance: request.amount }, $set: { isAutoWithdraw: false } });
+         await Notification.create({ userEmail: request.email, title: "Withdrawal Rejected 🔴", description: `Admin rejected your payout of ৳ ${request.amount}. Balance refunded.`, type: "ERROR", color: "red" });
       } 
       else if (request.status === "REJECTED" && newStatus !== "REJECTED") {
          request.adminNote = "Action Reversed by Admin.";
@@ -364,32 +391,18 @@ export async function POST(req: Request) {
          const [totalItems, rawRequests, pendingAgg, paidAgg, allAgg, totalCount] = await Promise.all([
              Withdraw.countDocuments(query),
              Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-             Withdraw.aggregate([
-                 { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, 
-                 { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
-             ]),
-             Withdraw.aggregate([
-                 { $match: { status: "PAID" } }, 
-                 { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
-             ]),
-             Withdraw.aggregate([
-                 { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } }
-             ]),
+             Withdraw.aggregate([ { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+             Withdraw.aggregate([ { $match: { status: "PAID" } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+             Withdraw.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
              Withdraw.countDocuments()
          ]);
          
          const requests = rawRequests.map((r: any) => ({ ...r, amount: Number((r.amount || 0).toFixed(2)) }));
 
          return NextResponse.json({ 
-            success: true, 
-            data: requests, 
+            success: true, data: requests, 
             pagination: { total: totalItems, page, limit, totalPages: Math.ceil(totalItems / limit) || 1 },
-            stats: { 
-               totalRequests: totalCount, 
-               pendingAmount: pendingAgg[0]?.total || 0, 
-               paidAmount: paidAgg[0]?.total || 0, 
-               totalAmount: allAgg[0]?.total || 0 
-            }
+            stats: { totalRequests: totalCount, pendingAmount: pendingAgg[0]?.total || 0, paidAmount: paidAgg[0]?.total || 0, totalAmount: allAgg[0]?.total || 0 }
          });
       } else {
          let rawRequests = await Withdraw.find({ email }).sort({ createdAt: -1 }).lean();
