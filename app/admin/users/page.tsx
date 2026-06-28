@@ -138,7 +138,7 @@ export default function AdminUsersManagementPage() {
       contactLink: makeRole === "agent" ? contactLink : "",
       maxLimit: makeRole === "agent" ? maxLimit : 100,
       isApiActive: newApiStatus, 
-      canManageApi: canManageApi, // ADMIN PASSES PERMISSION TO AGENT
+      canManageApi: canManageApi,
       newAgentEmail: newAgentEmail !== selectedUser.agentEmail ? newAgentEmail : undefined,
       handoverToEmail: handoverEmail, 
       requesterEmail: adminEmail,
@@ -268,8 +268,8 @@ export default function AdminUsersManagementPage() {
                  setSearchQuery(e.target.value);
                  setCurrentPage(1);
               }}
-              placeholder="Search by Name or Email..." 
-              className="w-full lg:min-w-[300px] bg-[#0F172A] border border-[#334155] text-white px-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#3B82F6]" 
+              placeholder="Search by Name, Email, UID (ZX-...), Agent..." 
+              className="w-full lg:min-w-[350px] bg-[#0F172A] border border-[#334155] text-white px-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:border-[#3B82F6]" 
             />
           </div>
         </div>
@@ -444,237 +444,252 @@ export default function AdminUsersManagementPage() {
         </div>
 
         {isModalOpen && selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#1E293B] border border-[#334155] rounded-3xl w-full max-w-md p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-[#94A3B8] hover:text-[#F43F5E] transition-colors font-black text-xl">✕</button>
-
-              <div className="flex items-center gap-3 mb-5 border-b border-[#334155] pb-4">
-                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#3B82F6] to-[#00C6FF] flex items-center justify-center text-white font-black">
-                   {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
-                 </div>
-                 <div>
-                   <h3 className="text-lg font-black text-white leading-tight">
-                     {selectedUser?.name || "Unknown User"} 
-                     <span className="text-[10px] text-[#8B5CF6] uppercase ml-1 border border-[#8B5CF6]/50 px-1 rounded">{selectedUser?.role || "user"}</span>
-                   </h3>
-                   <p className="text-[10px] font-mono text-[#3B82F6] font-bold">{selectedUser?.email || "No Email"}</p>
-                 </div>
-              </div>
+          /* 💥 Z-INDEX 9999 + OVERFLOW HIDDEN - MODAL WILL NEVER GO BEHIND THE HEADER 💥 */
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6 overflow-hidden">
+            
+            {/* 💥 MAX HEIGHT 85VH + FLEX COL - ENSURES THE MODAL STAYS ON SCREEN 💥 */}
+            <div className="bg-[#1E293B] border border-[#334155] rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[85vh]">
               
-              <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex flex-col gap-3">
-                 <div className="flex items-center justify-between">
-                   <div>
-                     <p className="text-sm font-black text-purple-400">Developer API Access</p>
-                     <p className="text-[9px] text-[#64748B] mt-1 font-bold">Allow user to generate numbers via API</p>
+              {/* 💥 STICKY HEADER WITH CLOSE BUTTON - ALWAYS VISIBLE AT THE TOP 💥 */}
+              <div className="flex justify-between items-center p-4 border-b border-[#334155] bg-[#0F172A] rounded-t-2xl shrink-0">
+                 <div className="flex items-center gap-3 overflow-hidden">
+                   <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#3B82F6] to-[#00C6FF] flex items-center justify-center text-white font-black shrink-0">
+                     {selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
                    </div>
-                   <button 
-                     type="button"
-                     onClick={() => setNewApiStatus(!newApiStatus)} 
-                     className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${newApiStatus ? 'bg-[#10B981]' : 'bg-[#334155]'}`}
-                   >
-                     <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-md ${newApiStatus ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                   </button>
+                   <div className="overflow-hidden">
+                     <h3 className="text-base font-black text-white leading-tight flex items-center gap-1">
+                       <span className="truncate">{selectedUser?.name || "Unknown"}</span>
+                       <span className="text-[9px] text-[#8B5CF6] uppercase border border-[#8B5CF6]/50 px-1 rounded shrink-0">{selectedUser?.role || "user"}</span>
+                     </h3>
+                     <p className="text-[10px] font-mono text-[#3B82F6] font-bold truncate">{selectedUser?.email || "No Email"}</p>
+                   </div>
                  </div>
                  
-                 {selectedUser.role !== 'agent' && (
-                    <div className="border-t border-[#334155] pt-3 mt-1 flex justify-between items-center">
-                      <span className="text-[10px] text-[#64748B] font-bold">Compromised Key?</span>
-                      <button 
-                        type="button"
-                        onClick={handleGenerateNewKey}
-                        className="bg-[#3B82F6]/10 hover:bg-[#3B82F6]/20 border border-[#3B82F6] text-[#3B82F6] px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                        Generate New Key
-                      </button>
-                    </div>
-                 )}
+                 <button 
+                   onClick={() => setIsModalOpen(false)} 
+                   className="w-8 h-8 min-w-[2rem] bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors font-black text-lg shrink-0"
+                 >
+                   ✕
+                 </button>
               </div>
-              
-              {selectedUser.role === 'user' && !isMakingAgent && (
-                <div className="border border-[#8B5CF6]/30 bg-[#8B5CF6]/5 p-4 rounded-xl text-center mb-5">
-                  <p className="text-xs text-[#94A3B8] mb-3 font-medium">Promote this user to an Agent?</p>
-                  <button onClick={() => setIsMakingAgent(true)} className="w-full py-2 bg-[#8B5CF6] text-white text-sm font-black rounded-lg hover:bg-[#7C3AED] transition-colors">
-                    Make Agent 👑
-                  </button>
-                </div>
-              )}
 
-              {selectedUser.role === 'agent' && isMakingAgent && (
-                <div className="mb-5 p-4 border border-[#F43F5E]/50 bg-[#F43F5E]/5 rounded-xl">
-                  <h4 className="text-[11px] font-black text-[#F43F5E] mb-2 uppercase tracking-wider">Handover Network / Demote Agent</h4>
-                  <div className="mb-3">
-                    <label className="block text-[10px] text-[#E2E8F0] font-bold mb-1">Transfer Ownership To (User Email)</label>
-                    <input 
-                      type="email" 
-                      placeholder="new_owner@email.com" 
-                      value={handoverEmail} 
-                      onChange={(e) => setHandoverEmail(e.target.value)}
-                      className="w-full bg-[#0F172A] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-xs font-bold focus:outline-none focus:border-[#F43F5E]" 
-                    />
-                    <p className="text-[9px] text-[#94A3B8] mt-1 font-bold">Provide an existing User's Email. They will become the Agent, and this profile will become a normal user.</p>
-                  </div>
-                  <button onClick={(e) => handleSaveUser(e, "user")} className="w-full py-2 bg-[#F43F5E]/10 border border-[#F43F5E]/30 text-[#F43F5E] text-xs font-black rounded-lg hover:bg-[#F43F5E] hover:text-white transition-colors shadow-sm">
-                    Execute Handover & Demote to Normal User
-                  </button>
-                </div>
-              )}
-
-              <form onSubmit={(e) => handleSaveUser(e, isMakingAgent ? "agent" : selectedUser.role)} className={isMakingAgent ? "space-y-3 border border-[#8B5CF6]/50 bg-[#0F172A] p-5 rounded-xl" : "space-y-4"}>
+              {/* 💥 SCROLLABLE BODY - USER SCROLLS ONLY INSIDE THIS AREA 💥 */}
+              <div className="p-5 overflow-y-auto custom-scrollbar rounded-b-2xl">
                 
-                {isMakingAgent && <h4 className="text-sm font-black text-[#8B5CF6] uppercase mb-1">Agent Details</h4>}
-                
-                <div>
-                  <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Account Status</label>
-                  <select 
-                    value={newStatus} 
-                    onChange={(e) => setNewStatus(e.target.value)} 
-                    className={`w-full bg-[#1E293B] border text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none ${newStatus === 'banned' ? 'border-red-500 text-red-400' : 'border-[#334155]'}`}
-                  >
-                    <option value="active">Active (Can Work)</option>
-                    <option value="pending">Pending (Waiting Approval)</option>
-                    <option value="banned">Banned (Global Session Wipe)</option> 
-                  </select>
+                <div className="mb-5 bg-[#0F172A] border border-[#334155] p-4 rounded-xl flex flex-col gap-3">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-black text-purple-400">Developer API Access</p>
+                       <p className="text-[9px] text-[#64748B] mt-1 font-bold">Allow user to generate numbers via API</p>
+                     </div>
+                     <button 
+                       type="button"
+                       onClick={() => setNewApiStatus(!newApiStatus)} 
+                       className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${newApiStatus ? 'bg-[#10B981]' : 'bg-[#334155]'}`}
+                     >
+                       <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-md ${newApiStatus ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                     </button>
+                   </div>
+                   
+                   {selectedUser.role !== 'agent' && (
+                      <div className="border-t border-[#334155] pt-3 mt-1 flex justify-between items-center">
+                        <span className="text-[10px] text-[#64748B] font-bold">Compromised Key?</span>
+                        <button 
+                          type="button"
+                          onClick={handleGenerateNewKey}
+                          className="bg-[#3B82F6]/10 hover:bg-[#3B82F6]/20 border border-[#3B82F6] text-[#3B82F6] px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          Generate New Key
+                        </button>
+                      </div>
+                   )}
                 </div>
-
-                {role === 'admin' && !isMakingAgent && selectedUser.role === 'user' && (
-                  <div>
-                    <label className="block text-[10px] text-teal-400 uppercase font-black mb-1">Transfer to Agent (Email)</label>
-                    <input 
-                      type="email" 
-                      value={newAgentEmail} 
-                      onChange={(e) => setNewAgentEmail(e.target.value)}
-                      placeholder="admin@zenex.com"
-                      className="w-full bg-[#1E293B] border border-teal-500/30 text-teal-300 font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-teal-400" 
-                    />
-                    <p className="text-[9px] text-[#64748B] mt-1 font-bold">Leave as is to keep under current agent.</p>
+                
+                {selectedUser.role === 'user' && !isMakingAgent && (
+                  <div className="border border-[#8B5CF6]/30 bg-[#8B5CF6]/5 p-4 rounded-xl text-center mb-5">
+                    <p className="text-xs text-[#94A3B8] mb-3 font-medium">Promote this user to an Agent?</p>
+                    <button onClick={() => setIsMakingAgent(true)} className="w-full py-2 bg-[#8B5CF6] text-white text-sm font-black rounded-lg hover:bg-[#7C3AED] transition-colors">
+                      Make Agent 👑
+                    </button>
                   </div>
                 )}
 
-                {isMakingAgent && (
-                  <>
-                    <div>
-                      <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Custom Agent Mail</label>
+                {selectedUser.role === 'agent' && isMakingAgent && (
+                  <div className="mb-5 p-4 border border-[#F43F5E]/50 bg-[#F43F5E]/5 rounded-xl">
+                    <h4 className="text-[11px] font-black text-[#F43F5E] mb-2 uppercase tracking-wider">Handover Network / Demote Agent</h4>
+                    <div className="mb-3">
+                      <label className="block text-[10px] text-[#E2E8F0] font-bold mb-1">Transfer Ownership To (User Email)</label>
                       <input 
                         type="email" 
-                        required 
-                        placeholder="agent_name@zenex.com" 
-                        value={customMail} 
-                        onChange={(e) => setCustomMail(e.target.value)}
-                        className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
+                        placeholder="new_owner@email.com" 
+                        value={handoverEmail} 
+                        onChange={(e) => setHandoverEmail(e.target.value)}
+                        className="w-full bg-[#0F172A] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-xs font-bold focus:outline-none focus:border-[#F43F5E]" 
                       />
+                      <p className="text-[9px] text-[#94A3B8] mt-1 font-bold">Provide an existing User's Email. They will become the Agent, and this profile will become a normal user.</p>
                     </div>
-                    <div>
-                      <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Telegram Contact Link</label>
-                      <input 
-                        type="text" 
-                        required 
-                        placeholder="t.me/agent_username" 
-                        value={contactLink} 
-                        onChange={(e) => setContactLink(e.target.value)}
-                        className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
-                      />
-                    </div>
-                    
-                    {/* 💥 ADMIN TO AGENT API PERMISSION TOGGLE 💥 */}
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#334155]">
-                      <div>
-                         <label className="block text-[10px] text-purple-400 uppercase font-bold">API Manager Access</label>
-                         <p className="text-[8px] text-[#64748B]">Can this agent enable API for their users?</p>
-                      </div>
-                      <button 
-                        type="button" 
-                        onClick={() => setCanManageApi(!canManageApi)} 
-                        className={`relative w-10 h-5 rounded-full flex items-center p-1 transition-colors duration-300 ${canManageApi ? 'bg-[#A855F7]' : 'bg-[#334155]'}`}
-                      >
-                         <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform duration-300 shadow-md ${canManageApi ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] text-[#3B82F6] uppercase font-bold mb-1">Max Users Limit (Seat)</label>
-                      <input 
-                        type="number" 
-                        required 
-                        placeholder="e.g. 100, 200, 500" 
-                        value={maxLimit} 
-                        onChange={(e) => setMaxLimit(e.target.value)}
-                        className="w-full bg-[#1E293B] border border-[#3B82F6] focus:border-[#00C6FF] text-[#3B82F6] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none shadow-[0_0_15px_rgba(59,130,246,0.15)]" 
-                      />
-                    </div>
-                  </>
+                    <button onClick={(e) => handleSaveUser(e, "user")} className="w-full py-2 bg-[#F43F5E]/10 border border-[#F43F5E]/30 text-[#F43F5E] text-xs font-black rounded-lg hover:bg-[#F43F5E] hover:text-white transition-colors shadow-sm">
+                      Execute Handover & Demote to Normal User
+                    </button>
+                  </div>
                 )}
 
-                <div>
-                  <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
-                    {isMakingAgent ? "Agent Pay Rate (BDT)" : "Pay Rate (BDT per OTP)"}
-                  </label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    required 
-                    value={newRate} 
-                    onChange={(e) => setNewRate(e.target.value)}
-                    className="w-full bg-[#1E293B] border border-[#334155] text-[#10B981] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mt-2">
+                <form onSubmit={(e) => handleSaveUser(e, isMakingAgent ? "agent" : selectedUser.role)} className={isMakingAgent ? "space-y-3 border border-[#8B5CF6]/50 bg-[#0F172A] p-5 rounded-xl" : "space-y-4"}>
+                  
+                  {isMakingAgent && <h4 className="text-sm font-black text-[#8B5CF6] uppercase mb-1">Agent Details</h4>}
+                  
                   <div>
-                    <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
+                    <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Account Status</label>
+                    <select 
+                      value={newStatus} 
+                      onChange={(e) => setNewStatus(e.target.value)} 
+                      className={`w-full bg-[#1E293B] border text-white font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none ${newStatus === 'banned' ? 'border-red-500 text-red-400' : 'border-[#334155]'}`}
+                    >
+                      <option value="active">Active (Can Work)</option>
+                      <option value="pending">Pending (Waiting Approval)</option>
+                      <option value="banned">Banned (Global Session Wipe)</option> 
+                    </select>
+                  </div>
+
+                  {role === 'admin' && !isMakingAgent && selectedUser.role === 'user' && (
+                    <div>
+                      <label className="block text-[10px] text-teal-400 uppercase font-black mb-1">Transfer to Agent (Email)</label>
+                      <input 
+                        type="email" 
+                        value={newAgentEmail} 
+                        onChange={(e) => setNewAgentEmail(e.target.value)}
+                        placeholder="admin@zenex.com"
+                        className="w-full bg-[#1E293B] border border-teal-500/30 text-teal-300 font-bold px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-teal-400" 
+                      />
+                      <p className="text-[9px] text-[#64748B] mt-1 font-bold">Leave as is to keep under current agent.</p>
+                    </div>
+                  )}
+
+                  {isMakingAgent && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Custom Agent Mail</label>
+                        <input 
+                          type="email" 
+                          required 
+                          placeholder="agent_name@zenex.com" 
+                          value={customMail} 
+                          onChange={(e) => setCustomMail(e.target.value)}
+                          className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Telegram Contact Link</label>
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="t.me/agent_username" 
+                          value={contactLink} 
+                          onChange={(e) => setContactLink(e.target.value)}
+                          className="w-full bg-[#1E293B] border border-[#334155] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
+                        />
+                      </div>
+                      
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#334155]">
+                        <div>
+                           <label className="block text-[10px] text-purple-400 uppercase font-bold">API Manager Access</label>
+                           <p className="text-[8px] text-[#64748B]">Can this agent enable API for their users?</p>
+                        </div>
+                        <button 
+                          type="button" 
+                          onClick={() => setCanManageApi(!canManageApi)} 
+                          className={`relative w-10 h-5 rounded-full flex items-center p-1 transition-colors duration-300 ${canManageApi ? 'bg-[#A855F7]' : 'bg-[#334155]'}`}
+                        >
+                           <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform duration-300 shadow-md ${canManageApi ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-[#3B82F6] uppercase font-bold mb-1">Max Users Limit (Seat)</label>
+                        <input 
+                          type="number" 
+                          required 
+                          placeholder="e.g. 100, 200, 500" 
+                          value={maxLimit} 
+                          onChange={(e) => setMaxLimit(e.target.value)}
+                          className="w-full bg-[#1E293B] border border-[#3B82F6] focus:border-[#00C6FF] text-[#3B82F6] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none shadow-[0_0_15px_rgba(59,130,246,0.15)]" 
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] text-[#EAB308] uppercase font-bold mb-1">
+                      {isMakingAgent ? "Agent Pay Rate (BDT)" : "Pay Rate (BDT per OTP)"}
+                    </label>
                     <input 
-                      type="text" 
-                      placeholder="New Pass..." 
-                      value={newPassword} 
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#F43F5E] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569]" 
+                      type="number" 
+                      step="0.01" 
+                      required 
+                      value={newRate} 
+                      onChange={(e) => setNewRate(e.target.value)}
+                      className="w-full bg-[#1E293B] border border-[#334155] text-[#10B981] font-black px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:border-[#8B5CF6]" 
                     />
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-[#10B981] uppercase font-bold mb-1">Reset PIN</label>
-                    <input 
-                      type="text" 
-                      placeholder="New PIN..." 
-                      maxLength={4} 
-                      value={newPin} 
-                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#10B981] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569] text-center tracking-widest font-mono" 
-                    />
+                  
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <div>
+                      <label className="block text-[10px] text-[#F43F5E] uppercase font-bold mb-1">Reset Password</label>
+                      <input 
+                        type="text" 
+                        placeholder="New Pass..." 
+                        value={newPassword} 
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#F43F5E] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569]" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-[#10B981] uppercase font-bold mb-1">Reset PIN</label>
+                      <input 
+                        type="text" 
+                        placeholder="New PIN..." 
+                        maxLength={4} 
+                        value={newPin} 
+                        onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                        className="w-full bg-[#1E293B] border border-[#334155] focus:border-[#10B981] text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none placeholder-[#475569] text-center tracking-widest font-mono" 
+                      />
+                    </div>
                   </div>
-                </div>
-                
-                <div className="flex gap-3 pt-3">
-                  {selectedUser?.role === "user" && isMakingAgent && (
+                  
+                  <div className="flex gap-3 pt-3">
+                    {selectedUser?.role === "user" && isMakingAgent && (
+                      <button 
+                        type="button" 
+                        onClick={() => setIsMakingAgent(false)} 
+                        className="flex-1 py-2.5 bg-[#334155] text-white text-xs font-bold rounded-lg hover:bg-[#475569]"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    <button 
+                      type="submit" 
+                      className="w-full flex-1 py-2.5 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white text-xs font-black rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.4)]"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </form>
+
+                {selectedUser?.role !== 'admin' && selectedUser?.role !== 'agent' && (
+                  <div className="pt-4 border-t border-[#334155]/50 mt-4 text-center">
                     <button 
                       type="button" 
-                      onClick={() => setIsMakingAgent(false)} 
-                      className="flex-1 py-2.5 bg-[#334155] text-white text-xs font-bold rounded-lg hover:bg-[#475569]"
+                      onClick={handleDeleteUser} 
+                      className="text-xs font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1.5 py-2"
                     >
-                      Cancel
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      Permanently delete this user
                     </button>
-                  )}
-                  <button 
-                    type="submit" 
-                    className="w-full flex-1 py-2.5 bg-gradient-to-r from-[#3B82F6] to-[#00C6FF] text-white text-xs font-black rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.4)]"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
+                  </div>
+                )}
 
-              {selectedUser?.role !== 'admin' && selectedUser?.role !== 'agent' && (
-                <div className="pt-4 border-t border-[#334155]/50 mt-4 text-center">
-                  <button 
-                    type="button" 
-                    onClick={handleDeleteUser} 
-                    className="text-xs font-bold text-[#F43F5E] hover:text-white hover:underline transition-colors flex items-center justify-center w-full gap-1.5 py-2"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    Permanently delete this user
-                  </button>
-                </div>
-              )}
-
+              </div>
             </div>
           </div>
         )}

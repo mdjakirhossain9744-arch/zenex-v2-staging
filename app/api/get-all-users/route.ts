@@ -34,6 +34,17 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
+    // 💥 FIRE-AND-FORGET INDEXING: Prevents Admin Panel from freezing forever! 💥
+    if (User.collection && Order.collection) {
+      Promise.all([
+        User.collection.createIndex({ email: 1 }).catch(() => {}),
+        User.collection.createIndex({ role: 1 }).catch(() => {}),
+        User.collection.createIndex({ status: 1 }).catch(() => {}),
+        Order.collection.createIndex({ createdAt: -1, status: 1 }).catch(() => {}),
+        Order.collection.createIndex({ userEmail: 1 }).catch(() => {})
+      ]).catch(() => {});
+    }
+
     const searchParams = req.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
@@ -47,10 +58,32 @@ export async function GET(req: NextRequest) {
     
     if (rawSearchQuery) {
         const safeSearch = rawSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        query.$or = [
-            { fullName: { $regex: safeSearch, $options: "i" } },
-            { email: { $regex: safeSearch, $options: "i" } }
+        const searchRegex = new RegExp(safeSearch, "i");
+
+        const orConditions: any[] = [
+            { fullName: searchRegex },
+            { email: searchRegex },
+            { customAgentMail: searchRegex }, // Added Custom Agent Mail Search
+            { agentEmail: searchRegex }       // Added Base Agent Mail Search
         ];
+
+        // 💥 UID (ZX-123456) SEARCH FIX 💥
+        if (/^zx-[a-f0-9]{1,6}$/i.test(rawSearchQuery)) {
+            const hexPart = rawSearchQuery.replace(/^zx-/i, '').toLowerCase();
+            orConditions.push({
+                $expr: {
+                    $regexMatch: {
+                        input: { $toString: "$_id" },
+                        regex: `${hexPart}$`,
+                        options: "i"
+                    }
+                }
+            });
+        } else if (/^[a-f0-9]{24}$/i.test(rawSearchQuery)) {
+            orConditions.push({ _id: rawSearchQuery });
+        }
+
+        query.$or = orConditions;
     }
 
     if (statusFilter && statusFilter !== "all") {
@@ -74,7 +107,7 @@ export async function GET(req: NextRequest) {
           .lean()
     ]);
 
-    const userEmails = users.map(u => (u.email || "").toLowerCase().trim());
+    const userEmails = users.map((u: any) => (u.email || "").toLowerCase().trim());
     const todayStr = getUTCDateString(); 
     
     const twoDaysAgo = new Date();
@@ -145,7 +178,7 @@ export async function GET(req: NextRequest) {
         ])
     ]);
     
-    // System Liability (ডাটাবেস নিজেই সব ইউজারের ব্যালেন্স যোগ করে পাঠিয়েছে)
+    // System Liability
     const systemLiability = liabilityAgg[0]?.total || 0;
 
     return NextResponse.json({ 
