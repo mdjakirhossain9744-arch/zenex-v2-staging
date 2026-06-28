@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../DashboardLayout"; 
 import { useRouter } from "next/navigation";
-// 💥 FIX: নতুন স্মার্ট ফায়ারবেস ইমপোর্ট 💥
 import { setupOnMessage } from "../../lib/firebase"; 
 
 export default function AdminPayments() {
@@ -12,10 +11,12 @@ export default function AdminPayments() {
   const [toastMessage, setToastMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // 💥 3-TIER GATEWAY CONTROLLERS 💥
+  // 💥 4-TIER GATEWAY CONTROLLERS 💥
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(true);
   const [isManualWithdrawOpen, setIsManualWithdrawOpen] = useState(true); 
   const [binanceAutoPayActive, setBinanceAutoPayActive] = useState(true); 
+  // 💥 NEW: ADMIN AUTO-APPROVE BOT 💥
+  const [isAutoApproveBotActive, setIsAutoApproveBotActive] = useState(false);
   const [methodConfig, setMethodConfig] = useState<any>({ bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true });
   
   const [dbRequests, setDbRequests] = useState<any[]>([]);
@@ -55,9 +56,6 @@ export default function AdminPayments() {
     }
   }, [role, activeAdminTab, timeFilter, debouncedSearch, currentPage]);
 
-  // ==========================================
-  // 🚀 FCM: REAL-TIME AUTO REFRESH MAGIC (FIXED)
-  // ==========================================
   useEffect(() => {
     if (role === "admin" && typeof window !== "undefined") {
       setupOnMessage((payload: any) => {
@@ -66,7 +64,6 @@ export default function AdminPayments() {
       });
     }
   }, [role]); 
-  // ==========================================
 
   const fetchPaymentSettings = async () => {
     try {
@@ -76,6 +73,8 @@ export default function AdminPayments() {
           setIsWithdrawOpen(data.data.isWithdrawOpen); 
           setIsManualWithdrawOpen(data.data.isManualWithdrawOpen ?? true); 
           setBinanceAutoPayActive(data.data.binanceAutoPayActive ?? true); 
+          // 💥 Load Auto-Approve Bot Status
+          setIsAutoApproveBotActive(data.data.isAutoApproveBotActive ?? false);
           setMethodConfig(data.data.methods || { bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true }); 
       }
     } catch (err) {}
@@ -108,28 +107,36 @@ export default function AdminPayments() {
     const newState = !isWithdrawOpen;
     setIsWithdrawOpen(newState);
     showToast(newState ? "Global System OPENED" : "Global System CLOSED");
-    await updateSettingsAPI({ isWithdrawOpen: newState, isManualWithdrawOpen, methods: methodConfig, binanceAutoPayActive });
+    await updateSettingsAPI({ isWithdrawOpen: newState, isManualWithdrawOpen, isAutoApproveBotActive, methods: methodConfig, binanceAutoPayActive });
   };
 
   const toggleManualGate = async () => {
     const newState = !isManualWithdrawOpen;
     setIsManualWithdrawOpen(newState);
     showToast(newState ? "Manual Gate ENABLED" : "Manual Gate DISABLED");
-    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen: newState, methods: methodConfig, binanceAutoPayActive });
+    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen: newState, isAutoApproveBotActive, methods: methodConfig, binanceAutoPayActive });
   };
 
   const toggleAutoPayEngine = async () => {
     const newState = !binanceAutoPayActive;
     setBinanceAutoPayActive(newState);
-    showToast(newState ? "Auto-Pay Engine ENABLED" : "Auto-Pay Engine DISABLED");
-    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, methods: methodConfig, binanceAutoPayActive: newState });
+    showToast(newState ? "User Auto-Pay ENABLED" : "User Auto-Pay DISABLED");
+    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, isAutoApproveBotActive, methods: methodConfig, binanceAutoPayActive: newState });
+  };
+
+  // 💥 NEW: Toggle the Admin Auto-Approve Bot 💥
+  const toggleAutoApproveBot = async () => {
+    const newState = !isAutoApproveBotActive;
+    setIsAutoApproveBotActive(newState);
+    showToast(newState ? "🤖 Bot: AUTO-CLEARANCE ON! (It will pay automatically)" : "🤖 Bot: AUTO-CLEARANCE OFF! (Requests will pile up)");
+    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, isAutoApproveBotActive: newState, methods: methodConfig, binanceAutoPayActive });
   };
 
   const toggleIndividualMethod = async (methodKey: string) => {
     const updatedMethods = { ...methodConfig, [methodKey]: !methodConfig[methodKey] };
     setMethodConfig(updatedMethods);
     showToast(`${methodKey} is now ${updatedMethods[methodKey] ? "ON" : "OFF"}`);
-    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, methods: updatedMethods, binanceAutoPayActive });
+    await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, isAutoApproveBotActive, methods: updatedMethods, binanceAutoPayActive });
   };
 
   const handleAdminStatusUpdate = async (id: string, newStatus: string, method: string) => {
@@ -206,11 +213,18 @@ export default function AdminPayments() {
                  </button>
               </div>
 
-              {/* 💥 অটো বিন্যান্স পে বাটন 💥 */}
               <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
-                 <span className="text-[10px] text-[#FCD34D] uppercase font-black">⚡ Auto-Pay</span>
+                 <span className="text-[10px] text-[#FCD34D] uppercase font-black" title="User's Auto Request Setting">⚡ Auto-Pay</span>
                  <button onClick={toggleAutoPayEngine} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${binanceAutoPayActive ? 'bg-[#F59E0B]' : 'bg-[#334155]'}`}>
                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${binanceAutoPayActive ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                 </button>
+              </div>
+
+              {/* 💥 NEW BUTTON: THE ADMIN ROBOT 💥 */}
+              <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
+                 <span className="text-[10px] text-[#00C6FF] uppercase font-black" title="Clear pending requests automatically">🤖 Auto-Approve</span>
+                 <button onClick={toggleAutoApproveBot} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${isAutoApproveBotActive ? 'bg-[#00C6FF]' : 'bg-[#334155]'}`}>
+                   <div className={`w-3 h-3 bg-white rounded-full transition-transform ${isAutoApproveBotActive ? 'translate-x-5' : 'translate-x-0'}`}></div>
                  </button>
               </div>
               
