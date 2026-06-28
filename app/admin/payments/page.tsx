@@ -355,14 +355,14 @@ export default function AdminPayments() {
                               )}
                            </div>
                            
-                           {/* 💥 THE ROBOT BADGE 💥 */}
-                           {req.adminNote && req.adminNote.includes("Auto") && (
+                           {/* 💥 THE ROBOT BADGE (FIXED) 💥 */}
+                           {req.adminNote && req.adminNote.includes("🤖") && (
                               <span className="text-[9px] font-black text-[#00C6FF] bg-[#00C6FF]/10 px-2 py-0.5 rounded border border-[#00C6FF]/30 mt-1">
                                  🤖 Auto-Approved
                               </span>
                            )}
-                           {/* 💥 ADMIN ERROR NOTE 💥 */}
-                           {req.adminNote && !req.adminNote.includes("Auto") && req.status !== "PENDING" && req.status !== "PAID" && (
+                           {/* 💥 ADMIN ERROR NOTE (FIXED) 💥 */}
+                           {req.adminNote && !req.adminNote.includes("🤖") && !req.adminNote.includes("Auto Paid") && req.status !== "PENDING" && req.status !== "PAID" && (
                               <span className="text-[8px] font-medium text-[#F43F5E] max-w-[150px] truncate" title={req.adminNote}>
                                  {req.adminNote}
                               </span>
