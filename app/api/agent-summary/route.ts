@@ -55,6 +55,15 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
+    // 💥 FIX 1: FIRE-AND-FORGET INDEXING FOR AGENTS 💥
+    if (Order.collection && DailyStat.collection && User.collection) {
+        Promise.all([
+            Order.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {}),
+            DailyStat.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {}),
+            User.collection.createIndex({ agentEmail: 1, role: 1 }).catch(() => {})
+        ]).catch(() => {});
+    }
+
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
 
@@ -167,13 +176,19 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].allocation += 1; 
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-          const uniqueCodes = new Set();
-          msgArray.forEach((msg: string) => {
-              const match = msg.match(/\b\d{4,8}\b/);
-              uniqueCodes.add(match ? match[0] : msg.trim());
+          
+          // 💥 FIX 2: BULLETPROOF MULTI-OTP COUNTING MATCHED WITH COMMISSION 💥
+          const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
+          let validMsgCount = 0;
+          
+          msgArray.forEach((m: string) => {
+              const cleanMsg = m.trim().toLowerCase();
+              if (cleanMsg !== "" && !cleanMsg.includes("waiting")) {
+                  validMsgCount += 1;
+              }
           });
-          const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+
+          if (validMsgCount === 0) validMsgCount = 1;
 
           groupedRawData[finalDateStr].success += validMsgCount;
           groupedRawData[finalDateStr].amount += (o.orderCommission || 0);

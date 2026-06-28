@@ -39,6 +39,14 @@ const getUTCHour = (dateObj: any = new Date()) => {
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
+
+    // 💥 FIX 1: FIRE-AND-FORGET INDEXING (Prevents White Screen & Server Freeze) 💥
+    if (Order.collection && DailyStat.collection) {
+        Promise.all([
+            Order.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {}),
+            DailyStat.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {})
+        ]).catch(() => {});
+    }
     
     const { email, role, limitDays = 60 } = await req.json();
     const safeEmail = email.toLowerCase().trim();
@@ -126,15 +134,25 @@ export async function POST(req: Request) {
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
           
-          // 💥 FIX: ACCURATE MULTI-OTP COUNTING WITHOUT DUPLICATE FILTERING 💥
+          // 💥 FIX 2: BULLETPROOF MULTI-OTP COUNTING MATCHED WITH SERVER.JS PAYOUT 💥
           const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
-          // Count every single OTP block correctly
-          const validMsgArray = msgArray.filter((m: string) => m.trim() !== "");
-          const finalValidCount = validMsgArray.length > 0 ? validMsgArray.length : 1;
+          let finalValidCount = 0;
+          
+          msgArray.forEach((m: string) => {
+              const cleanMsg = m.trim().toLowerCase();
+              // Do not count empty spaces or "waiting..." as an OTP
+              if (cleanMsg !== "" && !cleanMsg.includes("waiting")) {
+                  finalValidCount += 1;
+              }
+          });
+
+          // Fallback safeguard: If status is DONE but message was somehow empty, count as at least 1
+          if (finalValidCount === 0) finalValidCount = 1;
 
           groupedRawData[finalDateStr].success += finalValidCount;
           
           if (role === "admin") {
+              // 💥 FINANCIAL MATCH: Exact cost and commission saved in DB 💥
               groupedRawData[finalDateStr].amount += ((o.orderCost || 0) + (o.orderCommission || 0));
           } else {
               groupedRawData[finalDateStr].amount += (o.orderCost || 0);
