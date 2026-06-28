@@ -15,12 +15,12 @@ export async function POST(req: NextRequest) {
     // 💥 CRASH FIX: Safe JSON Parse (যাতে বডি ফাঁকা থাকলেও ক্র্যাশ না করে)
     const body = await req.json().catch(() => ({}));
     
-    // 💥 NEW: isManualWithdrawOpen & binanceAutoPayActive Added 💥
-    const { action, isWithdrawOpen, isManualWithdrawOpen, methods, binanceAutoPayActive } = body;
+    // 💥 THE BOSS FIX: Added isAutoApproveBotActive to catch the frontend signal 💥
+    const { action, isWithdrawOpen, isManualWithdrawOpen, methods, binanceAutoPayActive, isAutoApproveBotActive } = body;
 
     // 🟢 FETCH সবার জন্য অ্যালাউ করা হলো (ইউজাররা টোকেন ছাড়াই লাইভ সেটিংস দেখবে)
     if (action === "FETCH") {
-      let settings = await PaymentSetting.findOne({ type: "global" });
+      let settings = await PaymentSetting.findOne({ type: "global" }).lean();
       if (!settings) {
         settings = await PaymentSetting.create({ type: "global" }); 
       }
@@ -51,10 +51,20 @@ export async function POST(req: NextRequest) {
 
       const updated = await PaymentSetting.findOneAndUpdate(
         { type: "global" },
-        // 💥 NEW: isManualWithdrawOpen & binanceAutoPayActive Updated 💥
-        { isWithdrawOpen, isManualWithdrawOpen, methods, binanceAutoPayActive },
-        { new: true, upsert: true }
+        { 
+           $set: {
+               isWithdrawOpen, 
+               isManualWithdrawOpen, 
+               methods, 
+               binanceAutoPayActive,
+               // 💥 The Magic Save: Forces DB to save the Robot Status
+               isAutoApproveBotActive 
+           }
+        },
+        // 💥 Mongoose strict: false bypasses rigid schemas to save new fields instantly
+        { new: true, upsert: true, strict: false }
       );
+      
       return NextResponse.json({ success: true, data: updated });
     }
 
