@@ -11,6 +11,9 @@ const paymentSettingSchema = new Schema(
     isManualWithdrawOpen: { type: Boolean, default: true }, 
     binanceAutoPayActive: { type: Boolean, default: true }, 
     
+    // 💥 NEW: ADMIN AUTO-APPROVE BOT (আপনার মূল মিসিং লজিকটি) 💥
+    isAutoApproveBotActive: { type: Boolean, default: false },
+    
     methods: {
       bKash: { type: Boolean, default: true },
       Nagad: { type: Boolean, default: true },
