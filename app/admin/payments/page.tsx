@@ -15,7 +15,6 @@ export default function AdminPayments() {
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(true);
   const [isManualWithdrawOpen, setIsManualWithdrawOpen] = useState(true); 
   const [binanceAutoPayActive, setBinanceAutoPayActive] = useState(true); 
-  // 💥 NEW: ADMIN AUTO-APPROVE BOT 💥
   const [isAutoApproveBotActive, setIsAutoApproveBotActive] = useState(false);
   const [methodConfig, setMethodConfig] = useState<any>({ bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true });
   
@@ -28,7 +27,8 @@ export default function AdminPayments() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [stats, setStats] = useState({ totalRequests: 0, pendingAmount: 0, paidAmount: 0, totalAmount: 0 });
+  // 💥 NEW: systemLiability state added
+  const [stats, setStats] = useState({ totalRequests: 0, pendingAmount: 0, paidAmount: 0, totalAmount: 0, systemLiability: 0 });
   const itemsPerPage = 50;
 
   useEffect(() => {
@@ -51,9 +51,7 @@ export default function AdminPayments() {
   }, [activeAdminTab, timeFilter, debouncedSearch]);
 
   useEffect(() => {
-    if (role === "admin") {
-      fetchRealData();
-    }
+    if (role === "admin") fetchRealData();
   }, [role, activeAdminTab, timeFilter, debouncedSearch, currentPage]);
 
   useEffect(() => {
@@ -73,7 +71,6 @@ export default function AdminPayments() {
           setIsWithdrawOpen(data.data.isWithdrawOpen); 
           setIsManualWithdrawOpen(data.data.isManualWithdrawOpen ?? true); 
           setBinanceAutoPayActive(data.data.binanceAutoPayActive ?? true); 
-          // 💥 Load Auto-Approve Bot Status
           setIsAutoApproveBotActive(data.data.isAutoApproveBotActive ?? false);
           setMethodConfig(data.data.methods || { bKash: true, Nagad: true, Rocket: true, Binance: true, TRC20: true }); 
       }
@@ -124,11 +121,10 @@ export default function AdminPayments() {
     await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, isAutoApproveBotActive, methods: methodConfig, binanceAutoPayActive: newState });
   };
 
-  // 💥 NEW: Toggle the Admin Auto-Approve Bot 💥
   const toggleAutoApproveBot = async () => {
     const newState = !isAutoApproveBotActive;
     setIsAutoApproveBotActive(newState);
-    showToast(newState ? "🤖 Bot: AUTO-CLEARANCE ON! (It will pay automatically)" : "🤖 Bot: AUTO-CLEARANCE OFF! (Requests will pile up)");
+    showToast(newState ? "🤖 Bot: AUTO-CLEARANCE ON!" : "🤖 Bot: AUTO-CLEARANCE OFF!");
     await updateSettingsAPI({ isWithdrawOpen, isManualWithdrawOpen, isAutoApproveBotActive: newState, methods: methodConfig, binanceAutoPayActive });
   };
 
@@ -220,7 +216,6 @@ export default function AdminPayments() {
                  </button>
               </div>
 
-              {/* 💥 NEW BUTTON: THE ADMIN ROBOT 💥 */}
               <div className="flex items-center gap-3 px-4 py-1 border-r border-[#334155]">
                  <span className="text-[10px] text-[#00C6FF] uppercase font-black" title="Clear pending requests automatically">🤖 Auto-Approve</span>
                  <button onClick={toggleAutoApproveBot} className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${isAutoApproveBotActive ? 'bg-[#00C6FF]' : 'bg-[#334155]'}`}>
@@ -255,8 +250,8 @@ export default function AdminPayments() {
               <p className="text-2xl font-black text-[#10B981]">৳ {stats.paidAmount.toFixed(2)}</p>
             </div>
             <div className="bg-[#1E293B]/80 border border-[#334155] p-5 rounded-2xl border-t-2 border-t-[#8B5CF6]">
-              <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Lifetime Volume</p>
-              <p className="text-2xl font-black text-white">৳ {stats.totalAmount.toFixed(2)}</p>
+              <p className="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest mb-1">Users Unpaid Balance</p>
+              <p className="text-2xl font-black text-[#A855F7]">৳ {stats.systemLiability?.toFixed(2) || "0.00"}</p>
             </div>
           </div>
 
@@ -326,35 +321,53 @@ export default function AdminPayments() {
                            </button>
                         </div>
                       </td>
-                      <td className="p-4 pr-6 text-right space-x-2">
-                        {req.status === "PENDING" ? (
-                          <>
-                            <button onClick={() => handleAdminStatusUpdate(req._id, "PROCESSING", req.method)} className="bg-[#EAB308]/10 text-[#EAB308] hover:bg-[#EAB308] hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors">Process</button>
-                            <button onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} className="text-[#F43F5E] hover:underline text-xs font-black px-2">Reject</button>
-                          </>
-                        ) : req.status === "PROCESSING" ? (
-                          <div className="flex items-center justify-end gap-2">
-                              <button 
-                                 onClick={() => handleAdminStatusUpdate(req._id, "PAID", req.method)} 
-                                 className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
-                                    req.method === "Binance" 
-                                      ? "bg-gradient-to-r from-[#F59E0B] to-[#D97706] text-white shadow-lg border border-[#FCD34D]/50" 
-                                      : "bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981] hover:text-white"
-                                 }`}>
-                                 {req.method === "Binance" ? "⚡ Auto Pay" : "Mark Paid"}
-                              </button>
-                              <button 
-                                 onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} 
-                                 className="text-[#F43F5E] bg-[#F43F5E]/10 hover:bg-[#F43F5E] hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors">
-                                 Reject
-                              </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-3">
-                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${req.status === 'PAID' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#F43F5E]/20 text-[#F43F5E]'}`}>{req.status}</span>
-                            <button onClick={() => handleAdminStatusUpdate(req._id, "PENDING", req.method)} className="text-[10px] text-[#3B82F6] hover:underline font-bold">Undo</button>
-                          </div>
-                        )}
+                      <td className="p-4 pr-6 text-right">
+                        <div className="flex flex-col items-end justify-center gap-1.5">
+                           {/* 💥 Status Buttons 💥 */}
+                           <div className="flex items-center justify-end gap-2">
+                              {req.status === "PENDING" ? (
+                                <>
+                                  <button onClick={() => handleAdminStatusUpdate(req._id, "PROCESSING", req.method)} className="bg-[#EAB308]/10 text-[#EAB308] hover:bg-[#EAB308] hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors">Process</button>
+                                  <button onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} className="text-[#F43F5E] hover:underline text-xs font-black px-2">Reject</button>
+                                </>
+                              ) : req.status === "PROCESSING" ? (
+                                <>
+                                    <button 
+                                       onClick={() => handleAdminStatusUpdate(req._id, "PAID", req.method)} 
+                                       className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                                          req.method === "Binance" 
+                                            ? "bg-gradient-to-r from-[#F59E0B] to-[#D97706] text-white shadow-lg border border-[#FCD34D]/50" 
+                                            : "bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981] hover:text-white"
+                                       }`}>
+                                       {req.method === "Binance" ? "⚡ Auto Pay" : "Mark Paid"}
+                                    </button>
+                                    <button 
+                                       onClick={() => handleAdminStatusUpdate(req._id, "REJECTED", req.method)} 
+                                       className="text-[#F43F5E] bg-[#F43F5E]/10 hover:bg-[#F43F5E] hover:text-white px-3 py-1.5 rounded-lg text-xs font-black transition-colors">
+                                       Reject
+                                    </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${req.status === 'PAID' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#F43F5E]/20 text-[#F43F5E]'}`}>{req.status}</span>
+                                  <button onClick={() => handleAdminStatusUpdate(req._id, "PENDING", req.method)} className="text-[10px] text-[#3B82F6] hover:underline font-bold">Undo</button>
+                                </>
+                              )}
+                           </div>
+                           
+                           {/* 💥 THE ROBOT BADGE 💥 */}
+                           {req.adminNote && req.adminNote.includes("Auto") && (
+                              <span className="text-[9px] font-black text-[#00C6FF] bg-[#00C6FF]/10 px-2 py-0.5 rounded border border-[#00C6FF]/30 mt-1">
+                                 🤖 Auto-Approved
+                              </span>
+                           )}
+                           {/* 💥 ADMIN ERROR NOTE 💥 */}
+                           {req.adminNote && !req.adminNote.includes("Auto") && req.status !== "PENDING" && req.status !== "PAID" && (
+                              <span className="text-[8px] font-medium text-[#F43F5E] max-w-[150px] truncate" title={req.adminNote}>
+                                 {req.adminNote}
+                              </span>
+                           )}
+                        </div>
                       </td>
                     </tr>
                   ))
