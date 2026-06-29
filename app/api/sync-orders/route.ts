@@ -5,6 +5,11 @@ import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
 import Withdraw from "../../../models/Withdraw"; 
+// 💥 NEW IMPORTS FOR BINANCE AUTO-PAY 💥
+import PaymentSetting from "../../../models/PaymentSetting";
+import { getLiveUsdtRate, sendBinancePay } from "../../lib/binance";
+import Notification from "../../../models/Notification";
+import { adminMessaging } from "../../lib/firebase-admin";
 
 // 💥 NEXT.JS CORE CACHE KILLER 💥
 export const dynamic = "force-dynamic";
@@ -278,6 +283,7 @@ export async function POST(req: Request) {
                  );
 
                  if (balanceLock) {
+                    const generatedWid = "ZX-" + Math.random().toString(36).substring(2, 9).toUpperCase();
                     const newWithdraw = new Withdraw({
                         email: updatedUser.email,
                         name: updatedUser.fullName || updatedUser.name || updatedUser.email.split('@')[0],
@@ -285,10 +291,46 @@ export async function POST(req: Request) {
                         amount: exactBalance, 
                         method: "Binance",
                         accountNumber: updatedUser.binancePayId,
-                        status: "PROCESSING", 
+                        status: "PROCESSING",
+                        wid: generatedWid, 
                         date: new Date().toLocaleDateString('en-GB')
                     });
                     await newWithdraw.save();
+
+                    // 💥 ADMIN SWITCH & BINANCE ENGINE 💥
+                    const settings = await PaymentSetting.findOne({ type: "global" }).lean();
+                    if (settings?.isAutoApproveBotActive === true) {
+                        try {
+                            const rate = await getLiveUsdtRate();
+                            const usdAmount = Number((exactBalance / rate).toFixed(2));
+                            const binanceRes = await sendBinancePay(updatedUser.binancePayId, usdAmount, newWithdraw._id.toString());
+
+                            if (binanceRes.success) {
+                                newWithdraw.status = "PAID";
+                                newWithdraw.adminNote = "🤖 Auto-Clearance Bot. Binance TX Processed.";
+                                await newWithdraw.save();
+                                await Notification.create({ userEmail: updatedUser.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
+                            } else {
+                                const errorMsg = (binanceRes.message || "Unknown").toLowerCase();
+                                const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
+                                
+                                if (adminKeywords.some(kw => errorMsg.includes(kw))) {
+                                    newWithdraw.status = "PROCESSING";
+                                    newWithdraw.adminNote = "⚠️ Admin Binance Issue: " + binanceRes.message;
+                                    await newWithdraw.save();
+                                } else {
+                                    newWithdraw.status = "REJECTED";
+                                    newWithdraw.adminNote = "Binance Failed: " + binanceRes.message;
+                                    await newWithdraw.save();
+                                    await User.findOneAndUpdate({ email: updatedUser.email }, { $inc: { balance: exactBalance } });
+                                }
+                            }
+                        } catch (e: any) {
+                            newWithdraw.status = "PROCESSING";
+                            newWithdraw.adminNote = "API Crash during Auto-Pay: " + e.message;
+                            await newWithdraw.save();
+                        }
+                    }
                  }
              }
           }
@@ -323,6 +365,8 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: true, message: "No eligible users found." }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
+    const settings = await PaymentSetting.findOne({ type: "global" }).lean();
+
     let processedCount = 0;
     for (const user of eligibleUsers) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -341,7 +385,8 @@ export async function GET(req: Request) {
             );
 
             if (updatedUser) {
-                await Withdraw.create({
+                const generatedWid = "ZX-" + Math.random().toString(36).substring(2, 9).toUpperCase();
+                const newWithdraw = new Withdraw({
                     email: user.email,
                     name: user.fullName || user.name || user.email.split('@')[0],
                     role: user.role,
@@ -349,8 +394,43 @@ export async function GET(req: Request) {
                     method: "Binance",
                     accountNumber: user.binancePayId,
                     status: "PROCESSING",
+                    wid: generatedWid,
                     date: new Date().toLocaleDateString('en-GB')
                 });
+                await newWithdraw.save();
+
+                if (settings?.isAutoApproveBotActive === true) {
+                    try {
+                        const rate = await getLiveUsdtRate();
+                        const usdAmount = Number((exactBalance / rate).toFixed(2));
+                        const binanceRes = await sendBinancePay(user.binancePayId, usdAmount, newWithdraw._id.toString());
+
+                        if (binanceRes.success) {
+                            newWithdraw.status = "PAID";
+                            newWithdraw.adminNote = "🤖 Auto-Clearance Bot. Binance TX Processed.";
+                            await newWithdraw.save();
+                            await Notification.create({ userEmail: user.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
+                        } else {
+                            const errorMsg = (binanceRes.message || "Unknown").toLowerCase();
+                            const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
+                            
+                            if (adminKeywords.some(kw => errorMsg.includes(kw))) {
+                                newWithdraw.status = "PROCESSING";
+                                newWithdraw.adminNote = "⚠️ Admin Binance Issue: " + binanceRes.message;
+                                await newWithdraw.save();
+                            } else {
+                                newWithdraw.status = "REJECTED";
+                                newWithdraw.adminNote = "Binance Failed: " + binanceRes.message;
+                                await newWithdraw.save();
+                                await User.findOneAndUpdate({ email: user.email }, { $inc: { balance: exactBalance } });
+                            }
+                        }
+                    } catch (e: any) {
+                        newWithdraw.status = "PROCESSING";
+                        newWithdraw.adminNote = "API Crash during Auto-Pay: " + e.message;
+                        await newWithdraw.save();
+                    }
+                }
                 processedCount++;
             }
         }
