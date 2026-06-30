@@ -6,8 +6,9 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
-// 💥 THE BOSS FIX: UPGRADED TO 2-MINUTE ENTERPRISE CACHE ENGINE (Zero DB Load) 💥
+// 💥 THE BOSS FIX: PER-AGENT CACHE LOCK & DATA STREAMING (Zero RAM Overload) 💥
 let agentSummaryCache: Record<string, { data: any, timestamp: number }> = {};
+let activeAgentLocks: Record<string, boolean> = {}; // Lock per agent to prevent DB crash
 const CACHE_DURATION = 2 * 60 * 1000; // 2 Minutes 
 
 const extractServiceName = (msg: string) => {
@@ -41,30 +42,35 @@ const getUTCHour = (dateObj: any = new Date()) => {
 };
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { email, limitDays = 60 } = body;
-    const safeAgentEmail = email.toLowerCase().trim();
-    const cacheKey = `agent_${safeAgentEmail}_${limitDays}`;
+  const body = await req.json().catch(() => ({}));
+  const { email, limitDays = 60 } = body;
+  if (!email) return NextResponse.json({ success: false, message: "Email required" });
 
-    const now = Date.now();
-    // 💥 SERVE INSTANT CACHE TO AGENT 💥
+  const safeAgentEmail = email.toLowerCase().trim();
+  const cacheKey = `agent_${safeAgentEmail}_${limitDays}`;
+  const now = Date.now();
+
+  try {
+    // 💥 1. SERVE INSTANT CACHE 💥
     if (agentSummaryCache[cacheKey] && (now - agentSummaryCache[cacheKey].timestamp < CACHE_DURATION)) {
         return NextResponse.json(agentSummaryCache[cacheKey].data);
     }
 
-    await connectToDatabase();
-
-    if (Order.collection && DailyStat.collection && User.collection) {
-        Promise.all([
-            Order.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {}),
-            DailyStat.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {}),
-            User.collection.createIndex({ agentEmail: 1, role: 1 }).catch(() => {})
-        ]).catch(() => {});
+    // 💥 2. PREVENT CACHE STAMPEDE (Per Agent) 💥
+    if (activeAgentLocks[cacheKey] && agentSummaryCache[cacheKey]) {
+        return NextResponse.json(agentSummaryCache[cacheKey].data); // Return stale cache while updating
     }
 
+    // Lock the thread for this specific agent
+    activeAgentLocks[cacheKey] = true;
+
+    await connectToDatabase();
+
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
-    if (!agent) return NextResponse.json({ success: false, message: "Agent not found" });
+    if (!agent) {
+        delete activeAgentLocks[cacheKey];
+        return NextResponse.json({ success: false, message: "Agent not found" });
+    }
 
     const exactAgentEmail = agent.email;
     const customAgentEmail = agent.customAgentMail;
@@ -130,19 +136,16 @@ export async function POST(req: Request) {
         ];
     }
 
-    const [dailyStatsAgg, orders] = await Promise.all([
-        DailyStat.aggregate([
-            { $match: dailyStatQuery },
-            { $group: {
-                _id: "$dateString",
-                total: { $sum: { $ifNull: ["$totalNumbers", 0] } },
-                allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } },
-                success: { $sum: { $ifNull: ["$successOTP", 0] } },
-                failed: { $sum: { $cond: [{ $gt: ["$failedNumbers", null] }, "$failedNumbers", { $ifNull: ["$failed", 0] }] } },
-                amount: { $sum: { $ifNull: ["$totalCommission", 0] } }
-            }}
-        ]),
-        Order.find(orderQuery).select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission").lean()
+    const dailyStatsAgg = await DailyStat.aggregate([
+        { $match: dailyStatQuery },
+        { $group: {
+            _id: "$dateString",
+            total: { $sum: { $ifNull: ["$totalNumbers", 0] } },
+            allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } },
+            success: { $sum: { $ifNull: ["$successOTP", 0] } },
+            failed: { $sum: { $cond: [{ $gt: ["$failedNumbers", null] }, "$failedNumbers", { $ifNull: ["$failed", 0] }] } },
+            amount: { $sum: { $ifNull: ["$totalCommission", 0] } }
+        }}
     ]);
 
     const groupedRawData: Record<string, any> = {};
@@ -156,11 +159,17 @@ export async function POST(req: Request) {
         };
     });
     
-    orders.forEach((o: any) => {
+    // 💥 RAM SAVER: MongoDB Cursor Instead of Loading Full Array 💥
+    const ordersCursor = Order.find(orderQuery)
+        .select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission")
+        .lean()
+        .cursor(); // Read 1 doc at a time, keeping RAM near 0%
+
+    for await (const o of ordersCursor) {
        const currentStatus = (o.status || "").toUpperCase(); 
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
 
-       if (finalDateStr < liveQueryDateStr) return;
+       if (finalDateStr < liveQueryDateStr) continue;
 
        const safeUserEmail = (o.userEmail || o.email || "").toLowerCase().trim();
 
@@ -177,9 +186,7 @@ export async function POST(req: Request) {
           
           msgArray.forEach((m: string) => {
               const cleanMsg = m.trim().toLowerCase();
-              if (cleanMsg !== "" && !cleanMsg.includes("waiting")) {
-                  validMsgCount += 1;
-              }
+              if (cleanMsg !== "" && !cleanMsg.includes("waiting")) validMsgCount += 1;
           });
 
           if (validMsgCount === 0) validMsgCount = 1;
@@ -201,7 +208,7 @@ export async function POST(req: Request) {
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
            groupedRawData[finalDateStr].failed += 1; 
        }
-    });
+    }
 
     const topPerformersArr = Object.values(userInfoMap)
        .map((u: any) => ({ id: u.id, name: u.name, otpCount: u.todayOTP }))
@@ -269,9 +276,14 @@ export async function POST(req: Request) {
        yesterdaySuccess: yesterdayData.success, yesterdayRevenue: yesterdayData.amount
     };
 
-    // 💥 SAVE TO CACHE 💥
+    // 💥 SAVE TO CACHE & UNLOCK THREAD 💥
     agentSummaryCache[cacheKey] = { data: responseData, timestamp: now };
+    delete activeAgentLocks[cacheKey];
 
     return NextResponse.json(responseData);
-  } catch (error) { return NextResponse.json({ success: false }); }
+
+  } catch (error) { 
+      delete activeAgentLocks[cacheKey]; // Unlock even on error
+      return NextResponse.json({ success: false }); 
+  }
 }
