@@ -21,14 +21,12 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-// 💥 THE THREAD SAVER
 const releaseThread = () => new Promise(resolve => setTimeout(resolve, 0));
 
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
     
-    // 💥 FIRE-AND-FORGET INDEXING
     if (Order.collection && DailyStat.collection) {
         Promise.all([
             Order.collection.createIndex({ dateString: 1 }).catch(() => {}),
@@ -40,10 +38,10 @@ export async function POST(req: Request) {
 
     if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    const cacheKey = `admin_summary_absolute_${limitDays}`; 
+    // 💥 CACHE KEY CHANGED: পুরনো ক্যাশ বাইপাস করে সাথে সাথে নতুন ডাটা দেখাবে!
+    const cacheKey = `admin_summary_v2_fixed_${limitDays}`; 
     const cachedData = await redis.get(cacheKey).catch(() => null);
 
-    // 💥 REDIS INSTANT RESPONSE
     if (cachedData) {
         let parsedCache;
         try {
@@ -62,13 +60,12 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
     }
 
-    // 💥 THE MAGIC FIX: ADDED 'allocation' AND '$ifNull' PROTECTION 💥
     const dailyStatsAgg = await DailyStat.aggregate([
         { $match: dailyStatQuery },
         { $group: { 
             _id: "$dateString", 
             total: { $sum: { $ifNull: ["$totalNumbers", 0] } }, 
-            allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } }, // Added allocation for Numbers Got
+            allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } },
             success: { $sum: { $ifNull: ["$successOTP", 0] } }, 
             failed: { $sum: { $cond: [{ $gt: ["$failedNumbers", null] }, "$failedNumbers", { $ifNull: ["$failed", 0] }] } }, 
             amount: { $sum: { $add: [{ $ifNull: ["$totalCost", 0] }, { $ifNull: ["$totalCommission", 0] }] } } 
@@ -79,18 +76,27 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // 💥 MAP ALLOCATION TO FRONTEND 💥
+    // 💥 BULLETPROOF MATH FIX: ডাটাবেসে Total না থাকলে নিজে যোগ করে নিবে! 💥
     dailyStatsAgg.forEach((ds: any) => {
+        const sCount = ds.success || 0;
+        const fCount = ds.failed || 0;
+        
+        let finalTotal = ds.total || ds.allocation || 0;
+        
+        // ম্যাজিক: যদি Total ০ হয়, তবে Success + Failed যোগ করে Total বানাবে!
+        if (finalTotal === 0 && (sCount > 0 || fCount > 0)) {
+            finalTotal = sCount + fCount;
+        }
+
         groupedRawData[ds._id] = { 
-            total: ds.total || 0, 
-            allocation: ds.allocation || 0, // Mapping allocation
-            success: ds.success || 0, 
-            failed: ds.failed || 0, 
+            total: finalTotal, 
+            allocation: finalTotal, 
+            success: sCount, 
+            failed: fCount, 
             amount: ds.amount || 0 
         };
     });
 
-    // 💥 ADDED ALLOCATION FOR TODAY 💥
     groupedRawData[todayStrUTC] = { total: 0, allocation: 0, success: 0, failed: 0, amount: 0 };
 
     const ordersCursor = Order.find({ dateString: todayStrUTC })
@@ -106,7 +112,7 @@ export async function POST(req: Request) {
         const currentStatus = (o.status || "").toUpperCase(); 
         
         groupedRawData[todayStrUTC].total += 1;
-        groupedRawData[todayStrUTC].allocation += 1; // Incrementing allocation for today
+        groupedRawData[todayStrUTC].allocation += 1; 
 
         if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
             const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
