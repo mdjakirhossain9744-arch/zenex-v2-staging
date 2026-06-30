@@ -19,11 +19,7 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
 
-const extractStrictOTP = (msg: string) => {
-    if (!msg) return "";
-    const match = msg.match(/(?:\b\d{4,8}\b)|(?:\b\d{3}[\s-]\d{3,4}\b)|(?:G-\d{6,8})/i);
-    return match ? match[0] : msg.trim();
-};
+// extractStrictOTP ফাংশনটি এখন আর এই ফাইলে লাগছে না, কারণ OTP Extract এর কাজ server.js করবে।
 
 export async function POST(req: Request) {
   try {
@@ -52,6 +48,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
     }
 
+    // ==========================================
+    // FETCH ACTION (আপনার আগের কোড হুবহু সেইম)
+    // ==========================================
     if (action === "FETCH") {
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
@@ -161,6 +160,9 @@ export async function POST(req: Request) {
       });
     }
 
+    // ==========================================
+    // CREATE ACTION (আপনার আগের কোড হুবহু সেইম)
+    // ==========================================
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
       const user = await User.findOne({ email }).lean();
@@ -190,8 +192,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
+    // ==========================================
+    // UPDATE ACTION (এখানেই সিকিউরিটি ম্যাজিক!)
+    // ==========================================
     if (action === "UPDATE") {
-      // 💥 MAGIC FIX: Sort by createdAt -1 to get the NEWEST active order! 💥
       const existingOrder = await Order.findOne({ 
           searchNumber: orderData.searchNumber, 
           userEmail: email,
@@ -204,6 +208,7 @@ export async function POST(req: Request) {
          await redis.del(`sync_orders_${email}_1_30_ALL_${getUTCDateString()}`);
       };
 
+      // শুধুমাত্র FAIL বা TIMEOUT ফ্রন্টএন্ড থেকে আপডেট হতে পারবে
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
         existingOrder.otp = orderData.otp || "Timeout"; 
@@ -213,181 +218,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
 
+      // 💥 ZERO-TRUST SECURITY: 
+      // আগে এখানে ১৫০ লাইনের পেমেন্ট ও কমিশন লজিক ছিল। সেটা সরিয়ে server.js-এ দিয়েছি।
+      // ফ্রন্টএন্ড এখন আর ব্যালেন্স অ্যাড বা OTP সেভ করতে পারবে না!
       if (orderData.status === "DONE" || orderData.otp) {
-        const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
-        
-        // 💥 Extra safety: only expire if older than 20 mins AND still waiting
-        if (orderAgeMs > 20 * 60 * 1000 && existingOrder.status === "WAIT") { 
-            await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
-            await clearCache();
-            return NextResponse.json({ success: false, message: "Order expired." });
-        }
-
-        const incomingMsg = (orderData.fullMessage || "").trim();
-        if (!incomingMsg) return NextResponse.json({ success: false, message: "Empty message" });
-
-        const currentMsg = existingOrder.fullMessage || "";
-        const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
-        const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
-
-        const cleanNumber = String(orderData.searchNumber || "").replace(/\D/g, "");
-        const exactProviderOtpId = incomingTimestamp ? cleanNumber + incomingTimestamp : null;
-
-        if (exactProviderOtpId) {
-            if (existingOrder.processedKeys?.includes(exactProviderOtpId) || existingOrder.receivedNids?.includes(incomingTimestamp)) {
-                return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
-            }
-        } else {
-            if (currentMsgsArray.includes(incomingMsg)) {
-                return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
-            }
-        }
-
-        const incomingCode = extractStrictOTP(incomingMsg); 
-
-        if (currentMsgsArray.length >= 50) { 
-          return NextResponse.json({ success: true, message: "Max safety limit reached." });
-        }
-
-        const isFreeService = incomingMsg.toLowerCase().includes("whatsapp") || 
-                              incomingMsg.toLowerCase().includes("telegram") || 
-                              incomingMsg.toLowerCase().includes("t.me");
-
-        let currentOtpCost = 0;
-        let currentOtpCommission = 0;
-        let agentToUpdate = null;
-
-        if (!isFreeService) {
-          const user = await User.findOne({ email });
-          if (user) {
-            currentOtpCost = Number(user.otpRate) || 0.50;
-            if (user.agentEmail) {
-              agentToUpdate = await User.findOne({
-                $or: [{ email: user.agentEmail }, { customAgentMail: user.agentEmail }],
-                role: "agent"
-              });
-              if (agentToUpdate) {
-                const agentRate = Number(agentToUpdate.agentMaxRate) || 0.70;
-                const comm = Number((agentRate - currentOtpCost).toFixed(2));
-                if (comm > 0) currentOtpCommission = comm;
-              }
-            }
-          }
-        }
-
-        const updateQuery = exactProviderOtpId 
-              ? { _id: existingOrder._id, processedKeys: { $ne: exactProviderOtpId } } 
-              : { _id: existingOrder._id };
-
-        const updateData: any = {
-            $set: {
-              fullMessage: currentMsg && currentMsg !== "Waiting..." ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
-              otp: incomingCode, 
-              status: "DONE",
-              expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
-            },
-            $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
-        };
-
-        if (incomingTimestamp) {
-            updateData.$addToSet = { receivedNids: incomingTimestamp };
-            if (exactProviderOtpId) {
-                updateData.$addToSet.processedKeys = exactProviderOtpId;
-            }
-        }
-
-        const updatedOrder = await Order.findOneAndUpdate(updateQuery, updateData, { new: true });
-
-        if (!updatedOrder) {
-          return NextResponse.json({ success: true, message: "Race condition locked safely!" });
-        }
-
-        // 💥 AUTO-WITHDRAW 💥
-        if (currentOtpCost > 0) {
-          const updatedUser = await User.findOneAndUpdate(
-             { email }, 
-             { $inc: { balance: currentOtpCost } },
-             { new: true }
-          );
-
-          if (updatedUser && updatedUser.balance >= 150 && updatedUser.isAutoWithdraw === true && updatedUser.binancePayId) {
-             const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-             const recentWithdraw = await Withdraw.findOne({
-                 email: updatedUser.email,
-                 createdAt: { $gte: oneHourAgo },
-                 status: { $ne: "REJECTED" }
-             }).lean();
-
-             if (!recentWithdraw) {
-                 const exactBalance = Number(updatedUser.balance.toFixed(2)); 
-                 const balanceLock = await User.findOneAndUpdate(
-                    { email: updatedUser.email, balance: { $gte: 150 } }, 
-                    { $inc: { balance: -exactBalance } }, 
-                    { new: true }
-                 );
-
-                 if (balanceLock) {
-                    const generatedWid = "ZX-" + Math.random().toString(36).substring(2, 9).toUpperCase();
-                    const newWithdraw = new Withdraw({
-                        email: updatedUser.email,
-                        name: updatedUser.fullName || updatedUser.name || updatedUser.email.split('@')[0],
-                        role: updatedUser.role,
-                        amount: exactBalance, 
-                        method: "Binance",
-                        accountNumber: updatedUser.binancePayId,
-                        status: "PROCESSING",
-                        wid: generatedWid, 
-                        date: new Date().toLocaleDateString('en-GB')
-                    });
-                    await newWithdraw.save();
-
-                    const settings = await PaymentSetting.findOne({ type: "global" }).lean();
-                    if (settings?.isAutoApproveBotActive === true) {
-                        try {
-                            const rate = await getLiveUsdtRate();
-                            const usdAmount = Number((exactBalance / rate).toFixed(2));
-                            const binanceRes = await sendBinancePay(updatedUser.binancePayId, usdAmount, newWithdraw._id.toString());
-
-                            if (binanceRes.success) {
-                                newWithdraw.status = "PAID";
-                                newWithdraw.adminNote = "🤖 Auto-Clearance Bot. Binance TX Processed.";
-                                await newWithdraw.save();
-                                await Notification.create({ userEmail: updatedUser.email, title: "Binance Payment Successful 🎉", description: `$${usdAmount} USDT has been sent!`, type: "SUCCESS", color: "green" });
-                            } else {
-                                const errorMsg = (binanceRes.message || "Unknown").toLowerCase();
-                                const adminKeywords = ["balance", "insufficient", "fund", "api key", "ip address", "permission", "unauthorized", "suspended"];
-                                
-                                if (adminKeywords.some(kw => errorMsg.includes(kw))) {
-                                    newWithdraw.status = "PROCESSING";
-                                    newWithdraw.adminNote = "⚠️ Admin Binance Issue: " + binanceRes.message;
-                                    await newWithdraw.save();
-                                } else {
-                                    newWithdraw.status = "REJECTED";
-                                    newWithdraw.adminNote = "Binance Failed: " + binanceRes.message;
-                                    await newWithdraw.save();
-                                    await User.findOneAndUpdate({ email: updatedUser.email }, { $inc: { balance: exactBalance } });
-                                }
-                            }
-                        } catch (e: any) {
-                            newWithdraw.status = "PROCESSING";
-                            newWithdraw.adminNote = "API Crash during Auto-Pay: " + e.message;
-                            await newWithdraw.save();
-                        }
-                    }
-                 }
-             }
-          }
-        }
-
-        if (currentOtpCommission > 0 && agentToUpdate) {
-          await User.updateOne(
-            { _id: agentToUpdate._id }, 
-            { $inc: { agentEarning: currentOtpCommission, balance: currentOtpCommission } }
-          );
-        }
-
-        await clearCache(); 
-        return NextResponse.json({ success: true, message: "Real OTP Processed successfully!" });
+          return NextResponse.json({ 
+              success: true, 
+              message: "Secure Mode: Wait for Server (Engine-2) to process real OTP and Payments." 
+          });
       }
     }
     return NextResponse.json({ success: false, message: "Invalid action" });
@@ -396,7 +234,10 @@ export async function POST(req: Request) {
   }
 }
 
-// 💥 RESTORED: THE BACKGROUND AUTO-SYNC CRON JOB API 💥
+// ==========================================
+// BACKGROUND AUTO-SYNC CRON JOB API
+// (আপনার আগের বিন্যান্স অটো উইথড্র ক্রন হুবহু সেইম)
+// ==========================================
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
