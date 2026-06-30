@@ -21,21 +21,37 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-const releaseThread = () => new Promise(resolve => setTimeout(resolve, 1));
+// 💥 THE THREAD SAVER (Changed from 1ms to 0ms for instant unblocking)
+const releaseThread = () => new Promise(resolve => setTimeout(resolve, 0));
 
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
+    
+    // 💥 MAGIC FIX: FIRE-AND-FORGET INDEXING TO PREVENT FULL TABLE SCANS 💥
+    if (Order.collection && DailyStat.collection) {
+        Promise.all([
+            Order.collection.createIndex({ dateString: 1 }).catch(() => {}),
+            DailyStat.collection.createIndex({ dateString: -1 }).catch(() => {})
+        ]).catch(() => {});
+    }
+
     const { email, role, limitDays = 60 } = await req.json();
 
     if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
     const cacheKey = `admin_summary_absolute_${limitDays}`; 
-    const cachedData = await redis.get(cacheKey);
+    const cachedData = await redis.get(cacheKey).catch(() => null);
 
     // 💥 REDIS INSTANT RESPONSE (0.01s)
     if (cachedData) {
-        return new NextResponse(cachedData, { status: 200, headers: { "Content-Type": "application/json" } });
+        let parsedCache;
+        try {
+            parsedCache = typeof cachedData === "string" ? JSON.parse(cachedData) : cachedData;
+            return NextResponse.json(parsedCache, { status: 200 });
+        } catch (err) {
+            // Ignore parse error and proceed to generate fresh data
+        }
     }
 
     // 💥 IF NO CACHE, FETCH REAL DATA (Server will not freeze)
@@ -110,8 +126,9 @@ export async function POST(req: Request) {
         yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
     };
 
-    // Save to Redis for 2 minutes
-    await redis.setex(cacheKey, 120, JSON.stringify(responsePayload));
+    // 💥 MAGIC FIX: Use robust `set(..., "EX")` instead of `setex` which throws errors on some clients
+    await redis.set(cacheKey, JSON.stringify(responsePayload), "EX", 60).catch(() => null);
+    
     return NextResponse.json(responsePayload);
 
   } catch (error) { return NextResponse.json({ success: false }); }

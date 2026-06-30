@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "../../DashboardLayout"; 
 
@@ -20,6 +20,9 @@ export default function AdminGlobalDashboard() {
   const [currentMonthName, setCurrentMonthName] = useState("");
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
+
+  // 💥 MAGIC FIX: ANTI-SPAM LOCK FOR HEAVY AGGREGATIONS 💥
+  const isFetchingRef = useRef(false);
 
   // 🔥 DYNAMIC APP FORMATTER 🔥
   const formatTopApps = (countsObj: Record<string, number>) => {
@@ -79,18 +82,21 @@ export default function AdminGlobalDashboard() {
     setIsAdmin(true); 
     fetchAdminDashboardData(parsedUser.email);
     
-    // 💥 SERVER OPTIMIZATION: Admin Dashboard Heavy Aggregation set to 30 Seconds! 💥
+    // 💥 LOCK IMPLEMENTED: Prevents massive overlapping API calls 💥
     const intervalData = setInterval(() => fetchAdminDashboardData(parsedUser.email), 30000);
     return () => clearInterval(intervalData);
   }, [router]);
 
   const fetchAdminDashboardData = async (email: string) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
       const todayStr = getUTCDateString();
       const [userData, reportData, summaryRes] = await Promise.all([
         fetch("/api/get-all-users").then(r => r.json()), 
         fetch("/api/admin-agent-report").then(r => r.json()),
-        // 💥 THE BOSS FIX: Fetching from the new Dedicated Admin API 💥
+        // 💥 Fetching from the new Dedicated Admin API 💥
         fetch("/api/admin/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role: "admin" }) }).then(r => r.json())
       ]);
 
@@ -104,7 +110,11 @@ export default function AdminGlobalDashboard() {
       if (userData.stats) {
         setAdminStats(p => ({ ...p, totalUsers: userData.stats.totalUsers || 0, totalAgents: userData.stats.totalAgents || 0, systemLiability: userData.stats.systemLiability || "0.00" }));
       }
-    } catch (e) {} finally { setLoading(false); }
+    } catch (e) {} 
+    finally { 
+        setLoading(false); 
+        isFetchingRef.current = false; 
+    }
   };
 
   const generateTrafficPath = (data: number[]) => {
