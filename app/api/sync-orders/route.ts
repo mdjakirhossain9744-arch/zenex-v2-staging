@@ -32,6 +32,15 @@ const extractStrictOTP = (msg: string) => {
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
+
+    // 💥 MAGIC FIX 1: FIRE-AND-FORGET COMPOUND INDEXING TO SAVE DB CPU 💥
+    if (Order.collection) {
+        Promise.all([
+            Order.collection.createIndex({ userEmail: 1, dateString: 1, status: 1 }).catch(() => {}),
+            Order.collection.createIndex({ userEmail: 1, status: 1, createdAt: 1 }).catch(() => {})
+        ]).catch(() => {});
+    }
+
     const body = await req.json().catch(() => ({}));
     
     try {
@@ -72,7 +81,8 @@ export async function POST(req: Request) {
             { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
             { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } }
           );
-          await redis.setex(timeoutLockKey, 60, "locked"); // Lock for 60 seconds
+          // Changed to standard SET format for maximum compatibility
+          await redis.set(timeoutLockKey, "locked", "EX", 60).catch(() => null); 
       }
 
       const query: any = { userEmail: email, dateString: fetchDate };
@@ -82,27 +92,28 @@ export async function POST(req: Request) {
       }
 
       const skip = (page - 1) * limit;
-      const totalItems = await Order.countDocuments(query);
       
-      let rawOrders = await Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      // 💥 MAGIC FIX 2: PARALLEL LIGHTWEIGHT QUERIES INSTEAD OF AGGREGATION 💥
+      const [totalItems, rawOrders] = await Promise.all([
+          Order.countDocuments(query),
+          Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
+      ]);
+      
       let orders = [...rawOrders];
-
       const finalOrders: any[] = [];
       let stats = { total: 0, success: 0, wait: 0, fail: 0 };
 
       const statQuery = { userEmail: email, dateString: fetchDate };
 
       if (fetchDate === todayStr) {
-          const aggStats = await Order.aggregate([
-              { $match: { userEmail: email, dateString: fetchDate } },
-              { $group: { _id: "$status", count: { $sum: 1 } } }
+          // 💥 KILLED THE HEAVY Order.aggregate()! Using High-Speed Indexed Counts 💥
+          const [sTotal, sSuccess, sWait, sFail] = await Promise.all([
+              Order.countDocuments({ userEmail: email, dateString: fetchDate }),
+              Order.countDocuments({ userEmail: email, dateString: fetchDate, status: { $in: ["DONE", "SUCCESS"] } }),
+              Order.countDocuments({ userEmail: email, dateString: fetchDate, status: "WAIT" }),
+              Order.countDocuments({ userEmail: email, dateString: fetchDate, status: { $in: ["FAIL", "CANCEL"] } })
           ]);
-          aggStats.forEach(s => {
-              stats.total += s.count;
-              if (s._id === "DONE") stats.success += s.count;
-              else if (s._id === "WAIT") stats.wait += s.count;
-              else if (s._id === "FAIL" || s._id === "CANCEL") stats.fail += s.count;
-          });
+          stats = { total: sTotal, success: sSuccess, wait: sWait, fail: sFail };
       } else {
           const dailyStat = await DailyStat.findOne({ userEmail: email, dateString: fetchDate }).lean();
           if (dailyStat) {
@@ -113,12 +124,12 @@ export async function POST(req: Request) {
                   fail: dailyStat.failedNumbers || dailyStat.failed || 0,
               };
           } else {
-              stats = {
-                  total: await Order.countDocuments(statQuery),
-                  success: await Order.countDocuments({ ...statQuery, status: "DONE" }),
-                  wait: 0,
-                  fail: await Order.countDocuments({ ...statQuery, status: "FAIL" }),
-              };
+              const [sTotal, sSuccess, sFail] = await Promise.all([
+                  Order.countDocuments(statQuery),
+                  Order.countDocuments({ ...statQuery, status: { $in: ["DONE", "SUCCESS"] } }),
+                  Order.countDocuments({ ...statQuery, status: { $in: ["FAIL", "CANCEL"] } })
+              ]);
+              stats = { total: sTotal, success: sSuccess, wait: 0, fail: sFail };
           }
       }
 
@@ -152,8 +163,8 @@ export async function POST(req: Request) {
         stats 
       });
 
-      // 💥 SAVE TO REDIS FOR 3 SECONDS 💥
-      await redis.setex(cacheKey, 3, responsePayload);
+      // 💥 MAGIC FIX 3: INCREASED CACHE TO 10 SECONDS TO MATCH FRONTEND POLL RATE 💥
+      await redis.set(cacheKey, responsePayload, "EX", 10).catch(() => null);
 
       return new NextResponse(responsePayload, { 
         status: 200, 
