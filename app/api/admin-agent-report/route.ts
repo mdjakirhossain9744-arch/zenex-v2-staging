@@ -5,6 +5,11 @@ import connectToDatabase from "../../lib/mongodb";
 import User from "../../../models/User"; 
 import Order from "../../../models/Order";
 import DailyStat from "../../../models/DailyStat"; 
+import Redis from "ioredis";
+
+// 💥 REDIS & EVENT LOOP BREAKER INITIALIZED 💥
+const redis = new Redis(); 
+const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // 🌍 UTC Timezone Converter
 const getUTCDateString = (dateObj: any = new Date()) => {
@@ -35,6 +40,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "🔴 FORBIDDEN: Invalid Token!" }, { status: 403 });
     }
 
+    // 💥 REDIS MASTER CACHE: Load report instantly if cached 💥
+    const CACHE_KEY = "admin_agent_report_cache";
+    const cachedData = await redis.get(CACHE_KEY).catch(() => null);
+    if (cachedData) {
+        return NextResponse.json(JSON.parse(cachedData), { status: 200 });
+    }
+
     await connectToDatabase();
 
     // 💥 FIX 1: FIRE-AND-FORGET INDEXING FOR SUPERFAST LOAD 💥
@@ -51,15 +63,10 @@ export async function GET(req: NextRequest) {
     const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); 
     const startOfMonthStr = getUTCDateString(startOfMonth);
 
-    // 💥 FIX 2: PARALLEL EXECUTION (4x FASTER LOADING) 💥
-    const [agents, users, dailyStats, orders] = await Promise.all([
+    // 💥 FIX 2: PARALLEL EXECUTION FOR SMALL DATA 💥
+    const [agents, users] = await Promise.all([
         User.find({ role: "agent" }).lean(),
         User.find({ role: "user", agentEmail: { $ne: null } }).select("email agentEmail otpRate").lean(),
-        DailyStat.find({ dateString: { $gte: startOfMonthStr } }).lean(),
-        Order.find({ 
-            createdAt: { $gte: startOfMonth },
-            status: { $in: ["DONE", "Success", "SUCCESS"] }
-        }).select("userEmail fullMessage createdAt updatedAt dateString orderCommission").lean()
     ]);
 
     const agentStats: Record<string, any> = {};
@@ -90,7 +97,11 @@ export async function GET(req: NextRequest) {
 
     const archivedKeys = new Set<string>();
 
-    dailyStats.forEach((ds: any) => {
+    // 💥 FIX 3: RAM PROTECTOR (CURSOR + EVENT LOOP BREAKER) 💥
+    const dailyStatsCursor = DailyStat.find({ dateString: { $gte: startOfMonthStr } }).cursor();
+    let dsCount = 0;
+
+    for await (const ds of dailyStatsCursor) {
         const dDate = ds.dateString;
         const uEmail = (ds.userEmail || "").toLowerCase().trim();
         archivedKeys.add(`${dDate}_${uEmail}`);
@@ -113,18 +124,29 @@ export async function GET(req: NextRequest) {
                 targetAgent.thisMonthCommission += commission;
             }
         }
-    });
+        
+        // 🚦 Yield to Event Loop every 500 iterations
+        if (++dsCount % 500 === 0) await yieldToEventLoop();
+    }
 
-    orders.forEach((o: any) => {
+    // 💥 FIX 4: ORDERS MASSIVE QUERY CONVERTED TO CURSOR 💥
+    const ordersCursor = Order.find({ 
+        createdAt: { $gte: startOfMonth },
+        status: { $in: ["DONE", "Success", "SUCCESS"] }
+    }).select("userEmail fullMessage createdAt updatedAt dateString orderCommission").cursor();
+    
+    let oCount = 0;
+
+    for await (const o of ordersCursor) {
         const oDate = getUTCDateString(o.updatedAt || o.createdAt || new Date(o.dateString));
         const uEmail = (o.userEmail || "").toLowerCase().trim();
         
-        if (oDate !== todayStrUTC && archivedKeys.has(`${oDate}_${uEmail}`)) return;
+        if (oDate !== todayStrUTC && archivedKeys.has(`${oDate}_${uEmail}`)) continue;
 
         const msgLower = (o.fullMessage || "").toLowerCase();
         const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
 
-        // 💥 FIX 3: BULLETPROOF MULTI-OTP COUNTING MATCHED WITH PAYOUT 💥
+        // 💥 BULLETPROOF MULTI-OTP COUNTING MATCHED WITH PAYOUT 💥
         const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
         let validMsgCount = 0;
         
@@ -160,7 +182,10 @@ export async function GET(req: NextRequest) {
                 }
             }
         }
-    });
+        
+        // 🚦 Yield to Event Loop every 500 iterations
+        if (++oCount % 500 === 0) await yieldToEventLoop();
+    }
 
     const finalReport = Object.values(agentStats)
         .sort((a, b) => b.thisMonthOTPs - a.thisMonthOTPs)
@@ -172,11 +197,16 @@ export async function GET(req: NextRequest) {
             agentEarnings: Number(a.thisMonthCommission).toFixed(2) 
         }));
 
-    return NextResponse.json({ 
+    const responsePayload = { 
         success: true, 
         currentMonth: now.toLocaleString('default', { month: 'long', year: 'numeric', timeZone: 'UTC' }), 
         report: finalReport 
-    }, { status: 200 });
+    };
+
+    // Save to Redis (Cache for 60 Seconds to prevent dashboard crash)
+    await redis.set(CACHE_KEY, JSON.stringify(responsePayload), "EX", 60).catch(() => null);
+
+    return NextResponse.json(responsePayload, { status: 200 });
 
   } catch (error: any) {
     return NextResponse.json({ success: false, message: "Server Error" }, { status: 500 });

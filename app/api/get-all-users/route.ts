@@ -4,6 +4,11 @@ import { NextResponse, NextRequest } from "next/server";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
 import Order from "../../../models/Order";
+import Redis from "ioredis";
+
+// 💥 REDIS & EVENT LOOP BREAKER INITIALIZED 💥
+const redis = new Redis(); 
+const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // 🌍 UTC Timezone Converter
 const getUTCDateString = (dateObj: any = new Date()) => {
@@ -32,6 +37,22 @@ export async function GET(req: NextRequest) {
       if (decodedPayload.role !== "admin") return NextResponse.json({ message: "🔴 FORBIDDEN" }, { status: 403 });
     } catch (err) { return NextResponse.json({ message: "🔴 FORBIDDEN" }, { status: 403 }); }
 
+    const searchParams = req.nextUrl.searchParams;
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "50");
+    const rawSearchQuery = searchParams.get("search")?.trim() || "";
+    
+    // ফিল্টার প্যারামিটার
+    const statusFilter = searchParams.get("status")?.trim().toLowerCase() || "all";
+    const agentFilter = searchParams.get("agent")?.trim() || "all";
+
+    // 💥 REDIS CACHE FOR PAGINATION (Prevents Spam Clicking & Freezing) 💥
+    const PAGE_CACHE_KEY = `get_all_users_${page}_${limit}_${rawSearchQuery}_${statusFilter}_${agentFilter}`;
+    const cachedPage = await redis.get(PAGE_CACHE_KEY).catch(() => null);
+    if (cachedPage) {
+        return NextResponse.json(JSON.parse(cachedPage), { status: 200 });
+    }
+
     await connectToDatabase();
 
     // 💥 FIRE-AND-FORGET INDEXING: Prevents Admin Panel from freezing forever! 💥
@@ -44,15 +65,6 @@ export async function GET(req: NextRequest) {
         Order.collection.createIndex({ userEmail: 1 }).catch(() => {})
       ]).catch(() => {});
     }
-
-    const searchParams = req.nextUrl.searchParams;
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const rawSearchQuery = searchParams.get("search")?.trim() || "";
-    
-    // ফিল্টার প্যারামিটার
-    const statusFilter = searchParams.get("status")?.trim().toLowerCase() || "all";
-    const agentFilter = searchParams.get("agent")?.trim() || "all";
 
     let query: any = {};
     
@@ -113,18 +125,20 @@ export async function GET(req: NextRequest) {
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
-    const orders = await Order.find({
+    // 💥 RAM PROTECTOR: Use Cursor for filtering user orders 💥
+    const ordersCursor = Order.find({
         createdAt: { $gte: twoDaysAgo },
         status: { $in: ["DONE", "Success", "SUCCESS"] },
         $or: [
             { userEmail: { $in: userEmails } },
             { email: { $in: userEmails } }
         ]
-    }).select("userEmail email createdAt updatedAt dateString fullMessage").lean();
+    }).select("userEmail email createdAt updatedAt dateString fullMessage").cursor();
 
     const otpCounts: Record<string, number> = {};
+    let oCount = 0;
     
-    orders.forEach((o: any) => {
+    for await (const o of ordersCursor) {
         const finalDateStr = o.updatedAt 
             ? getUTCDateString(o.updatedAt) 
             : (o.createdAt ? getUTCDateString(o.createdAt) : (o.dateString ? getUTCDateString(new Date(o.dateString)) : getUTCDateString(new Date())));
@@ -140,7 +154,10 @@ export async function GET(req: NextRequest) {
             const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
             otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         }
-    });
+        
+        // 🚦 Yield to Event Loop every 500 iterations
+        if (++oCount % 500 === 0) await yieldToEventLoop();
+    }
 
     const formattedUsers = users.map((u: any) => {
       const uEmail = (u.email || "").toLowerCase().trim();
@@ -166,32 +183,46 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 💥 2. RAM PROTECTOR & PARALLEL EXECUTION: 5 Queries running at once! 💥
-    const [globalTotalUsers, totalAgents, activeAccounts, bannedAccounts, liabilityAgg] = await Promise.all([
-        User.countDocuments({ role: "user" }),
-        User.countDocuments({ role: "agent" }),
-        User.countDocuments({ status: "active" }),
-        User.countDocuments({ status: "banned" }),
-        User.aggregate([
-            { $match: { role: { $in: ["user", "agent"] } } },
-            { $group: { _id: null, total: { $sum: { $convert: { input: "$balance", to: "double", onError: 0, onNull: 0 } } } } }
-        ])
-    ]);
-    
-    // System Liability
-    const systemLiability = liabilityAgg[0]?.total || 0;
+    // 💥 2. REDIS CACHE FOR HEAVY AGGREGATIONS (Prevents DB Timeout on Page Load) 💥
+    const STATS_CACHE_KEY = "global_system_stats_cache";
+    let systemStats: any = null;
+    const cachedStats = await redis.get(STATS_CACHE_KEY).catch(() => null);
 
-    return NextResponse.json({ 
-        users: formattedUsers,
-        pagination: { total: totalUsersInQuery, page, limit, totalPages: Math.ceil(totalUsersInQuery / limit) || 1 },
-        stats: { 
+    if (cachedStats) {
+        systemStats = JSON.parse(cachedStats);
+    } else {
+        const [globalTotalUsers, totalAgents, activeAccounts, bannedAccounts, liabilityAgg] = await Promise.all([
+            User.countDocuments({ role: "user" }),
+            User.countDocuments({ role: "agent" }),
+            User.countDocuments({ status: "active" }),
+            User.countDocuments({ status: "banned" }),
+            User.aggregate([
+                { $match: { role: { $in: ["user", "agent"] } } },
+                { $group: { _id: null, total: { $sum: { $convert: { input: "$balance", to: "double", onError: 0, onNull: 0 } } } } }
+            ])
+        ]);
+        
+        systemStats = {
           totalUsers: globalTotalUsers, 
           totalAgents, 
           activeAccounts, 
           bannedAccounts, 
-          systemLiability: systemLiability.toFixed(2) 
-        }
-    }, { status: 200 });
+          systemLiability: (liabilityAgg[0]?.total || 0).toFixed(2) 
+        };
+        // Cache heavy stats for 60 seconds
+        await redis.set(STATS_CACHE_KEY, JSON.stringify(systemStats), "EX", 60).catch(() => null);
+    }
+
+    const responsePayload = { 
+        users: formattedUsers,
+        pagination: { total: totalUsersInQuery, page, limit, totalPages: Math.ceil(totalUsersInQuery / limit) || 1 },
+        stats: systemStats
+    };
+
+    // Cache the exact page response for 15 seconds to prevent spam clicking
+    await redis.set(PAGE_CACHE_KEY, JSON.stringify(responsePayload), "EX", 15).catch(() => null);
+
+    return NextResponse.json(responsePayload, { status: 200 });
   } catch (error: any) { 
     return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 }); 
   }
