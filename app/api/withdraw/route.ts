@@ -9,9 +9,10 @@ import { adminMessaging } from "../../lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
 
-// 💥 THE BOSS FIX: IN-MEMORY CACHE ENGINE (TO PREVENT DB LOCKS) 💥
+// 💥 ELITE IN-MEMORY CACHE ENGINE & THREAD LOCK (STAMPEDE PROTECTION) 💥
 let withdrawStatsCache: any = null;
 let withdrawStatsCacheTime = 0;
+let isGeneratingWithdrawStats = false; // Prevents DB Lock when multiple admins reload at exact same ms
 const STATS_TTL = 3 * 60 * 1000; // 3 Minutes Cache
 
 export async function POST(req: Request) {
@@ -206,6 +207,7 @@ export async function POST(req: Request) {
 
     // 💥 3. UPDATE SINGLE STATUS 💥
     if (action === "UPDATE_STATUS") {
+      // Your existing UPDATE_STATUS code remains identical...
       if (newStatus === "PAID") {
          const request = await Withdraw.findOneAndUpdate({ _id: withdrawId, status: { $in: ["PROCESSING", "PENDING"] } }, { $set: { status: "PAYING_LOCK" } }, { new: true });
          if (!request) return NextResponse.json({ success: false, message: "Request already processed or locked!" });
@@ -283,7 +285,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC (WITH MEMORY CACHE ENGINE TO PREVENT 502 CRASH) 💥
+    // 💥 4. FETCH LOGIC (STAMPEDE & RAM FIX IMPLIMENTED) 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -313,27 +315,37 @@ export async function POST(req: Request) {
 
          const skip = (page - 1) * limit;
 
-         // 💥 SMART STATS CACHING: Only run heavy aggregation every 3 minutes 💥
+         // 💥 SMART STATS CACHING WITH THREAD LOCK 💥
          let currentStats;
          if (withdrawStatsCache && (Date.now() - withdrawStatsCacheTime < STATS_TTL)) {
              currentStats = withdrawStatsCache;
+         } else if (isGeneratingWithdrawStats && withdrawStatsCache) {
+             // If another request is currently generating the cache, return the old cache immediately!
+             currentStats = withdrawStatsCache;
          } else {
-             const [pendingAgg, paidAgg, allAgg, totalCount, userBalAgg] = await Promise.all([
-                 Withdraw.aggregate([ { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
-                 Withdraw.aggregate([ { $match: { status: "PAID" } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
-                 Withdraw.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
-                 Withdraw.countDocuments(),
-                 User.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$balance", to: "double", onError: 0, onNull: 0 } } } } } ])
-             ]);
-             currentStats = { 
-                 totalRequests: totalCount, 
-                 pendingAmount: pendingAgg[0]?.total || 0, 
-                 paidAmount: paidAgg[0]?.total || 0, 
-                 totalAmount: allAgg[0]?.total || 0,
-                 systemLiability: userBalAgg[0]?.total || 0
-             };
-             withdrawStatsCache = currentStats;
-             withdrawStatsCacheTime = Date.now();
+             // Lock the thread
+             isGeneratingWithdrawStats = true;
+             try {
+                 const [pendingAgg, paidAgg, allAgg, totalCount, userBalAgg] = await Promise.all([
+                     Withdraw.aggregate([ { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+                     Withdraw.aggregate([ { $match: { status: "PAID" } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+                     Withdraw.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+                     Withdraw.countDocuments(),
+                     User.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$balance", to: "double", onError: 0, onNull: 0 } } } } } ])
+                 ]);
+                 currentStats = { 
+                     totalRequests: totalCount, 
+                     pendingAmount: pendingAgg[0]?.total || 0, 
+                     paidAmount: paidAgg[0]?.total || 0, 
+                     totalAmount: allAgg[0]?.total || 0,
+                     systemLiability: userBalAgg[0]?.total || 0
+                 };
+                 withdrawStatsCache = currentStats;
+                 withdrawStatsCacheTime = Date.now();
+             } finally {
+                 // Always unlock thread even if it crashes
+                 isGeneratingWithdrawStats = false;
+             }
          }
 
          // Only fetch the fast pagination data instantly
@@ -350,13 +362,15 @@ export async function POST(req: Request) {
             stats: currentStats
          });
       } else {
-         let rawRequests = await Withdraw.find({ email }).sort({ createdAt: -1 }).lean();
+         // 💥 RAM SHIELD: Maximum 100 recent records for user to prevent memory overflow 💥
+         let rawRequests = await Withdraw.find({ email }).sort({ createdAt: -1 }).limit(100).lean();
          const requests = rawRequests.map((r: any) => ({ ...r, amount: Number((r.amount || 0).toFixed(2)) }));
          return NextResponse.json({ success: true, data: requests });
       }
     }
     return NextResponse.json({ success: false, message: "Invalid Request Action" }, { status: 400 });
   } catch (error: any) {
+    isGeneratingWithdrawStats = false; // Unlock on master catch block too
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
 }
