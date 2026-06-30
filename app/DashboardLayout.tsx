@@ -25,8 +25,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [hasNewNotif, setHasNewNotif] = useState(false); 
   const [currentTime, setCurrentTime] = useState("");
 
+  // 💥 ANTI-SPAM LOCKS ADDED HERE TO PREVENT SELF-DDOS 💥
   const pendingOrdersRef = useRef<any[]>([]);
   const isCheckingOTPRef = useRef(false);
+  const isFetchingOrdersRef = useRef(false);
+  const isFetchingSettingsRef = useRef(false);
+  const isFetchingBalanceRef = useRef(false);
+  const isFetchingNotifsRef = useRef(false);
+  const isCheckingSessionRef = useRef(false);
 
   const handleLogout = useCallback(async () => {
     try { await fetch("/api/logout", { method: "GET" }); } catch (error) {} 
@@ -59,14 +65,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const syncLogout = (e: StorageEvent) => { if (e.key === "user" && !e.newValue) { window.location.href = "/login"; } };
     window.addEventListener("storage", syncLogout);
 
-    const checkActiveSession = async () => { try { const res = await fetch("/api/check-session", { method: "GET" }); if (res.status === 401) handleLogout(); } catch (e) {} };
-    const fetchSystemSettings = async () => { try { const res = await fetch("/api/system-settings"); if(res.ok){ const data = await res.json(); setIsMaintenance(!!(data && data.maintenance)); } } catch (e) {} };
+    // 💥 MAGIC FIX: ADDED LOCKS TO ALL BACKGROUND POLLERS 💥
+    const checkActiveSession = async () => { 
+      if (isCheckingSessionRef.current) return;
+      isCheckingSessionRef.current = true;
+      try { const res = await fetch("/api/check-session", { method: "GET" }); if (res.status === 401) handleLogout(); } catch (e) {} 
+      finally { isCheckingSessionRef.current = false; }
+    };
+
+    const fetchSystemSettings = async () => { 
+      if (isFetchingSettingsRef.current) return;
+      isFetchingSettingsRef.current = true;
+      try { const res = await fetch("/api/system-settings"); if(res.ok){ const data = await res.json(); setIsMaintenance(!!(data && data.maintenance)); } } catch (e) {} 
+      finally { isFetchingSettingsRef.current = false; }
+    };
+
     const fetchRealBalance = async () => {
-      if (parsedUser.role === "admin") return;
+      if (parsedUser.role === "admin" || isFetchingBalanceRef.current) return;
+      isFetchingBalanceRef.current = true;
       try { const res = await fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }); if(res.ok){ const data = await res.json(); if (data && data.user) setBalance(Number(data.user.balance || 0).toFixed(2)); } } catch (err) {}
+      finally { isFetchingBalanceRef.current = false; }
     };
     
     const fetchHeaderNotifications = async () => { 
+      if (isFetchingNotifsRef.current) return;
+      isFetchingNotifsRef.current = true;
       try { 
         const res = await fetch("/api/notifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH_HEADER", email: parsedUser.email }) }); 
         if(res.ok){ 
@@ -83,6 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           } 
         } 
       } catch (err) {} 
+      finally { isFetchingNotifsRef.current = false; }
     };
     
     checkActiveSession(); fetchSystemSettings(); fetchRealBalance(); fetchHeaderNotifications();
@@ -150,12 +174,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!user?.email) return;
 
+    // 💥 MAGIC FIX: THE BIGGEST CULPRIT SECURED WITH A LOCK 💥
     const fetchPendingOrders = async () => {
+       if (isFetchingOrdersRef.current) return;
+       isFetchingOrdersRef.current = true;
        try {
          const res = await fetch("/api/sync-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FETCH", email: user.email }) });
          const data = await res.json();
          if (data.success && data.orders) { pendingOrdersRef.current = data.orders.filter((o: any) => o.status === "WAIT" || (o.status === "DONE" && (Date.now() - o.createdAt < 900000))); }
-       } catch(e) {}
+       } catch(e) {} 
+       finally { isFetchingOrdersRef.current = false; }
     };
 
     const checkGlobalOtps = async () => {
@@ -448,7 +476,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                   <div className="border-t border-[#334155]/50">
                     <button onClick={handleLogout} className="w-full flex items-center gap-3 px-5 py-3.5 text-sm font-bold text-red-400 hover:bg-red-500/10 transition-colors text-left">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                       Logout
                     </button>
                   </div>
