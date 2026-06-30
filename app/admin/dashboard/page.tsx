@@ -90,7 +90,8 @@ export default function AdminGlobalDashboard() {
       const [userData, reportData, summaryRes] = await Promise.all([
         fetch("/api/get-all-users").then(r => r.json()), 
         fetch("/api/admin-agent-report").then(r => r.json()),
-        fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role: "admin" }) }).then(r => r.json())
+        // 💥 THE BOSS FIX: Fetching from the new Dedicated Admin API 💥
+        fetch("/api/admin/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role: "admin" }) }).then(r => r.json())
       ]);
 
       if (summaryRes && summaryRes.success) {

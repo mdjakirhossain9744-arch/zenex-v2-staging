@@ -9,6 +9,11 @@ import { adminMessaging } from "../../lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
 
+// 💥 THE BOSS FIX: IN-MEMORY CACHE ENGINE (TO PREVENT DB LOCKS) 💥
+let withdrawStatsCache: any = null;
+let withdrawStatsCacheTime = 0;
+const STATS_TTL = 3 * 60 * 1000; // 3 Minutes Cache
+
 export async function POST(req: Request) {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -70,10 +75,7 @@ export async function POST(req: Request) {
       let finalAdminNote = "Processing request...";
       let autoPaySuccess = false;
 
-      // ==============================================================
       // 🚀 🤖 THE ADMIN ROBOT LOGIC (BINANCE ONLY) 🤖
-      // ==============================================================
-      // 🛡️ SECURITY: This will NEVER execute for bKash, Nagad, or Rocket!
       if (method === "Binance" && settings?.isAutoApproveBotActive === true) {
           try {
               const rate = await getLiveUsdtRate();
@@ -197,6 +199,8 @@ export async function POST(req: Request) {
           request.status = "PROCESSING"; request.adminNote = "Request is being verified..."; await request.save(); successCount++;
         }
       }
+      // 💥 Reset Cache after bulk action
+      withdrawStatsCacheTime = 0;
       return NextResponse.json({ success: true, message: `Bulk Executed: ${successCount} Success, ${failCount} Failed/Admin Error.` });
     }
 
@@ -246,6 +250,7 @@ export async function POST(req: Request) {
                  if (u && u.fcmToken) adminMessaging.send({ token: u.fcmToken, notification: { title: "🎉 Payment Received!", body: `Your withdraw of ${paymentAmountMsg} has been paid via ${request.method}.` } }).catch(()=>{});
              }).catch(()=>{});
          }
+         withdrawStatsCacheTime = 0; // Reset cache
          return NextResponse.json({ success: true, message: "Status updated to PAID" });
       }
 
@@ -274,10 +279,11 @@ export async function POST(req: Request) {
 
       request.status = newStatus;
       await request.save();
+      withdrawStatsCacheTime = 0; // Reset cache
       return NextResponse.json({ success: true, message: `Status updated to ${newStatus}` });
     }
 
-    // 💥 4. FETCH LOGIC (WITH NEW LIABILITY COUNTER) 💥
+    // 💥 4. FETCH LOGIC (WITH MEMORY CACHE ENGINE TO PREVENT 502 CRASH) 💥
     if (action === "FETCH") {
       if (role === "admin") {
          const { tab = "MANUAL_PENDING", timeFilter = "ALL", searchQuery = "", page = 1, limit = 50 } = body;
@@ -307,15 +313,33 @@ export async function POST(req: Request) {
 
          const skip = (page - 1) * limit;
 
-         // 💥 Added User.aggregate to calculate Total Unpaid Balance in real-time
-         const [totalItems, rawRequests, pendingAgg, paidAgg, allAgg, totalCount, userBalAgg] = await Promise.all([
+         // 💥 SMART STATS CACHING: Only run heavy aggregation every 3 minutes 💥
+         let currentStats;
+         if (withdrawStatsCache && (Date.now() - withdrawStatsCacheTime < STATS_TTL)) {
+             currentStats = withdrawStatsCache;
+         } else {
+             const [pendingAgg, paidAgg, allAgg, totalCount, userBalAgg] = await Promise.all([
+                 Withdraw.aggregate([ { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+                 Withdraw.aggregate([ { $match: { status: "PAID" } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+                 Withdraw.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
+                 Withdraw.countDocuments(),
+                 User.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$balance", to: "double", onError: 0, onNull: 0 } } } } } ])
+             ]);
+             currentStats = { 
+                 totalRequests: totalCount, 
+                 pendingAmount: pendingAgg[0]?.total || 0, 
+                 paidAmount: paidAgg[0]?.total || 0, 
+                 totalAmount: allAgg[0]?.total || 0,
+                 systemLiability: userBalAgg[0]?.total || 0
+             };
+             withdrawStatsCache = currentStats;
+             withdrawStatsCacheTime = Date.now();
+         }
+
+         // Only fetch the fast pagination data instantly
+         const [totalItems, rawRequests] = await Promise.all([
              Withdraw.countDocuments(query),
-             Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-             Withdraw.aggregate([ { $match: { status: { $in: ["PENDING", "PROCESSING"] } } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
-             Withdraw.aggregate([ { $match: { status: "PAID" } }, { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
-             Withdraw.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$amount", to: "double", onError: 0, onNull: 0 } } } } } ]),
-             Withdraw.countDocuments(),
-             User.aggregate([ { $group: { _id: null, total: { $sum: { $convert: { input: "$balance", to: "double", onError: 0, onNull: 0 } } } } } ])
+             Withdraw.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
          ]);
          
          const requests = rawRequests.map((r: any) => ({ ...r, amount: Number((r.amount || 0).toFixed(2)) }));
@@ -323,13 +347,7 @@ export async function POST(req: Request) {
          return NextResponse.json({ 
             success: true, data: requests, 
             pagination: { total: totalItems, page, limit, totalPages: Math.ceil(totalItems / limit) || 1 },
-            stats: { 
-               totalRequests: totalCount, 
-               pendingAmount: pendingAgg[0]?.total || 0, 
-               paidAmount: paidAgg[0]?.total || 0, 
-               totalAmount: allAgg[0]?.total || 0,
-               systemLiability: userBalAgg[0]?.total || 0 // 👈 New Liability Data
-            }
+            stats: currentStats
          });
       } else {
          let rawRequests = await Withdraw.find({ email }).sort({ createdAt: -1 }).lean();

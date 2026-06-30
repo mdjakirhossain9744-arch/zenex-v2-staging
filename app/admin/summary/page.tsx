@@ -37,7 +37,8 @@ export default function AdminSummary() {
     if (parsedUser.role !== "admin") { router.push("/summary"); return; }
 
     try {
-      const res = await fetch("/api/summary-report", {
+      // 💥 THE BOSS FIX: Pointing to the new Dedicated Admin Caching API 💥
+      const res = await fetch("/api/admin/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: parsedUser.email, role: "admin", limitDays: dateFilter === "today" ? 1 : dateFilter })

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "../../lib/mongodb";
-import Order from "../../../models/Order";
-import User from "../../../models/User";
-import DailyStat from "../../../models/DailyStat";
+import connectToDatabase from "../../../lib/mongodb";
+import Order from "../../../../models/Order";
+import User from "../../../../models/User";
+import DailyStat from "../../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
+
+// 💥 ADMIN CACHE ENGINE 💥
+let adminSummaryCache: Record<string, { data: any, timestamp: number }> = {};
+const SUMMARY_TTL = 2 * 60 * 1000; 
 
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
@@ -26,17 +30,15 @@ const getUTCDateString = (dateObj: any = new Date()) => {
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
-    
-    const { email, limitDays = 60 } = await req.json();
-    const safeEmail = email.toLowerCase().trim();
+    const { email, role, limitDays = 60 } = await req.json();
 
-    const currentUser = await User.findOne({ email: new RegExp(`^${safeEmail}$`, 'i') }).lean();
-    if (!currentUser) return NextResponse.json({ success: false });
+    if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    const exactDbEmail = currentUser.email; 
-    let userRate = currentUser.otpRate || 0;
-    let balance = currentUser.balance || 0;
-    
+    const cacheKey = `admin_summary_${limitDays}`;
+    if (adminSummaryCache[cacheKey] && (Date.now() - adminSummaryCache[cacheKey].timestamp < SUMMARY_TTL)) {
+        return NextResponse.json(adminSummaryCache[cacheKey].data);
+    }
+
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
 
@@ -50,7 +52,7 @@ export async function POST(req: Request) {
         liveQueryDateStr = getUTCDateString(yesterdayDate);
     }
     
-    const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr }, userEmail: exactDbEmail };
+    const dailyStatQuery: any = { dateString: { $lt: liveQueryDateStr } };
     
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
@@ -59,9 +61,9 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: liveQueryDateStr };
     }
 
-    const orderQuery: any = { dateString: { $gte: liveQueryDateStr }, userEmail: exactDbEmail }; 
+    const orderQuery: any = { dateString: { $gte: liveQueryDateStr } }; 
 
-    // 💥 USER MATH: Cost Only (No Commission) 💥
+    // 💥 ADMIN MATH: Cost + Commission (Total Agent Rate) 💥
     const [dailyStatsAgg, orders] = await Promise.all([
         DailyStat.aggregate([
             { $match: dailyStatQuery },
@@ -71,10 +73,10 @@ export async function POST(req: Request) {
                 allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } },
                 success: { $sum: { $ifNull: ["$successOTP", 0] } },
                 failed: { $sum: { $cond: [{ $gt: ["$failedNumbers", null] }, "$failedNumbers", { $ifNull: ["$failed", 0] }] } },
-                amount: { $sum: { $ifNull: ["$totalCost", 0] } }
+                amount: { $sum: { $add: [{ $ifNull: ["$totalCost", 0] }, { $ifNull: ["$totalCommission", 0] }] } }
             }}
         ]),
-        Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage orderCost").lean()
+        Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage orderCost orderCommission").lean()
     ]);
 
     const groupedRawData: Record<string, any> = {};
@@ -100,7 +102,8 @@ export async function POST(req: Request) {
           if (finalValidCount === 0) finalValidCount = 1;
 
           groupedRawData[finalDateStr].success += finalValidCount;
-          groupedRawData[finalDateStr].amount += (o.orderCost || 0); // User only sees their earnings
+          // ADMIN COST: User Cost + Agent Commission
+          groupedRawData[finalDateStr].amount += ((o.orderCost || 0) + (o.orderCommission || 0));
 
           if (finalDateStr === todayStrUTC) {
               const hour = new Date(o.updatedAt || o.createdAt || new Date()).getUTCHours();
@@ -123,12 +126,15 @@ export async function POST(req: Request) {
     const todayData = groupedRawData[todayStrUTC] || defaultData;
     const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
-    return NextResponse.json({
+    const responsePayload = {
        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
-       userRate, balance, serverDate: todayStrUTC,
+       userRate: 0, balance: 0, serverDate: todayStrUTC,
        todaySuccess: todayData.success, todaySpend: todayData.amount, 
        yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
-    });
+    };
+
+    adminSummaryCache[cacheKey] = { data: responsePayload, timestamp: Date.now() };
+    return NextResponse.json(responsePayload);
 
   } catch (error) { return NextResponse.json({ success: false }); }
 }

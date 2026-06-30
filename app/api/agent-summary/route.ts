@@ -6,9 +6,9 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
-// 💥 15-SECOND MICRO-CACHE MECHANISM (ZERO DB LOAD) 💥
-const cache = new Map<string, { timestamp: number, data: any }>();
-const CACHE_DURATION = 15000; 
+// 💥 THE BOSS FIX: UPGRADED TO 2-MINUTE ENTERPRISE CACHE ENGINE (Zero DB Load) 💥
+let agentSummaryCache: Record<string, { data: any, timestamp: number }> = {};
+const CACHE_DURATION = 2 * 60 * 1000; // 2 Minutes 
 
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
@@ -45,17 +45,16 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { email, limitDays = 60 } = body;
     const safeAgentEmail = email.toLowerCase().trim();
-    const cacheKey = `${safeAgentEmail}_${limitDays}`;
+    const cacheKey = `agent_${safeAgentEmail}_${limitDays}`;
 
     const now = Date.now();
-    const cachedData = cache.get(cacheKey);
-    if (cachedData && (now - cachedData.timestamp < CACHE_DURATION)) {
-        return NextResponse.json(cachedData.data);
+    // 💥 SERVE INSTANT CACHE TO AGENT 💥
+    if (agentSummaryCache[cacheKey] && (now - agentSummaryCache[cacheKey].timestamp < CACHE_DURATION)) {
+        return NextResponse.json(agentSummaryCache[cacheKey].data);
     }
 
     await connectToDatabase();
 
-    // 💥 FIX 1: FIRE-AND-FORGET INDEXING FOR AGENTS 💥
     if (Order.collection && DailyStat.collection && User.collection) {
         Promise.all([
             Order.collection.createIndex({ dateString: -1, userEmail: 1 }).catch(() => {}),
@@ -123,7 +122,7 @@ export async function POST(req: Request) {
         ];
     }
 
-    const orderQuery: any = { dateString: { $gte: liveQueryDateStr } }; // 💥 FIXED: Using Covering Index! 
+    const orderQuery: any = { dateString: { $gte: liveQueryDateStr } }; 
     if (exactTargetEmails.length > 0) {
         orderQuery.$or = [
             { userEmail: { $in: exactTargetEmails } },
@@ -131,7 +130,6 @@ export async function POST(req: Request) {
         ];
     }
 
-    // 💥 MONGODB AGGREGATION & PARALLEL EXECUTION FOR AGENT DASHBOARD 💥
     const [dailyStatsAgg, orders] = await Promise.all([
         DailyStat.aggregate([
             { $match: dailyStatQuery },
@@ -151,7 +149,6 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // Load instantly processed Aggregation Data
     dailyStatsAgg.forEach((ds: any) => {
         groupedRawData[ds._id] = {
             total: ds.total, allocation: ds.allocation,
@@ -159,7 +156,6 @@ export async function POST(req: Request) {
         };
     });
     
-    // Process Today's Live Orders
     orders.forEach((o: any) => {
        const currentStatus = (o.status || "").toUpperCase(); 
        const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
@@ -176,8 +172,6 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].allocation += 1; 
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          
-          // 💥 FIX 2: BULLETPROOF MULTI-OTP COUNTING MATCHED WITH COMMISSION 💥
           const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
           let validMsgCount = 0;
           
@@ -224,6 +218,7 @@ export async function POST(req: Request) {
         const createdTime = new Date(u.createdAt || nowTime).getTime();
         const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : null;
         let timeText = ""; let sortValue = 0; 
+        
         if (loginTime) {
             sortValue = loginTime;
             const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
@@ -274,7 +269,8 @@ export async function POST(req: Request) {
        yesterdaySuccess: yesterdayData.success, yesterdayRevenue: yesterdayData.amount
     };
 
-    cache.set(cacheKey, { timestamp: now, data: responseData });
+    // 💥 SAVE TO CACHE 💥
+    agentSummaryCache[cacheKey] = { data: responseData, timestamp: now };
 
     return NextResponse.json(responseData);
   } catch (error) { return NextResponse.json({ success: false }); }
