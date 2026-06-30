@@ -13,8 +13,13 @@ export async function GET(req: Request) {
     // ডাটাবেস থেকে শুধু কাঁচা লগগুলো তুলে আনবে
     let query: any = {};
     if (num) {
-      // যদি নাম্বার দিয়ে সার্চ করেন, তবে শুধু ওই নাম্বারের কাঁচা ডাটা আনবে
-      query = { "rawPayload.orderData.searchNumber": num };
+      // 💥 THE X-RAY FIX: এখন Frontend এবং Fastify Worker (Provider) দুটোর লগই স্ক্যান করবে! 💥
+      query = {
+        $or: [
+          { "rawPayload.orderData.searchNumber": num }, // Next.js Frontend Logs
+          { "rawPayload.providerData.number": { $regex: num, $options: "i" } } // Fastify Background Logs
+        ]
+      };
     }
 
     // 💥 TS Error Fix: Dynamic Model (No Red Lines, 100% Safe) 💥
@@ -23,10 +28,10 @@ export async function GET(req: Request) {
         rawPayload: { type: Object }
     }, { strict: false }));
 
-    // শেষের ১০টা কাঁচা হিট দেখাবে
+    // শেষের ২০টা কাঁচা হিট দেখাবে (আগে ১০ ছিল, এখন হিস্ট্রি বেশি দেখার জন্য ২০ করে দিলাম)
     const rawLogs = await RawLog.find(query)
       .sort({ timestamp: -1 })
-      .limit(10) 
+      .limit(20) 
       .lean();
 
     return NextResponse.json({
