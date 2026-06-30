@@ -6,11 +6,9 @@ import User from "../../../models/User";
 import Order from "../../../models/Order";
 import Redis from "ioredis";
 
-// 💥 REDIS & EVENT LOOP BREAKER INITIALIZED 💥
 const redis = new Redis(); 
 const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-// 🌍 UTC Timezone Converter
 const getUTCDateString = (dateObj: any = new Date()) => {
   try {
     return new Intl.DateTimeFormat('en-CA', {
@@ -41,12 +39,9 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const rawSearchQuery = searchParams.get("search")?.trim() || "";
-    
-    // ফিল্টার প্যারামিটার
     const statusFilter = searchParams.get("status")?.trim().toLowerCase() || "all";
     const agentFilter = searchParams.get("agent")?.trim() || "all";
 
-    // 💥 REDIS CACHE FOR PAGINATION (Prevents Spam Clicking & Freezing) 💥
     const PAGE_CACHE_KEY = `get_all_users_${page}_${limit}_${rawSearchQuery}_${statusFilter}_${agentFilter}`;
     const cachedPage = await redis.get(PAGE_CACHE_KEY).catch(() => null);
     if (cachedPage) {
@@ -55,14 +50,10 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    // 💥 FIRE-AND-FORGET INDEXING: Prevents Admin Panel from freezing forever! 💥
     if (User.collection && Order.collection) {
       Promise.all([
         User.collection.createIndex({ email: 1 }).catch(() => {}),
-        User.collection.createIndex({ role: 1 }).catch(() => {}),
-        User.collection.createIndex({ status: 1 }).catch(() => {}),
-        Order.collection.createIndex({ createdAt: -1, status: 1 }).catch(() => {}),
-        Order.collection.createIndex({ userEmail: 1 }).catch(() => {})
+        Order.collection.createIndex({ dateString: 1, status: 1 }).catch(() => {})
       ]).catch(() => {});
     }
 
@@ -75,11 +66,10 @@ export async function GET(req: NextRequest) {
         const orConditions: any[] = [
             { fullName: searchRegex },
             { email: searchRegex },
-            { customAgentMail: searchRegex }, // Added Custom Agent Mail Search
-            { agentEmail: searchRegex }       // Added Base Agent Mail Search
+            { customAgentMail: searchRegex },
+            { agentEmail: searchRegex }
         ];
 
-        // 💥 UID (ZX-123456) SEARCH FIX 💥
         if (/^zx-[a-f0-9]{1,6}$/i.test(rawSearchQuery)) {
             const hexPart = rawSearchQuery.replace(/^zx-/i, '').toLowerCase();
             orConditions.push({
@@ -98,17 +88,11 @@ export async function GET(req: NextRequest) {
         query.$or = orConditions;
     }
 
-    if (statusFilter && statusFilter !== "all") {
-        query.status = statusFilter;
-    }
-
-    if (agentFilter && agentFilter !== "all") {
-        query.agentEmail = agentFilter;
-    }
+    if (statusFilter && statusFilter !== "all") query.status = statusFilter;
+    if (agentFilter && agentFilter !== "all") query.agentEmail = agentFilter;
 
     const skip = (page - 1) * limit;
     
-    // 💥 1. PARALLEL EXECUTION: Count and Fetch running simultaneously (50% Faster) 💥
     const [totalUsersInQuery, users] = await Promise.all([
         User.countDocuments(query),
         User.find(query)
@@ -121,13 +105,10 @@ export async function GET(req: NextRequest) {
 
     const userEmails = users.map((u: any) => (u.email || "").toLowerCase().trim());
     const todayStr = getUTCDateString(); 
-    
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
-    // 💥 RAM PROTECTOR: Use Cursor for filtering user orders 💥
+    // 💥 THE DB KILLER FIX: ONLY FETCH TODAY'S ORDERS! 💥
     const ordersCursor = Order.find({
-        createdAt: { $gte: twoDaysAgo },
+        dateString: todayStr, // <--- FIXED THIS TO STOP FULL TABLE SCANS
         status: { $in: ["DONE", "Success", "SUCCESS"] },
         $or: [
             { userEmail: { $in: userEmails } },
@@ -139,23 +120,16 @@ export async function GET(req: NextRequest) {
     let oCount = 0;
     
     for await (const o of ordersCursor) {
-        const finalDateStr = o.updatedAt 
-            ? getUTCDateString(o.updatedAt) 
-            : (o.createdAt ? getUTCDateString(o.createdAt) : (o.dateString ? getUTCDateString(new Date(o.dateString)) : getUTCDateString(new Date())));
+        const e = (o.userEmail || o.email || "").toLowerCase().trim();
+        const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+        const uniqueCodes = new Set();
+        msgArray.forEach((msg: string) => {
+            const match = msg.match(/\b\d{4,8}\b/);
+            uniqueCodes.add(match ? match[0] : msg.trim());
+        });
+        const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+        otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         
-        if (finalDateStr === todayStr) {
-            const e = (o.userEmail || o.email || "").toLowerCase().trim();
-            const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-            const uniqueCodes = new Set();
-            msgArray.forEach((msg: string) => {
-                const match = msg.match(/\b\d{4,8}\b/);
-                uniqueCodes.add(match ? match[0] : msg.trim());
-            });
-            const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
-            otpCounts[e] = (otpCounts[e] || 0) + msgCount;
-        }
-        
-        // 🚦 Yield to Event Loop every 500 iterations
         if (++oCount % 500 === 0) await yieldToEventLoop();
     }
 
@@ -178,12 +152,10 @@ export async function GET(req: NextRequest) {
         telegramLink: u.telegramLink || "",
         agentMaxUsers: u.agentMaxUsers || 100,
         isApiActive: u.isApiActive || false,
-        // 💥 MAGIC FIX: NOW THE FRONTEND KNOWS IF AGENT HAS PERMISSION 💥
         canManageApi: u.canManageApi || false 
       };
     });
 
-    // 💥 2. REDIS CACHE FOR HEAVY AGGREGATIONS (Prevents DB Timeout on Page Load) 💥
     const STATS_CACHE_KEY = "global_system_stats_cache";
     let systemStats: any = null;
     const cachedStats = await redis.get(STATS_CACHE_KEY).catch(() => null);
@@ -209,7 +181,6 @@ export async function GET(req: NextRequest) {
           bannedAccounts, 
           systemLiability: (liabilityAgg[0]?.total || 0).toFixed(2) 
         };
-        // Cache heavy stats for 60 seconds
         await redis.set(STATS_CACHE_KEY, JSON.stringify(systemStats), "EX", 60).catch(() => null);
     }
 
@@ -219,7 +190,6 @@ export async function GET(req: NextRequest) {
         stats: systemStats
     };
 
-    // Cache the exact page response for 15 seconds to prevent spam clicking
     await redis.set(PAGE_CACHE_KEY, JSON.stringify(responsePayload), "EX", 15).catch(() => null);
 
     return NextResponse.json(responsePayload, { status: 200 });

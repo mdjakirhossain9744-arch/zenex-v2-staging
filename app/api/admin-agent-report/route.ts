@@ -7,11 +7,9 @@ import Order from "../../../models/Order";
 import DailyStat from "../../../models/DailyStat"; 
 import Redis from "ioredis";
 
-// 💥 REDIS & EVENT LOOP BREAKER INITIALIZED 💥
 const redis = new Redis(); 
 const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-// 🌍 UTC Timezone Converter
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { 
     return new Intl.DateTimeFormat('en-CA', { 
@@ -40,7 +38,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "🔴 FORBIDDEN: Invalid Token!" }, { status: 403 });
     }
 
-    // 💥 REDIS MASTER CACHE: Load report instantly if cached 💥
     const CACHE_KEY = "admin_agent_report_cache";
     const cachedData = await redis.get(CACHE_KEY).catch(() => null);
     if (cachedData) {
@@ -49,10 +46,9 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    // 💥 FIX 1: FIRE-AND-FORGET INDEXING FOR SUPERFAST LOAD 💥
     if (Order.collection && DailyStat.collection && User.collection) {
         Promise.all([
-            Order.collection.createIndex({ createdAt: -1, status: 1 }).catch(() => {}),
+            Order.collection.createIndex({ dateString: 1, status: 1 }).catch(() => {}),
             DailyStat.collection.createIndex({ dateString: -1 }).catch(() => {}),
             User.collection.createIndex({ role: 1, agentEmail: 1 }).catch(() => {})
         ]).catch(() => {});
@@ -63,7 +59,6 @@ export async function GET(req: NextRequest) {
     const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); 
     const startOfMonthStr = getUTCDateString(startOfMonth);
 
-    // 💥 FIX 2: PARALLEL EXECUTION FOR SMALL DATA 💥
     const [agents, users] = await Promise.all([
         User.find({ role: "agent" }).lean(),
         User.find({ role: "user", agentEmail: { $ne: null } }).select("email agentEmail otpRate").lean(),
@@ -97,7 +92,6 @@ export async function GET(req: NextRequest) {
 
     const archivedKeys = new Set<string>();
 
-    // 💥 FIX 3: RAM PROTECTOR (CURSOR + EVENT LOOP BREAKER) 💥
     const dailyStatsCursor = DailyStat.find({ dateString: { $gte: startOfMonthStr } }).cursor();
     let dsCount = 0;
 
@@ -116,7 +110,6 @@ export async function GET(req: NextRequest) {
                 targetAgent.thisMonthOTPs += ds.successOTP;
                 if (dDate === todayStrUTC) targetAgent.todayOTPs += ds.successOTP;
                 
-                // Use saved commission if available, else calculate fallback
                 const commission = ds.totalCommission !== undefined 
                     ? ds.totalCommission 
                     : (Math.max(0, targetAgent.agentRate - userToAgentMap[uEmail].userRate) * ds.successOTP);
@@ -124,14 +117,13 @@ export async function GET(req: NextRequest) {
                 targetAgent.thisMonthCommission += commission;
             }
         }
-        
-        // 🚦 Yield to Event Loop every 500 iterations
         if (++dsCount % 500 === 0) await yieldToEventLoop();
     }
 
-    // 💥 FIX 4: ORDERS MASSIVE QUERY CONVERTED TO CURSOR 💥
+    // 💥 THE DB KILLER FIX: ONLY FETCH TODAY'S ORDERS! 💥
+    // past days are already covered by DailyStat, no need to fetch 500k monthly rows!
     const ordersCursor = Order.find({ 
-        createdAt: { $gte: startOfMonth },
+        dateString: todayStrUTC, // <--- FIXED THIS!
         status: { $in: ["DONE", "Success", "SUCCESS"] }
     }).select("userEmail fullMessage createdAt updatedAt dateString orderCommission").cursor();
     
@@ -146,7 +138,6 @@ export async function GET(req: NextRequest) {
         const msgLower = (o.fullMessage || "").toLowerCase();
         const isFreeService = msgLower.includes("whatsapp") || msgLower.includes("telegram") || msgLower.includes("t.me");
 
-        // 💥 BULLETPROOF MULTI-OTP COUNTING MATCHED WITH PAYOUT 💥
         const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
         let validMsgCount = 0;
         
@@ -157,7 +148,7 @@ export async function GET(req: NextRequest) {
             }
         });
 
-        if (validMsgCount === 0) validMsgCount = 1; // Fallback
+        if (validMsgCount === 0) validMsgCount = 1; 
 
         if (userToAgentMap[uEmail]) {
             let aEmail = userToAgentMap[uEmail].agentEmail;
@@ -173,7 +164,6 @@ export async function GET(req: NextRequest) {
                 if (oDate === todayStrUTC) targetAgent.todayOTPs += validMsgCount; 
                 
                 if (!isFreeService) {
-                    // 💥 FINANCIAL MATCH: Exact commission from DB 💥
                     const commission = o.orderCommission !== undefined 
                         ? o.orderCommission 
                         : (Math.max(0, targetAgent.agentRate - userToAgentMap[uEmail].userRate) * validMsgCount);
@@ -182,8 +172,6 @@ export async function GET(req: NextRequest) {
                 }
             }
         }
-        
-        // 🚦 Yield to Event Loop every 500 iterations
         if (++oCount % 500 === 0) await yieldToEventLoop();
     }
 
@@ -203,7 +191,6 @@ export async function GET(req: NextRequest) {
         report: finalReport 
     };
 
-    // Save to Redis (Cache for 60 Seconds to prevent dashboard crash)
     await redis.set(CACHE_KEY, JSON.stringify(responsePayload), "EX", 60).catch(() => null);
 
     return NextResponse.json(responsePayload, { status: 200 });
