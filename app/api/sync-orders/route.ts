@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     if (Order.collection) {
         Promise.all([
             Order.collection.createIndex({ userEmail: 1, dateString: 1, status: 1 }).catch(() => {}),
-            Order.collection.createIndex({ userEmail: 1, status: 1, createdAt: 1 }).catch(() => {})
+            Order.collection.createIndex({ userEmail: 1, status: 1, createdAt: -1 }).catch(() => {})
         ]).catch(() => {});
     }
 
@@ -191,8 +191,14 @@ export async function POST(req: Request) {
     }
 
     if (action === "UPDATE") {
-      const existingOrder = await Order.findOne({ searchNumber: orderData.searchNumber, userEmail: email });
-      if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found" });
+      // 💥 MAGIC FIX: Sort by createdAt -1 to get the NEWEST active order! 💥
+      const existingOrder = await Order.findOne({ 
+          searchNumber: orderData.searchNumber, 
+          userEmail: email,
+          status: { $in: ["WAIT", "DONE"] }
+      }).sort({ createdAt: -1 });
+
+      if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found or already failed." });
 
       const clearCache = async () => {
          await redis.del(`sync_orders_${email}_1_30_ALL_${getUTCDateString()}`);
@@ -209,36 +215,29 @@ export async function POST(req: Request) {
 
       if (orderData.status === "DONE" || orderData.otp) {
         const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
-        if (orderAgeMs > 20 * 60 * 1000) { 
+        
+        // 💥 Extra safety: only expire if older than 20 mins AND still waiting
+        if (orderAgeMs > 20 * 60 * 1000 && existingOrder.status === "WAIT") { 
             await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
             await clearCache();
             return NextResponse.json({ success: false, message: "Order expired." });
         }
 
-        if (existingOrder.status === "FAIL" || existingOrder.status === "CANCEL") {
-            return NextResponse.json({ success: false, message: "Order was already cancelled or failed." });
-        }
-
-        const freshOrder = await Order.findById(existingOrder._id);
         const incomingMsg = (orderData.fullMessage || "").trim();
         if (!incomingMsg) return NextResponse.json({ success: false, message: "Empty message" });
 
-        const currentMsg = freshOrder.fullMessage || "";
+        const currentMsg = existingOrder.fullMessage || "";
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
         const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
 
-        // 💥 MAGIC FIX FROM PROVIDER DOCS: Generate Exact otp_id (number + time) 💥
         const cleanNumber = String(orderData.searchNumber || "").replace(/\D/g, "");
         const exactProviderOtpId = incomingTimestamp ? cleanNumber + incomingTimestamp : null;
 
         if (exactProviderOtpId) {
-            // ১. আমরা এখন প্রোভাইডারের অরিজিনাল otp_id এবং আমাদের receivedNids দুটোই চেক করছি
-            if (freshOrder.processedKeys?.includes(exactProviderOtpId) || freshOrder.receivedNids?.includes(incomingTimestamp)) {
+            if (existingOrder.processedKeys?.includes(exactProviderOtpId) || existingOrder.receivedNids?.includes(incomingTimestamp)) {
                 return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
             }
-            // ২. যদি exactProviderOtpId নতুন হয়, তার মানে ইউজার Resend মেরেছে, তাই টেক্সট সেম হলেও আমরা পাস করব!
         } else {
-            // ৩. Fallback (যদি কোনো টাইমস্ট্যাম্প না থাকে)
             if (currentMsgsArray.includes(incomingMsg)) {
                 return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
             }
@@ -290,7 +289,6 @@ export async function POST(req: Request) {
             $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
         };
 
-        // 💥 Save both NID & exactProviderOtpId perfectly in sync with Fastify Worker 💥
         if (incomingTimestamp) {
             updateData.$addToSet = { receivedNids: incomingTimestamp };
             if (exactProviderOtpId) {
@@ -398,6 +396,7 @@ export async function POST(req: Request) {
   }
 }
 
+// 💥 RESTORED: THE BACKGROUND AUTO-SYNC CRON JOB API 💥
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
