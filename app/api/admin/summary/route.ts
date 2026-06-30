@@ -21,14 +21,14 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-// 💥 THE THREAD SAVER (Changed from 1ms to 0ms for instant unblocking)
+// 💥 THE THREAD SAVER
 const releaseThread = () => new Promise(resolve => setTimeout(resolve, 0));
 
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
     
-    // 💥 MAGIC FIX: FIRE-AND-FORGET INDEXING TO PREVENT FULL TABLE SCANS 💥
+    // 💥 FIRE-AND-FORGET INDEXING
     if (Order.collection && DailyStat.collection) {
         Promise.all([
             Order.collection.createIndex({ dateString: 1 }).catch(() => {}),
@@ -43,18 +43,15 @@ export async function POST(req: Request) {
     const cacheKey = `admin_summary_absolute_${limitDays}`; 
     const cachedData = await redis.get(cacheKey).catch(() => null);
 
-    // 💥 REDIS INSTANT RESPONSE (0.01s)
+    // 💥 REDIS INSTANT RESPONSE
     if (cachedData) {
         let parsedCache;
         try {
             parsedCache = typeof cachedData === "string" ? JSON.parse(cachedData) : cachedData;
             return NextResponse.json(parsedCache, { status: 200 });
-        } catch (err) {
-            // Ignore parse error and proceed to generate fresh data
-        }
+        } catch (err) {}
     }
 
-    // 💥 IF NO CACHE, FETCH REAL DATA (Server will not freeze)
     const todayStrUTC = getUTCDateString(new Date());
     const isAllTime = limitDays === "all";
 
@@ -65,20 +62,36 @@ export async function POST(req: Request) {
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
     }
 
+    // 💥 THE MAGIC FIX: ADDED 'allocation' AND '$ifNull' PROTECTION 💥
     const dailyStatsAgg = await DailyStat.aggregate([
         { $match: dailyStatQuery },
-        { $group: { _id: "$dateString", total: { $sum: "$totalNumbers" }, success: { $sum: "$successOTP" }, failed: { $sum: "$failedNumbers" }, amount: { $sum: { $add: ["$totalCost", "$totalCommission"] } } } }
+        { $group: { 
+            _id: "$dateString", 
+            total: { $sum: { $ifNull: ["$totalNumbers", 0] } }, 
+            allocation: { $sum: { $ifNull: ["$totalNumbers", 0] } }, // Added allocation for Numbers Got
+            success: { $sum: { $ifNull: ["$successOTP", 0] } }, 
+            failed: { $sum: { $cond: [{ $gt: ["$failedNumbers", null] }, "$failedNumbers", { $ifNull: ["$failed", 0] }] } }, 
+            amount: { $sum: { $add: [{ $ifNull: ["$totalCost", 0] }, { $ifNull: ["$totalCommission", 0] }] } } 
+        } }
     ]);
 
     const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
+    // 💥 MAP ALLOCATION TO FRONTEND 💥
     dailyStatsAgg.forEach((ds: any) => {
-        groupedRawData[ds._id] = { total: ds.total || 0, success: ds.success || 0, failed: ds.failed || 0, amount: ds.amount || 0 };
+        groupedRawData[ds._id] = { 
+            total: ds.total || 0, 
+            allocation: ds.allocation || 0, // Mapping allocation
+            success: ds.success || 0, 
+            failed: ds.failed || 0, 
+            amount: ds.amount || 0 
+        };
     });
 
-    groupedRawData[todayStrUTC] = { total: 0, success: 0, failed: 0, amount: 0 };
+    // 💥 ADDED ALLOCATION FOR TODAY 💥
+    groupedRawData[todayStrUTC] = { total: 0, allocation: 0, success: 0, failed: 0, amount: 0 };
 
     const ordersCursor = Order.find({ dateString: todayStrUTC })
         .select("status createdAt updatedAt fullMessage orderCost orderCommission")
@@ -88,10 +101,12 @@ export async function POST(req: Request) {
     let counter = 0;
     for await (const o of ordersCursor) {
         counter++;
-        if (counter % 500 === 0) await releaseThread(); // Prevents Server Crash!
+        if (counter % 500 === 0) await releaseThread(); 
 
         const currentStatus = (o.status || "").toUpperCase(); 
+        
         groupedRawData[todayStrUTC].total += 1;
+        groupedRawData[todayStrUTC].allocation += 1; // Incrementing allocation for today
 
         if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
             const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
@@ -116,7 +131,7 @@ export async function POST(req: Request) {
     const yesterdayDate = new Date(); yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
     const yesterdayStrUTC = getUTCDateString(yesterdayDate);
 
-    const defaultData = { success: 0, amount: 0, total: 0, failed: 0 };
+    const defaultData = { success: 0, amount: 0, total: 0, allocation: 0, failed: 0 };
     const todayData = groupedRawData[todayStrUTC] || defaultData;
     const yesterdayData = groupedRawData[yesterdayStrUTC] || defaultData;
 
@@ -126,7 +141,6 @@ export async function POST(req: Request) {
         yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
     };
 
-    // 💥 MAGIC FIX: Use robust `set(..., "EX")` instead of `setex` which throws errors on some clients
     await redis.set(cacheKey, JSON.stringify(responsePayload), "EX", 60).catch(() => null);
     
     return NextResponse.json(responsePayload);
