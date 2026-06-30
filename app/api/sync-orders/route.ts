@@ -5,16 +5,12 @@ import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
 import Withdraw from "../../../models/Withdraw"; 
-// 💥 NEW IMPORTS FOR BINANCE AUTO-PAY 💥
 import PaymentSetting from "../../../models/PaymentSetting";
 import { getLiveUsdtRate, sendBinancePay } from "../../lib/binance";
 import Notification from "../../../models/Notification";
-import { adminMessaging } from "../../lib/firebase-admin";
 
-// 💥 REDIS ENGINE IMPORTED 💥
 import redis from "../../lib/redis";
 
-// 💥 NEXT.JS CORE CACHE KILLER 💥
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
@@ -33,7 +29,6 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
 
-    // 💥 MAGIC FIX 1: FIRE-AND-FORGET COMPOUND INDEXING TO SAVE DB CPU 💥
     if (Order.collection) {
         Promise.all([
             Order.collection.createIndex({ userEmail: 1, dateString: 1, status: 1 }).catch(() => {}),
@@ -61,7 +56,6 @@ export async function POST(req: Request) {
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
 
-      // 💥 CHECK REDIS FIRST (Absorbs spam polls) 💥
       const cacheKey = `sync_orders_${email}_${page}_${limit}_${filterStatus || 'ALL'}_${fetchDate}`;
       const cachedData = await redis.get(cacheKey);
       if (cachedData) {
@@ -71,7 +65,6 @@ export async function POST(req: Request) {
           });
       }
 
-      // 💥 THE BOSS FIX: 60-Second Throttle for Global Timeout (Saves DB) 💥
       const timeoutLockKey = `timeout_lock_${email}`;
       const hasTimeoutLock = await redis.get(timeoutLockKey);
 
@@ -81,7 +74,6 @@ export async function POST(req: Request) {
             { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
             { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } }
           );
-          // Changed to standard SET format for maximum compatibility
           await redis.set(timeoutLockKey, "locked", "EX", 60).catch(() => null); 
       }
 
@@ -93,7 +85,6 @@ export async function POST(req: Request) {
 
       const skip = (page - 1) * limit;
       
-      // 💥 MAGIC FIX 2: PARALLEL LIGHTWEIGHT QUERIES INSTEAD OF AGGREGATION 💥
       const [totalItems, rawOrders] = await Promise.all([
           Order.countDocuments(query),
           Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
@@ -106,7 +97,6 @@ export async function POST(req: Request) {
       const statQuery = { userEmail: email, dateString: fetchDate };
 
       if (fetchDate === todayStr) {
-          // 💥 KILLED THE HEAVY Order.aggregate()! Using High-Speed Indexed Counts 💥
           const [sTotal, sSuccess, sWait, sFail] = await Promise.all([
               Order.countDocuments({ userEmail: email, dateString: fetchDate }),
               Order.countDocuments({ userEmail: email, dateString: fetchDate, status: { $in: ["DONE", "SUCCESS"] } }),
@@ -163,7 +153,6 @@ export async function POST(req: Request) {
         stats 
       });
 
-      // 💥 MAGIC FIX 3: INCREASED CACHE TO 10 SECONDS TO MATCH FRONTEND POLL RATE 💥
       await redis.set(cacheKey, responsePayload, "EX", 10).catch(() => null);
 
       return new NextResponse(responsePayload, { 
@@ -197,9 +186,7 @@ export async function POST(req: Request) {
       });
       await newOrder.save();
       
-      // 💥 CLEAR REDIS CACHE TO SHOW NEW ORDER INSTANTLY 💥
       await redis.del(`sync_orders_${email}_1_30_ALL_${todayStr}`);
-      
       return NextResponse.json({ success: true });
     }
 
@@ -216,7 +203,7 @@ export async function POST(req: Request) {
         existingOrder.otp = orderData.otp || "Timeout"; 
         existingOrder.expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
         await existingOrder.save();
-        await clearCache(); // 💥 Clear cache
+        await clearCache();
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
 
@@ -224,7 +211,7 @@ export async function POST(req: Request) {
         const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
         if (orderAgeMs > 20 * 60 * 1000) { 
             await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
-            await clearCache(); // 💥 Clear cache
+            await clearCache();
             return NextResponse.json({ success: false, message: "Order expired." });
         }
 
@@ -238,14 +225,23 @@ export async function POST(req: Request) {
 
         const currentMsg = freshOrder.fullMessage || "";
         const currentMsgsArray = currentMsg ? currentMsg.split(" _||_ ") : [];
-
-        if (currentMsgsArray.includes(incomingMsg)) {
-            return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
-        }
-
         const incomingTimestamp = orderData.receivedAt ? String(orderData.receivedAt) : null;
-        if (incomingTimestamp && freshOrder.receivedNids?.includes(incomingTimestamp)) {
-            return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
+
+        // 💥 MAGIC FIX FROM PROVIDER DOCS: Generate Exact otp_id (number + time) 💥
+        const cleanNumber = String(orderData.searchNumber || "").replace(/\D/g, "");
+        const exactProviderOtpId = incomingTimestamp ? cleanNumber + incomingTimestamp : null;
+
+        if (exactProviderOtpId) {
+            // ১. আমরা এখন প্রোভাইডারের অরিজিনাল otp_id এবং আমাদের receivedNids দুটোই চেক করছি
+            if (freshOrder.processedKeys?.includes(exactProviderOtpId) || freshOrder.receivedNids?.includes(incomingTimestamp)) {
+                return NextResponse.json({ success: true, message: "API Double Call Blocked!" });
+            }
+            // ২. যদি exactProviderOtpId নতুন হয়, তার মানে ইউজার Resend মেরেছে, তাই টেক্সট সেম হলেও আমরা পাস করব!
+        } else {
+            // ৩. Fallback (যদি কোনো টাইমস্ট্যাম্প না থাকে)
+            if (currentMsgsArray.includes(incomingMsg)) {
+                return NextResponse.json({ success: true, message: "Duplicate Text Blocked! Matches MNIT rule." });
+            }
         }
 
         const incomingCode = extractStrictOTP(incomingMsg); 
@@ -280,13 +276,13 @@ export async function POST(req: Request) {
           }
         }
 
-        const updateQuery = incomingTimestamp 
-              ? { _id: existingOrder._id, receivedNids: { $ne: incomingTimestamp } } 
+        const updateQuery = exactProviderOtpId 
+              ? { _id: existingOrder._id, processedKeys: { $ne: exactProviderOtpId } } 
               : { _id: existingOrder._id };
 
         const updateData: any = {
             $set: {
-              fullMessage: currentMsg ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
+              fullMessage: currentMsg && currentMsg !== "Waiting..." ? currentMsg + " _||_ " + incomingMsg : incomingMsg,
               otp: incomingCode, 
               status: "DONE",
               expireAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
@@ -294,8 +290,12 @@ export async function POST(req: Request) {
             $inc: { orderCost: currentOtpCost, orderCommission: currentOtpCommission }
         };
 
+        // 💥 Save both NID & exactProviderOtpId perfectly in sync with Fastify Worker 💥
         if (incomingTimestamp) {
-            updateData.$push = { receivedNids: incomingTimestamp };
+            updateData.$addToSet = { receivedNids: incomingTimestamp };
+            if (exactProviderOtpId) {
+                updateData.$addToSet.processedKeys = exactProviderOtpId;
+            }
         }
 
         const updatedOrder = await Order.findOneAndUpdate(updateQuery, updateData, { new: true });
@@ -343,7 +343,6 @@ export async function POST(req: Request) {
                     });
                     await newWithdraw.save();
 
-                    // 💥 ADMIN SWITCH & BINANCE ENGINE 💥
                     const settings = await PaymentSetting.findOne({ type: "global" }).lean();
                     if (settings?.isAutoApproveBotActive === true) {
                         try {
@@ -389,7 +388,7 @@ export async function POST(req: Request) {
           );
         }
 
-        await clearCache(); // 💥 Clear cache on success
+        await clearCache(); 
         return NextResponse.json({ success: true, message: "Real OTP Processed successfully!" });
       }
     }
