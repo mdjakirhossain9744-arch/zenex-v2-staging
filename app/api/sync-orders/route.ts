@@ -11,6 +11,9 @@ import { getLiveUsdtRate, sendBinancePay } from "../../lib/binance";
 import Notification from "../../../models/Notification";
 import { adminMessaging } from "../../lib/firebase-admin";
 
+// 💥 REDIS ENGINE IMPORTED 💥
+import redis from "../../lib/redis";
+
 // 💥 NEXT.JS CORE CACHE KILLER 💥
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -45,9 +48,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
     }
 
+    // ==========================================
+    // 💥 1. FETCH LOGIC (SUPERCHARGED BY REDIS) 💥
+    // ==========================================
     if (action === "FETCH") {
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
+      
+      // 💥 REDIS CACHE KEY GENERATION
+      const cacheKey = `sync_orders_${email}_${page}_${limit}_${filterStatus || 'ALL'}_${fetchDate}`;
+
+      // 💥 CHECK REDIS FIRST (Absorbs 99% of spam polls)
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+          return new NextResponse(cachedData, {
+              status: 200,
+              headers: { "Content-Type": "application/json", "Cache-Control": "no-store, max-age=0" }
+          });
+      }
 
       const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
       await Order.updateMany(
@@ -128,14 +146,25 @@ export async function POST(req: Request) {
       finalOrders.sort((a, b) => b.createdAt - a.createdAt);
       const hasMoreData = rawOrders.length === limit;
 
-      return NextResponse.json({ 
+      const responsePayload = JSON.stringify({ 
         success: true, 
         orders: finalOrders,
         pagination: { total: totalItems, page, limit, hasMore: hasMoreData },
         stats 
-      }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+      });
+
+      // 💥 SAVE TO REDIS FOR 3 SECONDS (Protects DB from heavy spam)
+      await redis.setex(cacheKey, 3, responsePayload);
+
+      return new NextResponse(responsePayload, { 
+          status: 200, 
+          headers: { 'Cache-Control': 'no-store, max-age=0', "Content-Type": "application/json" } 
+      });
     }
 
+    // ==========================================
+    // 💥 2. CREATE LOGIC 💥
+    // ==========================================
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
       const user = await User.findOne({ email }).lean();
@@ -160,18 +189,32 @@ export async function POST(req: Request) {
         expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
+
+      // 💥 CLEAR REDIS CACHE TO SHOW NEW ORDER INSTANTLY
+      const cacheKey = `sync_orders_${email}_1_30_ALL_${todayStr}`;
+      await redis.del(cacheKey);
+
       return NextResponse.json({ success: true });
     }
 
+    // ==========================================
+    // 💥 3. UPDATE LOGIC 💥
+    // ==========================================
     if (action === "UPDATE") {
       const existingOrder = await Order.findOne({ searchNumber: orderData.searchNumber, userEmail: email });
       if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found" });
+
+      const clearCache = async () => {
+         const todayStr = getUTCDateString();
+         await redis.del(`sync_orders_${email}_1_30_ALL_${todayStr}`);
+      };
 
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
         existingOrder.otp = orderData.otp || "Timeout"; 
         existingOrder.expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
         await existingOrder.save();
+        await clearCache(); // 💥 Clear cache
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
 
@@ -179,6 +222,7 @@ export async function POST(req: Request) {
         const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
         if (orderAgeMs > 20 * 60 * 1000) { 
             await Order.updateOne({ _id: existingOrder._id }, { $set: { status: "FAIL", otp: "Timeout" } });
+            await clearCache(); // 💥 Clear cache
             return NextResponse.json({ success: false, message: "Order expired." });
         }
 
@@ -343,6 +387,7 @@ export async function POST(req: Request) {
           );
         }
 
+        await clearCache(); // 💥 Clear cache on success
         return NextResponse.json({ success: true, message: "Real OTP Processed successfully!" });
       }
     }

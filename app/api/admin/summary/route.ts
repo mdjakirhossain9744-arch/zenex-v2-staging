@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import mongoose from "mongoose";
 import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
 import User from "../../../../models/User";
 import DailyStat from "../../../../models/DailyStat";
-import redis from "../../../lib/redis"; // 💥 REDIS ENGINE IMPORTED 💥
+import redis from "../../../lib/redis"; 
 
 export const dynamic = "force-dynamic";
 
-// PM2 Cluster Process Lock
 let isGeneratingCache = false;
 
 const extractServiceName = (msg: string) => {
@@ -28,7 +26,9 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch (e) { return new Date().toISOString().split('T')[0]; }
 };
 
-// 💥 THE BACKGROUND WORKER (Heavy Lifting in the dark) 💥
+// 💥 THE CRASH PREVENTER: Helper function to let the server breathe 💥
+const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 async function generateHeavyAdminSummary(limitDays: any, cacheKey: string) {
     try {
         const todayStrUTC = getUTCDateString(new Date());
@@ -75,13 +75,20 @@ async function generateHeavyAdminSummary(limitDays: any, cacheKey: string) {
             groupedRawData[ds._id] = { total: ds.total, allocation: ds.allocation, success: ds.success, failed: ds.failed, amount: ds.amount };
         });
 
-        // NATIVE MONGODB CURSOR (RAM SAVER)
         const ordersCursor = Order.find(orderQuery)
             .select("status dateString createdAt updatedAt fullMessage orderCost orderCommission")
             .lean()
             .cursor();
 
+        let loopCounter = 0; // 💥 Track how many items processed
+
         for await (const o of ordersCursor) {
+           // 💥 THE MAGIC FIX: Prevent Node.js from freezing the whole server
+           loopCounter++;
+           if (loopCounter % 500 === 0) {
+               await yieldToEventLoop(); // Server will serve users, then resume counting
+           }
+
            const currentStatus = (o.status || "").toUpperCase(); 
            const finalDateStr = o.dateString || getUTCDateString(o.createdAt);
            if (finalDateStr < liveQueryDateStr) continue; 
@@ -126,7 +133,6 @@ async function generateHeavyAdminSummary(limitDays: any, cacheKey: string) {
            yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
         };
 
-        // 💥 SAVE TO REDIS INSTEAD OF MONGODB (CACHE FOR 120 SECONDS) 💥
         await redis.setex(cacheKey, 120, JSON.stringify(responsePayload));
 
     } catch (error) {
@@ -136,7 +142,6 @@ async function generateHeavyAdminSummary(limitDays: any, cacheKey: string) {
     }
 }
 
-// 💥 INSTANT REDIS RESPONSE (0.001 Seconds) 💥
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
@@ -144,12 +149,10 @@ export async function POST(req: Request) {
 
     if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    const cacheKey = `admin_summary_v2_${limitDays}`; // v2 key for Redis
+    const cacheKey = `admin_summary_v3_${limitDays}`; 
 
-    // 1. FETCH FROM REDIS (Super Fast - Sub-millisecond speed)
     const cachedData = await redis.get(cacheKey);
 
-    // 2. IF REDIS HAS DATA, RETURN INSTANTLY
     if (cachedData) {
         return new NextResponse(cachedData, {
             status: 200,
@@ -157,13 +160,11 @@ export async function POST(req: Request) {
         });
     }
 
-    // 3. IF REDIS IS EMPTY (EXPIRED), TRIGGER BACKGROUND UPDATE
     if (!isGeneratingCache) {
         isGeneratingCache = true;
-        generateHeavyAdminSummary(limitDays, cacheKey); // Runs in background
+        generateHeavyAdminSummary(limitDays, cacheKey); 
     }
 
-    // 4. RETURN PROCESSING MESSAGE TO PREVENT CLOUDFLARE TIMEOUT
     return NextResponse.json({
         success: true,
         isProcessing: true, 
