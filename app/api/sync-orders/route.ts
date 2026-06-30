@@ -48,30 +48,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 });
     }
 
-    // ==========================================
-    // 💥 1. FETCH LOGIC (SUPERCHARGED BY REDIS) 💥
-    // ==========================================
     if (action === "FETCH") {
       const todayStr = getUTCDateString();
       const fetchDate = targetDate || todayStr;
-      
-      // 💥 REDIS CACHE KEY GENERATION
-      const cacheKey = `sync_orders_${email}_${page}_${limit}_${filterStatus || 'ALL'}_${fetchDate}`;
 
-      // 💥 CHECK REDIS FIRST (Absorbs 99% of spam polls)
+      // 💥 CHECK REDIS FIRST (Absorbs spam polls) 💥
+      const cacheKey = `sync_orders_${email}_${page}_${limit}_${filterStatus || 'ALL'}_${fetchDate}`;
       const cachedData = await redis.get(cacheKey);
       if (cachedData) {
           return new NextResponse(cachedData, {
               status: 200,
-              headers: { "Content-Type": "application/json", "Cache-Control": "no-store, max-age=0" }
+              headers: { "Content-Type": "application/json", 'Cache-Control': 'no-store, max-age=0' }
           });
       }
 
-      const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
-      await Order.updateMany(
-        { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
-        { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } }
-      );
+      // 💥 THE BOSS FIX: 60-Second Throttle for Global Timeout (Saves DB) 💥
+      const timeoutLockKey = `timeout_lock_${email}`;
+      const hasTimeoutLock = await redis.get(timeoutLockKey);
+
+      if (!hasTimeoutLock) {
+          const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+          await Order.updateMany(
+            { userEmail: email, status: "WAIT", createdAt: { $lt: twentyMinsAgo } },
+            { $set: { status: "FAIL", otp: "Timeout", expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) } }
+          );
+          await redis.setex(timeoutLockKey, 60, "locked"); // Lock for 60 seconds
+      }
 
       const query: any = { userEmail: email, dateString: fetchDate };
       
@@ -91,19 +93,16 @@ export async function POST(req: Request) {
       const statQuery = { userEmail: email, dateString: fetchDate };
 
       if (fetchDate === todayStr) {
-          const doneOrders = await Order.find({ ...statQuery, status: "DONE" }).select("fullMessage").lean();
-          let actualOtpCount = 0;
-          doneOrders.forEach((o: any) => {
-               const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-               actualOtpCount += msgArray.length > 0 ? msgArray.length : 1;
+          const aggStats = await Order.aggregate([
+              { $match: { userEmail: email, dateString: fetchDate } },
+              { $group: { _id: "$status", count: { $sum: 1 } } }
+          ]);
+          aggStats.forEach(s => {
+              stats.total += s.count;
+              if (s._id === "DONE") stats.success += s.count;
+              else if (s._id === "WAIT") stats.wait += s.count;
+              else if (s._id === "FAIL" || s._id === "CANCEL") stats.fail += s.count;
           });
-
-          stats = {
-              total: await Order.countDocuments(statQuery),
-              success: actualOtpCount, 
-              wait: await Order.countDocuments({ ...statQuery, status: "WAIT" }),
-              fail: await Order.countDocuments({ ...statQuery, status: "FAIL" }),
-          };
       } else {
           const dailyStat = await DailyStat.findOne({ userEmail: email, dateString: fetchDate }).lean();
           if (dailyStat) {
@@ -153,18 +152,15 @@ export async function POST(req: Request) {
         stats 
       });
 
-      // 💥 SAVE TO REDIS FOR 3 SECONDS (Protects DB from heavy spam)
+      // 💥 SAVE TO REDIS FOR 3 SECONDS 💥
       await redis.setex(cacheKey, 3, responsePayload);
 
       return new NextResponse(responsePayload, { 
-          status: 200, 
-          headers: { 'Cache-Control': 'no-store, max-age=0', "Content-Type": "application/json" } 
+        status: 200, 
+        headers: { 'Cache-Control': 'no-store, max-age=0', "Content-Type": "application/json" } 
       });
     }
 
-    // ==========================================
-    // 💥 2. CREATE LOGIC 💥
-    // ==========================================
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
       const user = await User.findOne({ email }).lean();
@@ -189,24 +185,19 @@ export async function POST(req: Request) {
         expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
       });
       await newOrder.save();
-
-      // 💥 CLEAR REDIS CACHE TO SHOW NEW ORDER INSTANTLY
-      const cacheKey = `sync_orders_${email}_1_30_ALL_${todayStr}`;
-      await redis.del(cacheKey);
-
+      
+      // 💥 CLEAR REDIS CACHE TO SHOW NEW ORDER INSTANTLY 💥
+      await redis.del(`sync_orders_${email}_1_30_ALL_${todayStr}`);
+      
       return NextResponse.json({ success: true });
     }
 
-    // ==========================================
-    // 💥 3. UPDATE LOGIC 💥
-    // ==========================================
     if (action === "UPDATE") {
       const existingOrder = await Order.findOne({ searchNumber: orderData.searchNumber, userEmail: email });
       if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found" });
 
       const clearCache = async () => {
-         const todayStr = getUTCDateString();
-         await redis.del(`sync_orders_${email}_1_30_ALL_${todayStr}`);
+         await redis.del(`sync_orders_${email}_1_30_ALL_${getUTCDateString()}`);
       };
 
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {

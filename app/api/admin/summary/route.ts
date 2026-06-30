@@ -3,7 +3,7 @@ import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
 import User from "../../../../models/User";
 import DailyStat from "../../../../models/DailyStat";
-import redis from "../../../lib/redis"; 
+import redis from "../../../lib/redis"; // 💥 REDIS ENGINE IMPORTED 💥
 
 export const dynamic = "force-dynamic";
 
@@ -75,18 +75,19 @@ async function generateHeavyAdminSummary(limitDays: any, cacheKey: string) {
             groupedRawData[ds._id] = { total: ds.total, allocation: ds.allocation, success: ds.success, failed: ds.failed, amount: ds.amount };
         });
 
+        // 💥 RESTORED: NATIVE MONGODB CURSOR (RAM SAVER) 💥
         const ordersCursor = Order.find(orderQuery)
             .select("status dateString createdAt updatedAt fullMessage orderCost orderCommission")
             .lean()
             .cursor();
 
-        let loopCounter = 0; // 💥 Track how many items processed
+        let loopCounter = 0;
 
         for await (const o of ordersCursor) {
-           // 💥 THE MAGIC FIX: Prevent Node.js from freezing the whole server
+           // 💥 Prevent Node.js from freezing the server
            loopCounter++;
            if (loopCounter % 500 === 0) {
-               await yieldToEventLoop(); // Server will serve users, then resume counting
+               await yieldToEventLoop(); 
            }
 
            const currentStatus = (o.status || "").toUpperCase(); 
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
 
     if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    const cacheKey = `admin_summary_v3_${limitDays}`; 
+    const cacheKey = `admin_summary_v5_${limitDays}`; 
 
     const cachedData = await redis.get(cacheKey);
 
