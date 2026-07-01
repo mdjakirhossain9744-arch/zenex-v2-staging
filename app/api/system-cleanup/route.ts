@@ -58,17 +58,24 @@ export async function GET(req: NextRequest) {
         statsMap[key].total += 1; 
 
         if (o.status === "DONE" || o.status === "Success" || o.status === "SUCCESS") {
-            const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-            const uniqueCodes = new Set();
             
-            msgArray.forEach((msg: string) => {
-                const match = msg.match(/\b\d{4,8}\b/);
-                uniqueCodes.add(match ? match[0] : msg.trim());
-            });
+            // 🔥 MISSION 1 FIX: EXACT MULTI-OTP COUNT (Zero Missing!) 🔥
+            let exactValidCount = 0;
+            
+            if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
+                exactValidCount = o.processedKeys.length;
+            } else if (typeof o.fullMessage === "string" && o.fullMessage.trim() !== "") {
+                const msgArray = o.fullMessage.split(/_\|\|_/);
+                msgArray.forEach((m: string) => {
+                    const cleanMsg = m.trim().toLowerCase();
+                    if (cleanMsg !== "" && !cleanMsg.includes("waiting")) {
+                        exactValidCount += 1;
+                    }
+                });
+            }
+            if (exactValidCount === 0) exactValidCount = 1;
 
-            const validMsgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
-
-            statsMap[key].success += validMsgCount;
+            statsMap[key].success += exactValidCount;
             statsMap[key].amount += (o.orderCost || 0);
             statsMap[key].commission += (o.orderCommission || 0);
             
@@ -111,7 +118,6 @@ export async function GET(req: NextRequest) {
       const db = mongoose.connection.db;
       if (db) {
          const rawResult = await db.collection("rawlogs").deleteMany({
-            // 💥 Changed from tenDaysAgoMidnight to twoDaysAgoMidnight
             timestamp: { $lt: twoDaysAgoMidnight } 
          });
          deletedRawLogsCount = rawResult.deletedCount || 0;
