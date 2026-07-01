@@ -38,8 +38,8 @@ export async function POST(req: Request) {
 
     if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    // 💥 CACHE KEY CHANGED: পুরনো ক্যাশ বাইপাস করে সাথে সাথে নতুন ডাটা দেখাবে!
-    const cacheKey = `admin_summary_v2_fixed_${limitDays}`; 
+    // 💥 CACHE KEY CHANGED: নতুন পারফেক্ট কাউন্টিংয়ের জন্য ক্যাশ রিফ্রেশ করা হলো!
+    const cacheKey = `admin_summary_v3_exact_otp_${limitDays}`; 
     const cachedData = await redis.get(cacheKey).catch(() => null);
 
     if (cachedData) {
@@ -76,14 +76,13 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // 💥 BULLETPROOF MATH FIX: ডাটাবেসে Total না থাকলে নিজে যোগ করে নিবে! 💥
+    // 💥 BULLETPROOF MATH FIX: ডাটাবেসে Total না থাকলে নিজে যোগ করে নিবে!
     dailyStatsAgg.forEach((ds: any) => {
         const sCount = ds.success || 0;
         const fCount = ds.failed || 0;
         
         let finalTotal = ds.total || ds.allocation || 0;
         
-        // ম্যাজিক: যদি Total ০ হয়, তবে Success + Failed যোগ করে Total বানাবে!
         if (finalTotal === 0 && (sCount > 0 || fCount > 0)) {
             finalTotal = sCount + fCount;
         }
@@ -99,8 +98,9 @@ export async function POST(req: Request) {
 
     groupedRawData[todayStrUTC] = { total: 0, allocation: 0, success: 0, failed: 0, amount: 0 };
 
+    // 🔥 MISSION 1 FIX: Added 'processedKeys' to securely count ONLY real charged OTPs
     const ordersCursor = Order.find({ dateString: todayStrUTC })
-        .select("status createdAt updatedAt fullMessage orderCost orderCommission")
+        .select("status createdAt updatedAt fullMessage orderCost orderCommission processedKeys")
         .lean()
         .cursor();
 
@@ -115,20 +115,36 @@ export async function POST(req: Request) {
         groupedRawData[todayStrUTC].allocation += 1; 
 
         if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-            const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
-            let finalValidCount = 0;
-            msgArray.forEach((m: string) => { if (m.trim() !== "" && !m.toLowerCase().includes("waiting")) finalValidCount += 1; });
-            if (finalValidCount === 0) finalValidCount = 1;
+            
+            // 🚀 SMART EXACT COUNT LOGIC: Source of truth is processedKeys (Engine-2 Pay Area)
+            let exactValidCount = 0;
+            
+            if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
+                exactValidCount = o.processedKeys.length;
+            } 
+            else if (typeof o.fullMessage === "string" && o.fullMessage.trim() !== "") {
+                const msgArray = o.fullMessage.split(/_\|\|_/);
+                msgArray.forEach((m: string) => { 
+                    if (m.trim() !== "" && !m.toLowerCase().includes("waiting")) {
+                        exactValidCount += 1; 
+                    }
+                });
+            }
 
-            groupedRawData[todayStrUTC].success += finalValidCount;
+            // Fallback for single old completed records
+            if (exactValidCount === 0) exactValidCount = 1;
+
+            groupedRawData[todayStrUTC].success += exactValidCount;
+            // 💰 Note: orderCost and orderCommission holds the cumulative deducted amount by Engine-2
             groupedRawData[todayStrUTC].amount += ((o.orderCost || 0) + (o.orderCommission || 0));
 
             const hour = new Date(o.updatedAt || o.createdAt || new Date()).getUTCHours();
             const bIdx = Math.floor(hour / 4);
-            if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += finalValidCount;
+            if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += exactValidCount;
 
             let sName = extractServiceName(o.fullMessage);
-            todayAppCounts[sName] = (todayAppCounts[sName] || 0) + finalValidCount;
+            todayAppCounts[sName] = (todayAppCounts[sName] || 0) + exactValidCount;
+            
         } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING"].includes(currentStatus)) {
             groupedRawData[todayStrUTC].failed += 1;
         }

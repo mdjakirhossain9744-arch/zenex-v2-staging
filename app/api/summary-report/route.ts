@@ -61,7 +61,7 @@ export async function POST(req: Request) {
 
     const orderQuery: any = { dateString: { $gte: liveQueryDateStr }, userEmail: exactDbEmail }; 
 
-    // 💥 USER MATH: Cost Only (No Commission) 💥
+    // 💥 USER MATH: Cost Only (No Commission) + processedKeys injected 💥
     const [dailyStatsAgg, orders] = await Promise.all([
         DailyStat.aggregate([
             { $match: dailyStatQuery },
@@ -74,15 +74,20 @@ export async function POST(req: Request) {
                 amount: { $sum: { $ifNull: ["$totalCost", 0] } }
             }}
         ]),
-        Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage orderCost").lean()
+        Order.find(orderQuery).select("status dateString createdAt updatedAt fullMessage orderCost processedKeys").lean()
     ]);
 
     const groupedRawData: Record<string, any> = {};
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
+    // 🔥 Total Fix Logic Applied
     dailyStatsAgg.forEach((ds: any) => {
-        groupedRawData[ds._id] = { total: ds.total, allocation: ds.allocation, success: ds.success, failed: ds.failed, amount: ds.amount };
+        let finalTotal = ds.total || ds.allocation || 0;
+        if (finalTotal === 0 && (ds.success > 0 || ds.failed > 0)) {
+            finalTotal = ds.success + ds.failed;
+        }
+        groupedRawData[ds._id] = { total: finalTotal, allocation: finalTotal, success: ds.success, failed: ds.failed, amount: ds.amount };
     });
 
     orders.forEach((o: any) => {
@@ -94,22 +99,31 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].total += 1; groupedRawData[finalDateStr].allocation += 1;
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
-          let finalValidCount = 0;
-          msgArray.forEach((m: string) => { if (m.trim() !== "" && !m.toLowerCase().includes("waiting")) finalValidCount += 1; });
-          if (finalValidCount === 0) finalValidCount = 1;
+          
+          // 🔥 EXACT MULTI-OTP LOGIC INJECTED 🔥
+          let exactValidCount = 0;
+          if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
+              exactValidCount = o.processedKeys.length;
+          } else if (typeof o.fullMessage === "string" && o.fullMessage.trim() !== "") {
+              const msgArray = o.fullMessage.split(/_\|\|_/);
+              msgArray.forEach((m: string) => {
+                  const cleanMsg = m.trim().toLowerCase();
+                  if (cleanMsg !== "" && !cleanMsg.includes("waiting")) exactValidCount += 1;
+              });
+          }
+          if (exactValidCount === 0) exactValidCount = 1;
 
-          groupedRawData[finalDateStr].success += finalValidCount;
+          groupedRawData[finalDateStr].success += exactValidCount;
           groupedRawData[finalDateStr].amount += (o.orderCost || 0); // User only sees their earnings
 
           if (finalDateStr === todayStrUTC) {
               const hour = new Date(o.updatedAt || o.createdAt || new Date()).getUTCHours();
               const bIdx = Math.floor(hour / 4);
-              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += finalValidCount;
+              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += exactValidCount;
 
               let sName = extractServiceName(o.fullMessage);
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
-              todayAppCounts[sName] += finalValidCount;
+              todayAppCounts[sName] += exactValidCount;
           }
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
           groupedRawData[finalDateStr].failed += 1;
@@ -126,7 +140,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
        success: true, groupedRawData, todayAppCounts, todayHourlyTraffic,
        userRate, balance, serverDate: todayStrUTC,
-       todaySuccess: todayData.success, todaySpend: todayData.amount, 
+       todaySuccess: todayData.success, todaySpend: todayData.amount, // Note: Variable kept 'todaySpend' for UI compatibility, but represents User Earnings
        yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
     });
 

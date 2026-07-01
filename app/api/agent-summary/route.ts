@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 // 💥 THE BOSS FIX: PER-AGENT CACHE LOCK & DATA STREAMING (Zero RAM Overload) 💥
 let agentSummaryCache: Record<string, { data: any, timestamp: number }> = {};
-let activeAgentLocks: Record<string, boolean> = {}; // Lock per agent to prevent DB crash
+let activeAgentLocks: Record<string, boolean> = {}; 
 const CACHE_DURATION = 2 * 60 * 1000; // 2 Minutes 
 
 const extractServiceName = (msg: string) => {
@@ -47,23 +47,20 @@ export async function POST(req: Request) {
   if (!email) return NextResponse.json({ success: false, message: "Email required" });
 
   const safeAgentEmail = email.toLowerCase().trim();
-  const cacheKey = `agent_${safeAgentEmail}_${limitDays}`;
+  // 💥 CACHE KEY CHANGED to bypass old inaccurate cache
+  const cacheKey = `agent_v3_exact_${safeAgentEmail}_${limitDays}`;
   const now = Date.now();
 
   try {
-    // 💥 1. SERVE INSTANT CACHE 💥
     if (agentSummaryCache[cacheKey] && (now - agentSummaryCache[cacheKey].timestamp < CACHE_DURATION)) {
         return NextResponse.json(agentSummaryCache[cacheKey].data);
     }
 
-    // 💥 2. PREVENT CACHE STAMPEDE (Per Agent) 💥
     if (activeAgentLocks[cacheKey] && agentSummaryCache[cacheKey]) {
-        return NextResponse.json(agentSummaryCache[cacheKey].data); // Return stale cache while updating
+        return NextResponse.json(agentSummaryCache[cacheKey].data); 
     }
 
-    // Lock the thread for this specific agent
     activeAgentLocks[cacheKey] = true;
-
     await connectToDatabase();
 
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
@@ -152,18 +149,24 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
+    // 🔥 Exact Logic Application for Old Data
     dailyStatsAgg.forEach((ds: any) => {
+        let finalTotal = ds.total || ds.allocation || 0;
+        if (finalTotal === 0 && (ds.success > 0 || ds.failed > 0)) {
+            finalTotal = ds.success + ds.failed;
+        }
         groupedRawData[ds._id] = {
-            total: ds.total, allocation: ds.allocation,
+            total: finalTotal, allocation: finalTotal,
             success: ds.success, failed: ds.failed, amount: ds.amount
         };
     });
     
     // 💥 RAM SAVER: MongoDB Cursor Instead of Loading Full Array 💥
+    // 🔥 Added `processedKeys` to selection
     const ordersCursor = Order.find(orderQuery)
-        .select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission")
+        .select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission processedKeys")
         .lean()
-        .cursor(); // Read 1 doc at a time, keeping RAM near 0%
+        .cursor(); 
 
     for await (const o of ordersCursor) {
        const currentStatus = (o.status || "").toUpperCase(); 
@@ -181,29 +184,33 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].allocation += 1; 
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          const msgArray = o.fullMessage ? o.fullMessage.split(/_\|\|_/) : [];
-          let validMsgCount = 0;
           
-          msgArray.forEach((m: string) => {
-              const cleanMsg = m.trim().toLowerCase();
-              if (cleanMsg !== "" && !cleanMsg.includes("waiting")) validMsgCount += 1;
-          });
+          // 🔥 EXACT MULTI-OTP LOGIC INJECTED 🔥
+          let exactValidCount = 0;
+          if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
+              exactValidCount = o.processedKeys.length;
+          } else if (typeof o.fullMessage === "string" && o.fullMessage.trim() !== "") {
+              const msgArray = o.fullMessage.split(/_\|\|_/);
+              msgArray.forEach((m: string) => {
+                  const cleanMsg = m.trim().toLowerCase();
+                  if (cleanMsg !== "" && !cleanMsg.includes("waiting")) exactValidCount += 1;
+              });
+          }
+          if (exactValidCount === 0) exactValidCount = 1;
 
-          if (validMsgCount === 0) validMsgCount = 1;
-
-          groupedRawData[finalDateStr].success += validMsgCount;
+          groupedRawData[finalDateStr].success += exactValidCount;
           groupedRawData[finalDateStr].amount += (o.orderCommission || 0);
 
           if (finalDateStr === todayStrUTC) {
               const hour = getUTCHour(o.updatedAt || o.createdAt || new Date());
               const bIdx = Math.floor(hour / 4);
-              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += validMsgCount;
+              if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += exactValidCount;
 
-              if (userInfoMap[safeUserEmail]) userInfoMap[safeUserEmail].todayOTP += validMsgCount;
+              if (userInfoMap[safeUserEmail]) userInfoMap[safeUserEmail].todayOTP += exactValidCount;
 
               let sName = extractServiceName(o.fullMessage);
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
-              todayAppCounts[sName] += validMsgCount;
+              todayAppCounts[sName] += exactValidCount;
           }
        } else if (!["PENDING", "WAITING", "WAIT", "PROCESSING", "ACTIVE", "READY", ""].includes(currentStatus)) {
            groupedRawData[finalDateStr].failed += 1; 
@@ -229,7 +236,6 @@ export async function POST(req: Request) {
         if (loginTime) {
             sortValue = loginTime;
             const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
-            
             if (diffDays === 0) timeText = "Today";
             else if (diffDays === 1) timeText = "Yesterday";
             else if (diffDays < 7) timeText = `${diffDays} days ago`;
@@ -276,14 +282,13 @@ export async function POST(req: Request) {
        yesterdaySuccess: yesterdayData.success, yesterdayRevenue: yesterdayData.amount
     };
 
-    // 💥 SAVE TO CACHE & UNLOCK THREAD 💥
     agentSummaryCache[cacheKey] = { data: responseData, timestamp: now };
     delete activeAgentLocks[cacheKey];
 
     return NextResponse.json(responseData);
 
   } catch (error) { 
-      delete activeAgentLocks[cacheKey]; // Unlock even on error
+      delete activeAgentLocks[cacheKey]; 
       return NextResponse.json({ success: false }); 
   }
 }

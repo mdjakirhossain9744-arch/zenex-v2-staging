@@ -19,8 +19,6 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
   return new Date(dateObj).toISOString().split('T')[0];
 };
 
-// extractStrictOTP ফাংশনটি এখন আর এই ফাইলে লাগছে না, কারণ OTP Extract এর কাজ server.js করবে।
-
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
@@ -49,7 +47,7 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // FETCH ACTION (আপনার আগের কোড হুবহু সেইম)
+    // FETCH ACTION
     // ==========================================
     if (action === "FETCH") {
       const todayStr = getUTCDateString();
@@ -95,14 +93,32 @@ export async function POST(req: Request) {
 
       const statQuery = { userEmail: email, dateString: fetchDate };
 
+      // 🔥 MISSION 1 FIX: Accurate Multi-OTP Stats Calculation
       if (fetchDate === todayStr) {
-          const [sTotal, sSuccess, sWait, sFail] = await Promise.all([
+          const [sTotal, sWait, sFail] = await Promise.all([
               Order.countDocuments({ userEmail: email, dateString: fetchDate }),
-              Order.countDocuments({ userEmail: email, dateString: fetchDate, status: { $in: ["DONE", "SUCCESS"] } }),
               Order.countDocuments({ userEmail: email, dateString: fetchDate, status: "WAIT" }),
               Order.countDocuments({ userEmail: email, dateString: fetchDate, status: { $in: ["FAIL", "CANCEL"] } })
           ]);
-          stats = { total: sTotal, success: sSuccess, wait: sWait, fail: sFail };
+          
+          // Fetch only required fields for exact multi-OTP counting (Memory Optimized)
+          const successDocs = await Order.find(
+              { userEmail: email, dateString: fetchDate, status: { $in: ["DONE", "SUCCESS"] } },
+              { processedKeys: 1, fullMessage: 1 }
+          ).lean();
+
+          let exactSuccessOTPs = 0;
+          successDocs.forEach((doc: any) => {
+              if (Array.isArray(doc.processedKeys) && doc.processedKeys.length > 0) {
+                  exactSuccessOTPs += doc.processedKeys.length;
+              } else if (typeof doc.fullMessage === "string" && doc.fullMessage.trim() !== "") {
+                  exactSuccessOTPs += doc.fullMessage.split(" _||_ ").length;
+              } else {
+                  exactSuccessOTPs += 1;
+              }
+          });
+
+          stats = { total: sTotal, success: exactSuccessOTPs, wait: sWait, fail: sFail };
       } else {
           const dailyStat = await DailyStat.findOne({ userEmail: email, dateString: fetchDate }).lean();
           if (dailyStat) {
@@ -113,17 +129,44 @@ export async function POST(req: Request) {
                   fail: dailyStat.failedNumbers || dailyStat.failed || 0,
               };
           } else {
-              const [sTotal, sSuccess, sFail] = await Promise.all([
+              const [sTotal, sFail] = await Promise.all([
                   Order.countDocuments(statQuery),
-                  Order.countDocuments({ ...statQuery, status: { $in: ["DONE", "SUCCESS"] } }),
                   Order.countDocuments({ ...statQuery, status: { $in: ["FAIL", "CANCEL"] } })
               ]);
-              stats = { total: sTotal, success: sSuccess, wait: 0, fail: sFail };
+
+              const historySuccessDocs = await Order.find(
+                  { ...statQuery, status: { $in: ["DONE", "SUCCESS"] } },
+                  { processedKeys: 1, fullMessage: 1 }
+              ).lean();
+
+              let sSuccessHistory = 0;
+              historySuccessDocs.forEach((doc: any) => {
+                  if (Array.isArray(doc.processedKeys) && doc.processedKeys.length > 0) {
+                      sSuccessHistory += doc.processedKeys.length;
+                  } else if (typeof doc.fullMessage === "string" && doc.fullMessage.trim() !== "") {
+                      sSuccessHistory += doc.fullMessage.split(" _||_ ").length;
+                  } else {
+                      sSuccessHistory += 1;
+                  }
+              });
+
+              stats = { total: sTotal, success: sSuccessHistory, wait: 0, fail: sFail };
           }
       }
 
+      // 🔥 MISSION 1 FIX: Apply Exact Count logic to Individual Orders for the UI
       orders.forEach((o: any) => {
-        const msgArray: string[] = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
+        const msgArray: string[] = typeof o.fullMessage === "string" && o.fullMessage.trim() !== "" ? o.fullMessage.split(" _||_ ") : [];
+        
+        let exactOtpCount = 0;
+        if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
+            exactOtpCount = o.processedKeys.length;
+        } else if (msgArray.length > 0) {
+            exactOtpCount = msgArray.length;
+        } else if (o.status === "DONE" || o.status === "SUCCESS") {
+            exactOtpCount = 1;
+        }
+
         finalOrders.push({
           id: o._id.toString(), 
           dateString: o.dateString, 
@@ -137,6 +180,7 @@ export async function POST(req: Request) {
           seenMessages: msgArray, 
           isDup: false, 
           isMulti: msgArray.length > 1, 
+          exactSuccessCount: exactOtpCount, // 🚀 Added exact count for table rows
           createdAt: new Date(o.createdAt).getTime(), 
           receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
         });
@@ -161,7 +205,7 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // CREATE ACTION (আপনার আগের কোড হুবহু সেইম)
+    // CREATE ACTION
     // ==========================================
     if (action === "CREATE") {
       const todayStr = getUTCDateString();
@@ -193,7 +237,7 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // UPDATE ACTION (এখানেই সিকিউরিটি ম্যাজিক!)
+    // UPDATE ACTION (Zero-Trust)
     // ==========================================
     if (action === "UPDATE") {
       const existingOrder = await Order.findOne({ 
@@ -208,7 +252,6 @@ export async function POST(req: Request) {
          await redis.del(`sync_orders_${email}_1_30_ALL_${getUTCDateString()}`);
       };
 
-      // শুধুমাত্র FAIL বা TIMEOUT ফ্রন্টএন্ড থেকে আপডেট হতে পারবে
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         existingOrder.status = "FAIL";
         existingOrder.otp = orderData.otp || "Timeout"; 
@@ -218,9 +261,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, message: "Order failed due to timeout." });
       }
 
-      // 💥 ZERO-TRUST SECURITY: 
-      // আগে এখানে ১৫০ লাইনের পেমেন্ট ও কমিশন লজিক ছিল। সেটা সরিয়ে server.js-এ দিয়েছি।
-      // ফ্রন্টএন্ড এখন আর ব্যালেন্স অ্যাড বা OTP সেভ করতে পারবে না!
       if (orderData.status === "DONE" || orderData.otp) {
           return NextResponse.json({ 
               success: true, 
@@ -236,7 +276,6 @@ export async function POST(req: Request) {
 
 // ==========================================
 // BACKGROUND AUTO-SYNC CRON JOB API
-// (আপনার আগের বিন্যান্স অটো উইথড্র ক্রন হুবহু সেইম)
 // ==========================================
 export async function GET(req: Request) {
   try {
