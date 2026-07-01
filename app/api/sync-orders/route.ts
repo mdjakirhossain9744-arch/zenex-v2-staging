@@ -93,7 +93,7 @@ export async function POST(req: Request) {
 
       const statQuery = { userEmail: email, dateString: fetchDate };
 
-      // 🔥 MISSION 1 FIX: Accurate Multi-OTP Stats Calculation
+      // Exact Multi-OTP Stats Calculation
       if (fetchDate === todayStr) {
           const [sTotal, sWait, sFail] = await Promise.all([
               Order.countDocuments({ userEmail: email, dateString: fetchDate }),
@@ -101,7 +101,6 @@ export async function POST(req: Request) {
               Order.countDocuments({ userEmail: email, dateString: fetchDate, status: { $in: ["FAIL", "CANCEL"] } })
           ]);
           
-          // Fetch only required fields for exact multi-OTP counting (Memory Optimized)
           const successDocs = await Order.find(
               { userEmail: email, dateString: fetchDate, status: { $in: ["DONE", "SUCCESS"] } },
               { processedKeys: 1, fullMessage: 1 }
@@ -154,7 +153,6 @@ export async function POST(req: Request) {
           }
       }
 
-      // 🔥 MISSION 1 FIX: Apply Exact Count logic to Individual Orders for the UI
       orders.forEach((o: any) => {
         const msgArray: string[] = typeof o.fullMessage === "string" && o.fullMessage.trim() !== "" ? o.fullMessage.split(" _||_ ") : [];
         
@@ -180,7 +178,7 @@ export async function POST(req: Request) {
           seenMessages: msgArray, 
           isDup: false, 
           isMulti: msgArray.length > 1, 
-          exactSuccessCount: exactOtpCount, // 🚀 Added exact count for table rows
+          exactSuccessCount: exactOtpCount, 
           createdAt: new Date(o.createdAt).getTime(), 
           receivedAt: o.updatedAt ? new Date(o.updatedAt).getTime() : null
         });
@@ -196,7 +194,8 @@ export async function POST(req: Request) {
         stats 
       });
 
-      await redis.set(cacheKey, responsePayload, "EX", 10).catch(() => null);
+      // 🔥 MISSION 2 FIX: Real-Time Cache (2 Seconds instead of 10s)
+      await redis.set(cacheKey, responsePayload, "EX", 3).catch(() => null);
 
       return new NextResponse(responsePayload, { 
         status: 200, 
@@ -237,28 +236,39 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // UPDATE ACTION (Zero-Trust)
+    // UPDATE ACTION (💥 ZERO-TRUST SECURITY SHIELD 💥)
     // ==========================================
     if (action === "UPDATE") {
+      // 1. Remove status lock from query to check actual current state
       const existingOrder = await Order.findOne({ 
           searchNumber: orderData.searchNumber, 
-          userEmail: email,
-          status: { $in: ["WAIT", "DONE"] }
+          userEmail: email
       }).sort({ createdAt: -1 });
 
-      if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found or already failed." });
+      if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found." });
+
+      // 2. 🛡️ THE BOSS SHIELD: If it's already DONE, reject any Cancel/Timeout attempts from Frontend
+      if (existingOrder.status === "DONE" || existingOrder.status === "SUCCESS") {
+          return NextResponse.json({ 
+              success: true, 
+              message: "Secure Mode: Order already completed. Cannot overwrite OTP." 
+          });
+      }
 
       const clearCache = async () => {
          await redis.del(`sync_orders_${email}_1_30_ALL_${getUTCDateString()}`);
       };
 
+      // 3. Only allow FAIL/CANCEL if the order is genuinely still WAITING
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
-        existingOrder.status = "FAIL";
-        existingOrder.otp = orderData.otp || "Timeout"; 
-        existingOrder.expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-        await existingOrder.save();
-        await clearCache();
-        return NextResponse.json({ success: true, message: "Order failed due to timeout." });
+        if (existingOrder.status === "WAIT" || existingOrder.status === "PENDING") {
+            existingOrder.status = "FAIL";
+            existingOrder.otp = orderData.otp || "Timeout"; 
+            existingOrder.expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+            await existingOrder.save();
+            await clearCache();
+            return NextResponse.json({ success: true, message: "Order failed due to timeout." });
+        }
       }
 
       if (orderData.status === "DONE" || orderData.otp) {
@@ -268,6 +278,7 @@ export async function POST(req: Request) {
           });
       }
     }
+    
     return NextResponse.json({ success: false, message: "Invalid action" });
   } catch (error) {
     return NextResponse.json({ success: false, message: "Database Error" }, { status: 500 });
