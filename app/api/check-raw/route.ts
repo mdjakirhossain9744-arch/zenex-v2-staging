@@ -33,23 +33,18 @@ export async function GET(req: Request) {
         const orderTime = latestOrder ? new Date(latestOrder.createdAt).toLocaleString() : "N/A";
 
         const RawLog = mongoose.models.mnit_raw_logs || mongoose.model("mnit_raw_logs", new mongoose.Schema({
-            timestamp: { type: Date, default: Date.now, expires: 86400 }, // ২৪ ঘণ্টা পর ডাটা অটো-ডিলিট হবে
-            rawPayload: { type: Object }
+            timestamp: { type: Date, default: Date.now }, 
+            rawPayload: { type: mongoose.Schema.Types.Mixed } 
         }, { strict: false }));
 
-        // 💥 ২. দ্য বস ফিক্স: শুধুমাত্র শেষ ২ ঘণ্টার ডাটা খোঁজা 💥
-        // বর্তমান সময় থেকে ২ ঘণ্টা (২ * ৬০ * ৬০ * ১০০০ মিলি সেকেন্ড) আগের সময় বের করা হলো
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
-        // ডাটাবেসকে বলা হলো: "timestamp ২ ঘণ্টার বড় হতে হবে এবং ভেতরে টার্গেট নাম্বারটি থাকতে হবে"
-        const recentLogs = await RawLog.find({
+        // 💥 দ্য বস ফিক্স: Native MongoDB Query (Bypass Mongoose Type Restrictions) 💥
+        // এর ফলে অ্যারের যতো ভেতরেই নাম্বার থাকুক না কেন, ডাটাবেস ১০০% খুঁজে বের করবে।
+        const recentLogs = await RawLog.collection.find({
             timestamp: { $gte: twoHoursAgo },
-            "rawPayload.providerData": {
-                $elemMatch: {
-                    number: new RegExp(cleanNumber + "$")
-                }
-            }
-        }).sort({ timestamp: -1 }).lean();
+            "rawPayload.providerData.number": { $regex: cleanNumber + "$", $options: "i" }
+        }).sort({ timestamp: -1 }).toArray();
 
         let matchedOtps: any[] = [];
         let totalHitsDetected = 0;
