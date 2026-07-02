@@ -13,7 +13,7 @@ const getUTCDateString = (dateObj: any = new Date()) => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    let { range, email } = body; // is_national, remove_plus are obsolete now
+    let { range, email } = body; 
 
     if (!email) {
         const token = request.cookies.get("zenex_token")?.value;
@@ -39,11 +39,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Account Inactive or Blocked" }, { status: 403 });
     }
 
-    const API_KEY = "MK2447V3313";
-    // 🔥 Remove "X" or "XXX" to get the exact `rid` for the new API
+    // 🔥 THE BOSS FIX: Updated to NEW Official API Key
+    const API_KEY = "MBHLD9GWNSN";
+    
     const rid = (range || "22501").replace(/x/gi, ''); 
 
-    const response = await fetch("https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/getnum", {
+    // 🔥 THE BOSS FIX: Updated to NEW Official Endpoint (/tnemn/)
+    const response = await fetch("https://api.2oo9.cloud/MXS47FLFX0U/tnemn/@public/api/getnum", {
       method: "POST",
       headers: {
         "mauthapi": API_KEY,
@@ -77,7 +79,6 @@ export async function POST(request: NextRequest) {
         const todayStr = getUTCDateString();
         const newOrder = new Order({
             userEmail: user.email, 
-            // 💥 FIX: New API uses `no_plus_number` for search and `full_number` for display
             searchNumber: data.data.no_plus_number,
             displayNumber: data.data.full_number, 
             country: data.data.country || "Unknown",
