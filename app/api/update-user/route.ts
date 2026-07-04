@@ -3,6 +3,9 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import User from "../../../models/User"; 
 import crypto from "crypto";
+import Redis from "ioredis"; // 💥 THE BOSS FIX: Imported Redis for Cache Clearing
+
+const redis = new Redis();
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
       handoverToEmail,
       generateNewKey,
       newBalance,
-      canManageApi // 💥 NEW: Admin to Agent API Permission
+      canManageApi 
     } = body;
 
     // 💥 MASTER FIX: Block Undefined CastErrors 💥
@@ -126,7 +129,7 @@ export async function POST(req: NextRequest) {
             agentMaxUsers: targetUser.agentMaxUsers || 100,
             customAgentMail: targetUser.customAgentMail || "",
             telegramLink: targetUser.telegramLink || "",
-            canManageApi: targetUser.canManageApi || false // Transfer API perm too
+            canManageApi: targetUser.canManageApi || false 
          }
       });
 
@@ -271,6 +274,17 @@ export async function POST(req: NextRequest) {
 
     // 💥 MASTER FIX: Using realDbId instead of userId 💥
     await User.findByIdAndUpdate(realDbId, { $set: updateData }, { new: true, strict: false });
+
+    // 💥 THE BOSS FIX: CLEAR REDIS CACHE TO SHOW INSTANT UPDATES ON FRONTEND 💥
+    try {
+        const keys = await redis.keys("get_all_users_*");
+        if (keys && keys.length > 0) {
+            await redis.del(...keys);
+        }
+        await redis.del("global_system_stats_cache");
+    } catch (redisErr) {
+        console.error("Redis Cache Clear Error:", redisErr);
+    }
 
     return NextResponse.json({ message: "Account successfully updated!" }, { status: 200 });
 

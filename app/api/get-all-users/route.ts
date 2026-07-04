@@ -106,28 +106,37 @@ export async function GET(req: NextRequest) {
     const userEmails = users.map((u: any) => (u.email || "").toLowerCase().trim());
     const todayStr = getUTCDateString(); 
 
-    // 💥 THE DB KILLER FIX: ONLY FETCH TODAY'S ORDERS! 💥
+    // 💥 Added processedKeys to selection for accurate OTP counting
     const ordersCursor = Order.find({
-        dateString: todayStr, // <--- FIXED THIS TO STOP FULL TABLE SCANS
+        dateString: todayStr, 
         status: { $in: ["DONE", "Success", "SUCCESS"] },
         $or: [
             { userEmail: { $in: userEmails } },
             { email: { $in: userEmails } }
         ]
-    }).select("userEmail email createdAt updatedAt dateString fullMessage").cursor();
+    }).select("userEmail email createdAt updatedAt dateString fullMessage processedKeys").cursor();
 
     const otpCounts: Record<string, number> = {};
     let oCount = 0;
     
     for await (const o of ordersCursor) {
         const e = (o.userEmail || o.email || "").toLowerCase().trim();
-        const msgArray = o.fullMessage ? o.fullMessage.split(" _||_ ") : [];
-        const uniqueCodes = new Set();
-        msgArray.forEach((msg: string) => {
-            const match = msg.match(/\b\d{4,8}\b/);
-            uniqueCodes.add(match ? match[0] : msg.trim());
-        });
-        const msgCount = uniqueCodes.size > 0 ? uniqueCodes.size : 1;
+        
+        // 💥 THE BOSS BONUS FIX: EXACT MULTI-OTP COUNTING FOR ADMIN PANEL 💥
+        let msgCount = 0;
+        if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
+            msgCount = o.processedKeys.length;
+        } else if (typeof o.fullMessage === "string" && o.fullMessage.trim() !== "") {
+            const msgArray = o.fullMessage.split(" _||_ ");
+            msgArray.forEach((m: string) => {
+                const cleanMsg = m.trim().toLowerCase();
+                if (cleanMsg !== "" && !cleanMsg.includes("waiting")) {
+                    msgCount += 1;
+                }
+            });
+        }
+        if (msgCount === 0) msgCount = 1;
+
         otpCounts[e] = (otpCounts[e] || 0) + msgCount;
         
         if (++oCount % 500 === 0) await yieldToEventLoop();
