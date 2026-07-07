@@ -51,18 +51,14 @@ export async function POST(req: Request) {
     // ==========================================
     if (action === "FETCH") {
       const todayStr = getUTCDateString();
-      
-      // 💥 GLOBAL TIMEZONE FIX 💥
-      // ইউজারের পিসির ঘড়ি ভুল থাকলেও সার্ভার সবসময় নিজের টাইমে ডাটা দেখাবে!
-      let fetchDate = todayStr;
-      
-      if (targetDate) {
-          const targetMs = new Date(targetDate).getTime();
-          const todayMs = new Date(todayStr).getTime();
-          // যদি ইউজার হিস্ট্রি পেজ থেকে ২৪ ঘণ্টার আগের ডাটা চায়, শুধু তখনই ইউজারের ডেট নিবে
-          if (todayMs - targetMs > 24 * 60 * 60 * 1000) {
-              fetchDate = targetDate;
-          }
+      let fetchDate = targetDate || todayStr;
+
+      // 💥 THE BOSS TIMEZONE FIX (Corrected) 💥
+      // ইউজারের ঘড়ি নষ্ট থাকার কারণে সে যদি ভবিষ্যতের (Future) কোনো ডেট রিকোয়েস্ট করে, 
+      // তাহলে সার্ভার জোর করে তাকে আজকের (Today) ডাটা দিবে। 
+      // কিন্তু সে যদি অতীতের কোনো ডেট (৬ তারিখ, ৫ তারিখ) চায়, তাহলে ঠিক ওই ডেটের ডাটাই দিবে!
+      if (fetchDate > todayStr) {
+          fetchDate = todayStr;
       }
 
       const cacheKey = `sync_orders_${email}_${page}_${limit}_${filterStatus || 'ALL'}_${fetchDate}`;
@@ -86,8 +82,6 @@ export async function POST(req: Request) {
           await redis.set(timeoutLockKey, "locked", "EX", 60).catch(() => null); 
       }
 
-      // 💥 TIMEZONE INVISIBLE DATA FIX 💥
-      // WAIT স্ট্যাটাস থাকলে সেটা ডেট যাই হোক না কেন, স্ক্রিনে সবসময় শো করবে!
       const query: any = { userEmail: email };
       if (filterStatus && filterStatus !== "ALL") {
           query.status = filterStatus;
@@ -213,7 +207,6 @@ export async function POST(req: Request) {
         stats 
       });
 
-      // 🔥 MISSION 2 FIX: Real-Time Cache (3 Seconds based on your request)
       await redis.set(cacheKey, responsePayload, "EX", 3).catch(() => null);
 
       return new NextResponse(responsePayload, { 
@@ -255,10 +248,9 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // UPDATE ACTION (💥 ZERO-TRUST + CLOCK SHIELD 💥)
+    // UPDATE ACTION
     // ==========================================
     if (action === "UPDATE") {
-      // 1. Remove status lock from query to check actual current state
       const existingOrder = await Order.findOne({ 
           searchNumber: orderData.searchNumber, 
           userEmail: email
@@ -266,7 +258,6 @@ export async function POST(req: Request) {
 
       if (!existingOrder) return NextResponse.json({ success: false, message: "Order not found." });
 
-      // 2. 🛡️ THE BOSS SHIELD: If it's already DONE, reject any Cancel/Timeout attempts from Frontend
       if (existingOrder.status === "DONE" || existingOrder.status === "SUCCESS") {
           return NextResponse.json({ 
               success: true, 
@@ -278,16 +269,12 @@ export async function POST(req: Request) {
          await redis.del(`sync_orders_${email}_1_30_ALL_${getUTCDateString()}`);
       };
 
-      // 3. Only allow FAIL/CANCEL if the order is genuinely still WAITING
       if (orderData.status === "FAIL" || orderData.status === "CANCEL") {
         if (existingOrder.status === "WAIT" || existingOrder.status === "PENDING") {
             
-            // 💥 CLIENT-CLOCK DESYNC SHIELD 💥
-            // ইউজারের ঘড়ি নষ্ট থাকলেও সার্ভার নিজে টাইম মেপে দেখবে ২০ মিনিট হয়েছে কিনা।
             const orderAgeMs = Date.now() - new Date(existingOrder.createdAt).getTime();
             const isFrontendAutoTimeout = orderData.otp === "Timeout"; 
             
-            // যদি সার্ভার দেখে বয়স ১৯ মিনিটের কম, কিন্তু ফ্রন্টএন্ড বলছে "Timeout", সার্ভার সেটা ব্লক করে দিবে!
             if (isFrontendAutoTimeout && orderAgeMs < 19 * 60 * 1000) {
                 return NextResponse.json({ 
                     success: true, 
