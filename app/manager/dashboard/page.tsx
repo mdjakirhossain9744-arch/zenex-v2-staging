@@ -89,11 +89,6 @@ export default function ManagerDashboardPage() {
 
     const fetchAgentDashboardData = async () => {
       try {
-        fetch("/api/summary-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email, role: "admin" }) })
-          .then(r => r.json())
-          .then(res => { if (res && res.todayHourlyTraffic) setGlobalTrafficData(res.todayHourlyTraffic); })
-          .catch(() => {});
-
         const [agentSummaryRes, userDetailsRes] = await Promise.all([
           fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
           fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json())
@@ -116,7 +111,13 @@ export default function ManagerDashboardPage() {
            }));
            
            if (agentSummaryRes.todayAppCounts) setTopApps(formatTopApps(agentSummaryRes.todayAppCounts));
-           if (agentSummaryRes.todayHourlyTraffic) setTrafficData(agentSummaryRes.todayHourlyTraffic);
+           
+           // 💥 THE BOSS FIX: Instantly map traffic data to BOTH charts to prevent infinite loading
+           if (agentSummaryRes.todayHourlyTraffic) {
+               setTrafficData(agentSummaryRes.todayHourlyTraffic);
+               setGlobalTrafficData(agentSummaryRes.todayHourlyTraffic); 
+           }
+           
            if (agentSummaryRes.topPerformers) setTopUsers(agentSummaryRes.topPerformers); 
            if (agentSummaryRes.inactiveUsers) setInactiveUsers(agentSummaryRes.inactiveUsers); 
         }
@@ -268,7 +269,7 @@ export default function ManagerDashboardPage() {
                </div>
                <div className="flex-1 w-full h-40 relative z-10">
                   {Math.max(...globalTrafficData) === 0 ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">Loading Live Data...</div>
+                    <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm font-bold">No Network Data Available</div>
                   ) : (
                     <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 150">
                       <defs>
@@ -348,11 +349,17 @@ export default function ManagerDashboardPage() {
                                                     <p className="font-bold text-slate-200 truncate text-[11px] md:text-sm">{u.name}</p>
                                                 </div>
                                             </div>
+                                            
+                                            {/* 💥 THE BOSS FIX: Text is now an absolute badge over the track, guaranteed visibility 💥 */}
                                             <div className="flex-1 relative flex items-center h-5 md:h-7 bg-[#0F172A] rounded overflow-hidden border border-[#334155] mx-2">
-                                                <div className={`h-full bg-gradient-to-r ${barColor} flex items-center justify-end pr-1.5 md:pr-2 transition-all duration-1000 min-w-[20px]`} style={{width: `${percentage}%`}}>
-                                                    <span className="text-[9px] md:text-xs font-black text-[#0B0F1A] drop-shadow-sm">{u.otpCount}</span>
+                                                <div className={`absolute left-0 top-0 bottom-0 bg-gradient-to-r ${barColor} transition-all duration-1000 z-0`} style={{width: `${percentage}%`}}></div>
+                                                <div className="absolute right-0 top-0 bottom-0 flex items-center pr-1 md:pr-1.5 z-10">
+                                                    <span className="text-[10px] md:text-xs font-black text-white bg-[#0B0F1A] px-1.5 py-0.5 rounded shadow-sm border border-[#334155]/50 drop-shadow-md">
+                                                        {u.otpCount}
+                                                    </span>
                                                 </div>
                                             </div>
+
                                         </div>
                                     );
                                 })}

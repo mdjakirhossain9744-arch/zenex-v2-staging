@@ -197,8 +197,21 @@ export default function GetNumber() {
            data.orders.forEach((fetchedItem: any) => {
               const itemId = fetchedItem._id || fetchedItem.id;
               const existingItem = prevMap.get(itemId);
+              
               if (existingItem) {
-                 if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return;
+                 if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return; 
+                 
+                 // 💥 ANTI-FLICKER CACHE SHIELD 💥
+                 // Prevent stale cache or latency from truncating multi-OTPs already updated by SSE
+                 const newLen = (fetchedItem.fullMessage || "").length;
+                 const oldLen = (existingItem.fullMessage || "").length;
+                 
+                 if (existingItem.status === "DONE" && fetchedItem.status === "DONE" && oldLen > newLen) {
+                     fetchedItem.fullMessage = existingItem.fullMessage;
+                     fetchedItem.otp = existingItem.otp;
+                     fetchedItem.isMulti = existingItem.isMulti;
+                 }
+                 
                  prevMap.set(itemId, { ...existingItem, ...fetchedItem });
                  if (existingItem.status === "WAIT" && fetchedItem.status === "DONE" && isBackground) {
                      showToast(`OTP Received: ${cleanOTPDisplay(fetchedItem.otp)}`);
@@ -236,20 +249,35 @@ export default function GetNumber() {
   useEffect(() => {
     const handleInstantOtp = (e: any) => {
       const { searchNumber, otp, fullMessage, isMulti } = e.detail;
-      setNumbersList((prev) => prev.map((item) => {
-        if (item.searchNumber === searchNumber) {
-           if (!isMulti && item.status === "WAIT") {
-             setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
-             showToast(`OTP Received: ${cleanOTPDisplay(otp)}`);
-             return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() + timeOffset };
-           } else if (isMulti) {
-             const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
-             showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
-             return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now() + timeOffset, isMulti: true };
-           }
+      setNumbersList((prev) => {
+        // 💥 THE BOSS BUG FIX: STRICT WILDCARD LOCK 💥
+        // Prevent matching ALL recycled numbers. Only target the specific exact order.
+        let targetId = prev.find(i => i.searchNumber === searchNumber && i.status === "WAIT")?.id || prev.find(i => i.searchNumber === searchNumber && i.status === "WAIT")?._id;
+        
+        if (!targetId && isMulti) {
+            targetId = prev.find(i => i.searchNumber === searchNumber && i.status === "DONE")?.id || prev.find(i => i.searchNumber === searchNumber && i.status === "DONE")?._id;
         }
-        return item;
-      }).sort((a, b) => getSortTime(b) - getSortTime(a))); 
+
+        if (!targetId) return prev; // If not found, ignore to prevent wild updates.
+
+        return prev.map((item) => {
+          if (item.id === targetId || item._id === targetId) {
+             if (!isMulti && item.status === "WAIT") {
+               setStats(s => ({ ...s, wait: Math.max(0, s.wait - 1), success: s.success + 1 }));
+               showToast(`OTP Received: ${cleanOTPDisplay(otp)}`);
+               return { ...item, status: "DONE", otp, fullMessage, receivedAt: Date.now() + timeOffset };
+             } else if (isMulti) {
+               const currentMsgs = item.fullMessage ? item.fullMessage.split("_||_").map((s: string) => s.trim()) : [];
+               if (!currentMsgs.includes(fullMessage.trim())) {
+                   const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
+                   showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
+                   return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now() + timeOffset, isMulti: true };
+               }
+             }
+          }
+          return item;
+        }).sort((a, b) => getSortTime(b) - getSortTime(a));
+      }); 
     };
 
     window.addEventListener('otp-received-instant', handleInstantOtp);

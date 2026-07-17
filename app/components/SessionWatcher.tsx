@@ -5,9 +5,15 @@ import { useEffect } from "react";
 export default function SessionWatcher() {
   useEffect(() => {
     const syncSession = (e: StorageEvent) => {
-      // যদি অন্য ট্যাবে লগইন বা লগআউট হয়, তবে এই ট্যাবটি সাথে সাথে রিলোড হবে
-      if (e.key === "zenex_session_sync") {
-        window.location.reload(); 
+      // 💥 THE FIX: Prevent Infinite Reload Loop 💥
+      if (e.key === "zenex_session_sync" && e.newValue) {
+        const lastReload = sessionStorage.getItem("zenex_last_reload");
+        const now = Date.now();
+        // Only allow reload if it hasn't reloaded in the last 3 seconds
+        if (!lastReload || now - parseInt(lastReload) > 3000) {
+          sessionStorage.setItem("zenex_last_reload", now.toString());
+          window.location.reload(); 
+        }
       }
     };
 

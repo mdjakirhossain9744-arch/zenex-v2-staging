@@ -56,19 +56,13 @@ export async function POST(req: Request) {
       // 💥 THE BOSS TIMEZONE FIX (Corrected) 💥
       // ইউজারের ঘড়ি নষ্ট থাকার কারণে সে যদি ভবিষ্যতের (Future) কোনো ডেট রিকোয়েস্ট করে, 
       // তাহলে সার্ভার জোর করে তাকে আজকের (Today) ডাটা দিবে। 
-      // কিন্তু সে যদি অতীতের কোনো ডেট (৬ তারিখ, ৫ তারিখ) চায়, তাহলে ঠিক ওই ডেটের ডাটাই দিবে!
       if (fetchDate > todayStr) {
           fetchDate = todayStr;
       }
 
-      const cacheKey = `sync_orders_${email}_${page}_${limit}_${filterStatus || 'ALL'}_${fetchDate}`;
-      const cachedData = await redis.get(cacheKey);
-      if (cachedData) {
-          return new NextResponse(cachedData, {
-              status: 200,
-              headers: { "Content-Type": "application/json", 'Cache-Control': 'no-store, max-age=0' }
-          });
-      }
+      // 💥 THE BOSS FIX: Redis Caching Disabled For FETCH 💥
+      // To solve the "UI Flickering / State overriding" issue, we MUST fetch directly 
+      // from MongoDB. Redis serving 3s stale data was replacing realtime SSE updates!
 
       const timeoutLockKey = `timeout_lock_${email}`;
       const hasTimeoutLock = await redis.get(timeoutLockKey);
@@ -206,8 +200,6 @@ export async function POST(req: Request) {
         pagination: { total: totalItems, page, limit, hasMore: hasMoreData },
         stats 
       });
-
-      await redis.set(cacheKey, responsePayload, "EX", 3).catch(() => null);
 
       return new NextResponse(responsePayload, { 
         status: 200, 
