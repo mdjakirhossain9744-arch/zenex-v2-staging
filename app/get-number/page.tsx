@@ -36,12 +36,8 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
-// SMART SORTING LOGIC 
+// 💥 THE BOSS FIX: STRICT STABLE SORTING (NO JUMPING) 💥
 const getSortTime = (item: any) => {
-    if (item.status === 'DONE') {
-        const t = item.receivedAt || item.updatedAt || item.createdAt;
-        return new Date(t).getTime() || 0;
-    }
     return new Date(item.createdAt).getTime() || 0;
 };
 
@@ -58,7 +54,6 @@ export default function GetNumber() {
   const [toasts, setToasts] = useState<{id: number, msg: string}[]>([]);
   const [numbersList, setNumbersList] = useState<any[]>([]);
   
-  // TIME SYNC STATES 
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [timeOffset, setTimeOffset] = useState(0); 
 
@@ -71,7 +66,6 @@ export default function GetNumber() {
   const [isDownloading, setIsDownloading] = useState(false);
   const observerRef = useRef<HTMLDivElement>(null);
 
-  // ADJUSTED TRUE SERVER TIME 
   const adjustedTime = currentTime + timeOffset;
 
   const getUserEmail = () => {
@@ -88,7 +82,6 @@ export default function GetNumber() {
     if (savedRemovePlus === "true") setRemovePlus(true);
   }, []);
 
-  // 💥 SEPARATE LIVE TIME TICKER (Updates Every Second) 💥
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(Date.now());
@@ -156,14 +149,13 @@ export default function GetNumber() {
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
   };
 
+  // 💥 THE BOSS FIX: SMART DISPLAY TIME (Reads from individual split rows) 💥
   const getDisplayTime = (item: any) => {
       const cTime = new Date(item.createdAt).getTime();
-      if (item.status === 'DONE') return item.receivedAt || item.updatedAt || item.createdAt;
       if (item.status === 'FAIL' || (item.status === 'WAIT' && (adjustedTime - cTime) >= 20 * 60 * 1000)) {
           if (item.otp === "Timeout") return cTime + (20 * 60 * 1000); 
-          return item.updatedAt || item.createdAt;
       }
-      return item.createdAt; 
+      return item.displayTime || cTime; 
   };
 
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
@@ -179,8 +171,6 @@ export default function GetNumber() {
       if (serverDateStr) {
           const serverTimeMs = new Date(serverDateStr).getTime();
           if (!isNaN(serverTimeMs)) {
-              // 💥 ANTI-JITTER LATENCY FILTER 💥
-              // Ignore ping variations under 2 seconds to prevent time flickering
               setTimeOffset(prevOffset => {
                   const newOffset = serverTimeMs - Date.now();
                   return Math.abs(prevOffset - newOffset) > 2000 ? newOffset : prevOffset;
@@ -201,8 +191,6 @@ export default function GetNumber() {
               if (existingItem) {
                  if (existingItem.status === "DONE" && fetchedItem.status === "WAIT") return; 
                  
-                 // 💥 ANTI-FLICKER CACHE SHIELD 💥
-                 // Prevent stale cache or latency from truncating multi-OTPs already updated by SSE
                  const newLen = (fetchedItem.fullMessage || "").length;
                  const oldLen = (existingItem.fullMessage || "").length;
                  
@@ -250,15 +238,13 @@ export default function GetNumber() {
     const handleInstantOtp = (e: any) => {
       const { searchNumber, otp, fullMessage, isMulti } = e.detail;
       setNumbersList((prev) => {
-        // 💥 THE BOSS BUG FIX: STRICT WILDCARD LOCK 💥
-        // Prevent matching ALL recycled numbers. Only target the specific exact order.
         let targetId = prev.find(i => i.searchNumber === searchNumber && i.status === "WAIT")?.id || prev.find(i => i.searchNumber === searchNumber && i.status === "WAIT")?._id;
         
         if (!targetId && isMulti) {
             targetId = prev.find(i => i.searchNumber === searchNumber && i.status === "DONE")?.id || prev.find(i => i.searchNumber === searchNumber && i.status === "DONE")?._id;
         }
 
-        if (!targetId) return prev; // If not found, ignore to prevent wild updates.
+        if (!targetId) return prev; 
 
         return prev.map((item) => {
           if (item.id === targetId || item._id === targetId) {
@@ -271,7 +257,8 @@ export default function GetNumber() {
                if (!currentMsgs.includes(fullMessage.trim())) {
                    const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
                    showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
-                   return { ...item, status: "DONE", otp, fullMessage: combinedMessage, receivedAt: Date.now() + timeOffset, isMulti: true };
+                   // 💥 THE BOSS FIX: Set receivedAt so the new Multi-OTP gets "Just Now" time
+                   return { ...item, status: "DONE", otp, fullMessage: combinedMessage, isMulti: true, receivedAt: Date.now() + timeOffset };
                }
              }
           }
@@ -359,16 +346,35 @@ export default function GetNumber() {
       return true;
   });
 
+  // 💥 THE BOSS FIX: TIME SPLITTING FOR MULTI-OTP ROWS 💥
   const expandedNumbers: any[] = [];
   deduplicatedNumbers.forEach((item: any) => {
       if (item.status === "DONE" && item.fullMessage && item.fullMessage.includes("_||_")) {
           const msgsArray = item.fullMessage.split("_||_").map((m: string) => m.trim()).filter(Boolean);
           msgsArray.forEach((msg: string, idx: number) => {
               const extracted = cleanOTPDisplay(msg);
-              expandedNumbers.push({ ...item, id: `${item._id || item.id}_${idx}`, otp: extracted !== "Waiting..." ? extracted : item.otp, fullMessage: msg, isMulti: true });
+              
+              // Magic Timestamping: The oldest gets original creation time, the newest gets the latest update time!
+              let specificTime = new Date(item.createdAt).getTime();
+              if (idx === msgsArray.length - 1) {
+                  specificTime = item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime();
+              }
+
+              expandedNumbers.push({ 
+                  ...item, 
+                  id: `${item._id || item.id}_${idx}`, 
+                  otp: extracted !== "Waiting..." ? extracted : item.otp, 
+                  fullMessage: msg, 
+                  isMulti: true,
+                  displayTime: specificTime
+              });
           });
       } else {
-          expandedNumbers.push({ ...item, id: item._id || item.id });
+          expandedNumbers.push({ 
+              ...item, 
+              id: item._id || item.id,
+              displayTime: item.status === "DONE" ? (item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime()) : new Date(item.createdAt).getTime()
+          });
       }
   });
 
