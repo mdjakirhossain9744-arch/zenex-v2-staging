@@ -95,10 +95,17 @@ export default function ManagerDashboardPage() {
     return { agentSummaryRes, userDetailsRes, todayStr };
   };
 
-  const { data, isLoading } = useSWR(
+  // 💥 UPDATED: 15 Seconds Auto Reload (15000) + Cache Mutation 💥
+  const { data, isLoading, mutate } = useSWR(
     user?.email ? ["managerData", user.email] : null,
     ([_, email]) => fetchManagerData(email as string),
-    { refreshInterval: 25000, keepPreviousData: true, revalidateOnFocus: false }
+    { 
+      refreshInterval: 15000, 
+      keepPreviousData: true, 
+      revalidateOnFocus: true,
+      refreshWhenHidden: true,
+      refreshWhenOffline: true
+    }
   );
 
   useEffect(() => {
@@ -425,6 +432,9 @@ export default function ManagerDashboardPage() {
                                    if (!res.ok) {
                                       alert(`Failed: ${resultData.message}`);
                                       setInactiveUsers(previousUsers);
+                                   } else {
+                                      // 💥 INSTANT CACHE REFRESH FIX 💥
+                                      mutate();
                                    }
                                 } catch (e) { 
                                    console.error("Action Failed", e); 

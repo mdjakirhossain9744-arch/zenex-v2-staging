@@ -5,17 +5,40 @@ import DailyStat from "../../../../models/DailyStat";
 import redis from "../../../lib/redis"; 
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store"; // 💥 Stop Next.js Aggressive Caching 💥
 
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
+
+    // 1. Read Exact Tag Injected by Engine-2 AI Scanner
+    const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
+    if (serviceMatch && serviceMatch[1]) {
+        return serviceMatch[1].trim(); 
+    }
+
+    // 2. Manual Fallback
     const lowerMsg = msg.toLowerCase();
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WhatsApp';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
     if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
+    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
     if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
+    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
+    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'Amazon';
+    if (lowerMsg.includes('netflix')) return 'Netflix';
+    if (lowerMsg.includes('paypal')) return 'PayPal';
+    if (lowerMsg.includes('tiktok')) return 'TikTok';
+    if (lowerMsg.includes('tinder')) return 'Tinder';
+    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'Uber';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    if (lowerMsg.includes('imo')) return 'IMO';
+    if (lowerMsg.includes('viber')) return 'Viber';
+
     return "Other"; 
 };
 
+// 💥 STRICT UTC TIMEZONE AS PER BOSS COMMAND 💥
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
@@ -36,17 +59,22 @@ export async function POST(req: Request) {
 
     const { email, role, limitDays = 60 } = await req.json();
 
-    if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
+    const noCacheHeaders = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    };
 
-    // 💥 CACHE KEY CHANGED: নতুন পারফেক্ট কাউন্টিংয়ের জন্য ক্যাশ রিফ্রেশ করা হলো!
-    const cacheKey = `admin_summary_v3_exact_otp_${limitDays}`; 
+    if (role !== "admin") return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403, headers: noCacheHeaders });
+
+    const cacheKey = `admin_summary_v3_exact_otp_${limitDays}_UTC`; 
     const cachedData = await redis.get(cacheKey).catch(() => null);
 
     if (cachedData) {
         let parsedCache;
         try {
             parsedCache = typeof cachedData === "string" ? JSON.parse(cachedData) : cachedData;
-            return NextResponse.json(parsedCache, { status: 200 });
+            return NextResponse.json(parsedCache, { status: 200, headers: noCacheHeaders });
         } catch (err) {}
     }
 
@@ -56,7 +84,8 @@ export async function POST(req: Request) {
     const dailyStatQuery: any = { dateString: { $lt: todayStrUTC } };
     if (!isAllTime) {
         const limitNum = Number(limitDays) || 60;
-        const pastDaysLimit = new Date(); pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
+        const pastDaysLimit = new Date(); 
+        pastDaysLimit.setUTCDate(pastDaysLimit.getUTCDate() - limitNum);
         dailyStatQuery.dateString = { $gte: getUTCDateString(pastDaysLimit), $lt: todayStrUTC };
     }
 
@@ -76,29 +105,17 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // 💥 BULLETPROOF MATH FIX: ডাটাবেসে Total না থাকলে নিজে যোগ করে নিবে!
     dailyStatsAgg.forEach((ds: any) => {
         const sCount = ds.success || 0;
         const fCount = ds.failed || 0;
-        
         let finalTotal = ds.total || ds.allocation || 0;
-        
-        if (finalTotal === 0 && (sCount > 0 || fCount > 0)) {
-            finalTotal = sCount + fCount;
-        }
+        if (finalTotal === 0 && (sCount > 0 || fCount > 0)) finalTotal = sCount + fCount;
 
-        groupedRawData[ds._id] = { 
-            total: finalTotal, 
-            allocation: finalTotal, 
-            success: sCount, 
-            failed: fCount, 
-            amount: ds.amount || 0 
-        };
+        groupedRawData[ds._id] = { total: finalTotal, allocation: finalTotal, success: sCount, failed: fCount, amount: ds.amount || 0 };
     });
 
     groupedRawData[todayStrUTC] = { total: 0, allocation: 0, success: 0, failed: 0, amount: 0 };
 
-    // 🔥 MISSION 1 FIX: Added 'processedKeys' to securely count ONLY real charged OTPs
     const ordersCursor = Order.find({ dateString: todayStrUTC })
         .select("status createdAt updatedAt fullMessage orderCost orderCommission processedKeys")
         .lean()
@@ -115,27 +132,17 @@ export async function POST(req: Request) {
         groupedRawData[todayStrUTC].allocation += 1; 
 
         if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-            
-            // 🚀 SMART EXACT COUNT LOGIC: Source of truth is processedKeys (Engine-2 Pay Area)
             let exactValidCount = 0;
-            
-            if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
-                exactValidCount = o.processedKeys.length;
-            } 
+            if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) exactValidCount = o.processedKeys.length;
             else if (typeof o.fullMessage === "string" && o.fullMessage.trim() !== "") {
                 const msgArray = o.fullMessage.split(/_\|\|_/);
                 msgArray.forEach((m: string) => { 
-                    if (m.trim() !== "" && !m.toLowerCase().includes("waiting")) {
-                        exactValidCount += 1; 
-                    }
+                    if (m.trim() !== "" && !m.toLowerCase().includes("waiting")) exactValidCount += 1; 
                 });
             }
-
-            // Fallback for single old completed records
             if (exactValidCount === 0) exactValidCount = 1;
 
             groupedRawData[todayStrUTC].success += exactValidCount;
-            // 💰 Note: orderCost and orderCommission holds the cumulative deducted amount by Engine-2
             groupedRawData[todayStrUTC].amount += ((o.orderCost || 0) + (o.orderCommission || 0));
 
             const hour = new Date(o.updatedAt || o.createdAt || new Date()).getUTCHours();
@@ -150,7 +157,8 @@ export async function POST(req: Request) {
         }
     }
 
-    const yesterdayDate = new Date(); yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterdayDate = new Date(); 
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
     const yesterdayStrUTC = getUTCDateString(yesterdayDate);
 
     const defaultData = { success: 0, amount: 0, total: 0, allocation: 0, failed: 0 };
@@ -163,9 +171,10 @@ export async function POST(req: Request) {
         yesterdaySuccess: yesterdayData.success, yesterdaySpend: yesterdayData.amount
     };
 
-    await redis.set(cacheKey, JSON.stringify(responsePayload), "EX", 60).catch(() => null);
+    // Store in Redis for exactly 15 seconds to match UI
+    await redis.set(cacheKey, JSON.stringify(responsePayload), "EX", 15).catch(() => null);
     
-    return NextResponse.json(responsePayload);
+    return NextResponse.json(responsePayload, { headers: noCacheHeaders });
 
-  } catch (error) { return NextResponse.json({ success: false }); }
+  } catch (error) { return NextResponse.json({ success: false }, { status: 500 }); }
 }

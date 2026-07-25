@@ -5,16 +5,23 @@ import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store"; // 💥 Stop Next.js Aggressive Caching 💥
 
 let agentSummaryCache: Record<string, { data: any, timestamp: number }> = {};
 let activeAgentLocks: Record<string, boolean> = {}; 
-const CACHE_DURATION = 2 * 60 * 1000; 
+const CACHE_DURATION = 15 * 1000; 
 
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
+
+    const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
+    if (serviceMatch && serviceMatch[1]) {
+        return serviceMatch[1].trim(); 
+    }
+
     const lowerMsg = msg.toLowerCase();
-    
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WhatsApp';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
     if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
     if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
@@ -25,11 +32,15 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('paypal')) return 'PayPal';
     if (lowerMsg.includes('tiktok')) return 'TikTok';
     if (lowerMsg.includes('tinder')) return 'Tinder';
-    if (lowerMsg.includes('uber')) return 'Uber';
+    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'Uber';
     if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    if (lowerMsg.includes('imo')) return 'IMO';
+    if (lowerMsg.includes('viber')) return 'Viber';
+
     return "Other"; 
 };
 
+// STRICT UTC
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
   catch (e) { return new Date().toISOString().split('T')[0]; }
@@ -41,9 +52,15 @@ const getUTCHour = (dateObj: any = new Date()) => {
 };
 
 export async function POST(req: Request) {
+  const noCacheHeaders = {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0"
+  };
+
   const body = await req.json().catch(() => ({}));
   const { email, limitDays = 60 } = body;
-  if (!email) return NextResponse.json({ success: false, message: "Email required" });
+  if (!email) return NextResponse.json({ success: false, message: "Email required" }, { headers: noCacheHeaders });
 
   const safeAgentEmail = email.toLowerCase().trim();
   const cacheKey = `agent_v7_exact_inactive_${safeAgentEmail}_${limitDays}`;
@@ -51,11 +68,11 @@ export async function POST(req: Request) {
 
   try {
     if (agentSummaryCache[cacheKey] && (now - agentSummaryCache[cacheKey].timestamp < CACHE_DURATION)) {
-        return NextResponse.json(agentSummaryCache[cacheKey].data);
+        return NextResponse.json(agentSummaryCache[cacheKey].data, { headers: noCacheHeaders });
     }
 
     if (activeAgentLocks[cacheKey] && agentSummaryCache[cacheKey]) {
-        return NextResponse.json(agentSummaryCache[cacheKey].data); 
+        return NextResponse.json(agentSummaryCache[cacheKey].data, { headers: noCacheHeaders }); 
     }
 
     activeAgentLocks[cacheKey] = true;
@@ -64,7 +81,7 @@ export async function POST(req: Request) {
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) {
         delete activeAgentLocks[cacheKey];
-        return NextResponse.json({ success: false, message: "Agent not found" });
+        return NextResponse.json({ success: false, message: "Agent not found" }, { headers: noCacheHeaders });
     }
 
     const exactAgentEmail = agent.email;
@@ -224,11 +241,9 @@ export async function POST(req: Request) {
 
     const nowTime = new Date().getTime();
     
-    // 💥 THE BOSS FIX: BULLETPROOF "LAST LOGIN" CALCULATION 💥
     const inactiveUsersArr = networkUsers.map((u: any) => {
         const createdTime = new Date(u.createdAt || nowTime).getTime();
         
-        // Use true lastLogin if it exists, otherwise fallback to updatedAt if they have active sessions
         let referenceTime = createdTime;
         if (u.lastLogin) {
             referenceTime = new Date(u.lastLogin).getTime();
@@ -236,7 +251,7 @@ export async function POST(req: Request) {
             referenceTime = new Date(u.updatedAt).getTime();
         }
 
-        const sortValue = referenceTime; // Older time = smaller number
+        const sortValue = referenceTime; 
         const diffDays = Math.floor((nowTime - referenceTime) / (1000 * 60 * 60 * 24));
         
         let timeText = ""; 
@@ -245,7 +260,6 @@ export async function POST(req: Request) {
             else if (diffDays === 1) timeText = "Yesterday";
             else timeText = `${diffDays} days ago`;
         } else {
-            // Literally NEVER logged in!
             if (diffDays === 0) timeText = "Never (Created Today)";
             else timeText = `Never (${diffDays}d ago)`;
         }
@@ -281,10 +295,10 @@ export async function POST(req: Request) {
     agentSummaryCache[cacheKey] = { data: responseData, timestamp: now };
     delete activeAgentLocks[cacheKey];
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, { headers: noCacheHeaders });
 
   } catch (error) { 
       delete activeAgentLocks[cacheKey]; 
-      return NextResponse.json({ success: false }); 
+      return NextResponse.json({ success: false }, { headers: noCacheHeaders }); 
   }
 }

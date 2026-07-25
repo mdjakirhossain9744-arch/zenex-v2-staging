@@ -93,11 +93,17 @@ export default function AdminGlobalDashboard() {
     return { userData, reportData, summaryRes, todayStr };
   };
 
-  // 💥 SWR HOOK: Runs every 30s. Prevents skeleton loading on revisit 💥
+  // 💥 THE BOSS FIX: SWR Auto-Sync Every 15 Seconds (Matches Backend Cache perfectly) 💥
   const { data, isLoading } = useSWR(
     adminEmail ? ["adminData", adminEmail] : null,
     ([_, email]) => fetchAdminData(email as string),
-    { refreshInterval: 30000, keepPreviousData: true, revalidateOnFocus: false }
+    { 
+      refreshInterval: 15000, 
+      keepPreviousData: true, 
+      revalidateOnFocus: true,
+      refreshWhenHidden: true,
+      refreshWhenOffline: true
+    }
   );
 
   // Sync SWR cache to UI states securely
