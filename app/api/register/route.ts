@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import connectToDatabase from "../../lib/mongodb"; 
 import User from "../../../models/User"; 
-import Notification from "../../../models/Notification"; // 💥 নোটিফিকেশন ইমপোর্ট
+import Notification from "../../../models/Notification"; 
 
 const generateApiKey = () => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -31,7 +31,6 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
-    // 🔥 FIX 1: Strictly check against customAgentMail ONLY (Personal email blocked) 🔥
     const validAgent = await User.findOne({ 
       customAgentMail: agentEmail,
       role: "agent" 
@@ -41,9 +40,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid Agent Email! Please strictly use the official Agent Mail (e.g., @zenexnetwork.com)." }, { status: 400 });
     }
 
-    // এখন থেকে শুধুমাত্র "active" স্ট্যাটাসের ইউজাররা সিট কাউন্ট করবে, "pending" কাউন্ট করবে না।
     const totalAgentUsers = await User.countDocuments({
-      agentEmail: validAgent.customAgentMail, // 🔥 Updated to match strictly
+      agentEmail: validAgent.customAgentMail, 
       role: "user",
       status: "active" 
     });
@@ -59,7 +57,6 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const newApiKey = generateApiKey();
     
-    // 💥 ইউজার যদি পিন না দেয়, তবে ডিফল্ট 1234 সেট হবে
     const finalPin = withdrawPin && withdrawPin.trim() !== "" ? withdrawPin : "1234";
 
     const newUser = new User({
@@ -79,16 +76,15 @@ export async function POST(req: Request) {
       isApiActive: false,      
     });
 
-    // 💥 ম্যাজিক: মঙ্গোডিবির অরিজিনাল আইডি থেকেই ZX-ID বানিয়ে ডাটাবেসে সেভ করে দেওয়া হচ্ছে 💥
     newUser.zxId = `ZX-${newUser._id.toString().slice(-6).toUpperCase()}`;
 
     await newUser.save();
 
-    // 🔔 💥 ওয়েলকাম নোটিফিকেশন পাঠানো হলো 💥 🔔
+    // 🔔 💥 THE BOSS FIX: LOGICAL & PROFESSIONAL WELCOME NOTIFICATION 💥 🔔
     await Notification.create({
       userEmail: email,
       title: "Welcome to ZENEX NETWORK 🎉",
-      description: `Hello ${fullName}, your account has been successfully created. Please wait for your Agent's approval to start working. Your default Withdraw PIN is 1234.`,
+      description: `Hello ${fullName}, your account has been successfully activated. Welcome to your dashboard! ⚠️ WARNING: Your account will be permanently suspended if you do not work regularly.`,
       type: "INFO",
       color: "blue"
     });

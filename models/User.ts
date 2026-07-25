@@ -34,6 +34,10 @@ const userSchema = new Schema(
     canManageApi: { type: Boolean, default: false },
 
     activeSessions: { type: [String], default: [] },
+    
+    // 💥 THE BOSS FIX: ACCURATE LOGIN TRACKER 💥
+    lastLogin: { type: Date, default: null },
+
     isAutoWithdraw: { type: Boolean, default: false }, 
     binancePayId: { type: String, default: "" },       
   },

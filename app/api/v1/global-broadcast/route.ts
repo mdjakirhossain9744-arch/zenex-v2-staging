@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
+// বস, আপনার প্রজেক্টের Redis কনফিগারেশনের পাথ অনুযায়ী নিচের ইম্পোর্টটি মিলিয়ে নিবেন। 
+// যদি এই ফাইলে Redis না থাকে, তবে শুধু revalidate (ISR) ডাটাবেজকে ১০০% সেভ করবে।
+import redis from "../../../lib/redis"; 
 
-export const dynamic = "force-dynamic";
+// 💥 NEXT.JS ISR CACHE: 0% Database Load from API Spam 💥
+// "force-dynamic" রিমুভ করে "revalidate = 10" দেওয়া হলো। 
+// ফলে বট সেকেন্ডে ১০০০ বার হিট করলেও Next.js মাত্র ১০ সেকেন্ড পর পর একবার ফাংশনটি রান করবে।
+export const revalidate = 10; 
 
 // 💥 SMART SERVICE EXTRACTOR 💥
 const extractServiceName = (msg: string, existingService: string) => {
@@ -42,9 +48,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: "Unauthorized! Valid Master Key Required." }, { status: 401 });
     }
 
+    // 💥 LAYER 1: REDIS IN-MEMORY CACHE (O(1) Fetch) 💥
+    const CACHE_KEY = "zenex_bot_broadcast_2mins";
+    if (redis) {
+        const cachedData = await redis.get(CACHE_KEY);
+        if (cachedData) {
+            const parsedData = JSON.parse(cachedData);
+            return NextResponse.json({
+                success: true,
+                count: parsedData.length,
+                message: "Live Public OTPs Fetched Successfully! (Served from ⚡ Redis Cache)",
+                data: parsedData
+            });
+        }
+    }
+
+    // 💥 LAYER 2: FALLBACK TO DATABASE (Runs only once every 10 seconds) 💥
     await connectToDatabase();
 
-    // 💥 Fetch only last 2 minutes of Success Orders 💥
     const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentOrders = await Order.find({
         status: { $in: ["DONE", "Success", "SUCCESS"] },
@@ -70,10 +91,15 @@ export async function GET(req: Request) {
         }
     });
 
+    // 💥 SAVE TO REDIS CACHE FOR 10 SECONDS (Protecting MongoDB) 💥
+    if (redis) {
+        await redis.set(CACHE_KEY, JSON.stringify(selectedOtps), "EX", 10);
+    }
+
     return NextResponse.json({
         success: true,
         count: selectedOtps.length,
-        message: "Live Public OTPs Fetched Successfully!",
+        message: "Live Public OTPs Fetched Successfully! (Database Hit - Now Cached)",
         data: selectedOtps
     });
 

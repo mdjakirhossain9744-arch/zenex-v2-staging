@@ -1,22 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../DashboardLayout"; 
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+// 💥 SWR IMPORTED FOR LIGHTNING CACHE 💥
+import useSWR from "swr";
 
 export default function UserSummary() {
   const router = useRouter();
 
   const [dateFilter, setDateFilter] = useState("7"); 
-  // 💥 FIX 1: Initial state changed to 0
+  const [user, setUser] = useState<any>(null);
+
   const [userRate, setUserRate] = useState(0);
   const [dbEarnings, setDbEarnings] = useState("0.00"); 
 
   const [reportData, setReportData] = useState<any[]>([]);
   const [totals, setTotals] = useState({ allocation: 0, success: 0, failed: 0, amount: 0 });
   const [overallRate, setOverallRate] = useState("0%");
-  const [loading, setLoading] = useState(true);
 
   const generateDateRange = (days: number, baseDateStr: string) => {
     const dates = [];
@@ -30,67 +32,88 @@ export default function UserSummary() {
     return dates;
   };
 
-  const loadSummaryData = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true); 
+  useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) { router.push("/login"); return; }
-
     const parsedUser = JSON.parse(storedUser);
-
-    // 💥 SMART REDIRECT 💥
     if (parsedUser.role === "admin") { router.push("/admin/summary"); return; }
     if (parsedUser.role === "agent") { router.push("/manager/summary"); return; }
+    setUser(parsedUser);
+  }, [router]);
 
-    try {
-      const res = await fetch("/api/summary-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: parsedUser.email, role: "user" })
-      });
-      
-      const data = await res.json();
-      
-      if (data.success) {
-        // 💥 FIX 2: Javascript fallback changed from 0.50 to 0 (Prevents 0 from being overwritten)
-        setUserRate(data.userRate !== undefined ? data.userRate : 0);
-        setDbEarnings(Number(data.balance || 0).toFixed(2));
+  // 💥 SWR FETCHER 💥
+  const fetchSummaryData = async ([_, email]: [string, string]) => {
+    const res = await fetch("/api/summary-report", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, role: "user" })
+    });
+    return res.json();
+  };
 
-        let daysToShow = dateFilter === "today" ? 1 : dateFilter === "15" ? 15 : dateFilter === "30" ? 30 : dateFilter === "all" ? 60 : 7;
-        const serverDate = data.serverDate || new Date().toISOString(); 
-        const dateTemplate = generateDateRange(daysToShow, serverDate);
-        
-        const rawData = data.groupedRawData || {};
+  // 💥 SWR HOOK: Prevents reloading animation on revisit 💥
+  const { data, isLoading } = useSWR(
+    user?.email ? ["userSummary", user.email, dateFilter] : null,
+    fetchSummaryData,
+    { refreshInterval: 10000, keepPreviousData: true, revalidateOnFocus: false }
+  );
 
-        const finalData = dateTemplate.map(dateStr => {
-          let existingData = rawData[dateStr] || rawData[new Date(dateStr).toLocaleDateString('en-US')];
-          return {
-            dateStr: dateStr, displayDate: new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-            allocation: existingData ? existingData.allocation : 0, success: existingData ? existingData.success : 0,
-            failed: existingData ? existingData.failed : 0, amount: existingData ? existingData.amount : 0,
-            rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
-          };
-        });
-
-        setReportData(finalData);
-
-        const t = finalData.reduce((acc: any, curr: any) => ({
-            allocation: acc.allocation + curr.allocation, success: acc.success + curr.success,
-            failed: acc.failed + curr.failed, amount: acc.amount + curr.amount,
-        }), { allocation: 0, success: 0, failed: 0, amount: 0 });
-
-        setTotals(t);
-        setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
-      }
-    } catch (e) { console.error("Failed to load summary"); }
-    
-    if (!isSilent) setLoading(false);
-  }, [dateFilter, router]);
-
+  // Sync SWR Data to UI
   useEffect(() => {
-    loadSummaryData(false); 
-    const interval = setInterval(() => { loadSummaryData(true); }, 10000); 
-    return () => clearInterval(interval);
-  }, [loadSummaryData]); 
+    if (data && data.success) {
+      setUserRate(data.userRate !== undefined ? data.userRate : 0);
+      setDbEarnings(Number(data.balance || 0).toFixed(2));
+
+      let daysToShow = dateFilter === "today" ? 1 : dateFilter === "15" ? 15 : dateFilter === "30" ? 30 : dateFilter === "all" ? 60 : 7;
+      const serverDate = data.serverDate || new Date().toISOString(); 
+      const dateTemplate = generateDateRange(daysToShow, serverDate);
+      
+      const rawData = data.groupedRawData || {};
+
+      const finalData = dateTemplate.map(dateStr => {
+        let existingData = rawData[dateStr] || rawData[new Date(dateStr).toLocaleDateString('en-US')];
+        return {
+          dateStr: dateStr, displayDate: new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          allocation: existingData ? existingData.allocation : 0, success: existingData ? existingData.success : 0,
+          failed: existingData ? existingData.failed : 0, amount: existingData ? existingData.amount : 0,
+          rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
+        };
+      });
+
+      setReportData(finalData);
+
+      const t = finalData.reduce((acc: any, curr: any) => ({
+          allocation: acc.allocation + curr.allocation, success: acc.success + curr.success,
+          failed: acc.failed + curr.failed, amount: acc.amount + curr.amount,
+      }), { allocation: 0, success: 0, failed: 0, amount: 0 });
+
+      setTotals(t);
+      setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
+    }
+  }, [data, dateFilter]);
+
+  // 💥 PREMIUM SKELETON LOADING 💥
+  if (!data && isLoading) return (
+    <DashboardLayout>
+      <div className="p-4 md:p-10 w-full animate-pulse font-sans">
+        <div className="h-8 bg-[#1E293B] w-64 rounded-xl mb-2"></div>
+        <div className="h-4 bg-[#1E293B] w-96 rounded-xl mb-8"></div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+           <div className="h-[350px] bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-[350px] bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+        </div>
+
+        <div className="h-64 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+      </div>
+    </DashboardLayout>
+  );
 
   return (
     <DashboardLayout>
@@ -197,7 +220,7 @@ export default function UserSummary() {
                  </tr>
                </thead>
                <tbody className="text-sm font-medium text-[#E2E8F0] divide-y divide-[#334155]/50">
-                 {loading ? <tr><td colSpan={6} className="text-center p-8 text-[#3B82F6] font-bold">Loading Report...</td></tr> : reportData.map((row, index) => (
+                 {reportData.map((row, index) => (
                      <tr key={index} className="hover:bg-[#334155]/20 transition-colors">
                        <td className="p-4 pl-6 text-[#94A3B8] font-mono font-bold">{row.displayDate}</td>
                        <td className="p-4 text-center font-bold text-white">{row.allocation}</td>

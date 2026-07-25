@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../../DashboardLayout"; 
+// 💥 SWR FOR LIGHTNING FAST CACHE 💥
+import useSWR from "swr";
 
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
@@ -13,7 +15,6 @@ export default function ManagerDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [liveRate, setLiveRate] = useState<number>(0.00);
-  const [isPageLoading, setIsPageLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState("");
 
   const [stats, setStats] = useState({ 
@@ -27,7 +28,6 @@ export default function ManagerDashboardPage() {
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
   const [globalTrafficData, setGlobalTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
-  // 🔥 DYNAMIC APP FORMATTER 🔥
   const formatTopApps = (countsObj: Record<string, number>) => {
     return Object.entries(countsObj).map(([name, count]) => {
       let info = { icon: name.charAt(0).toUpperCase(), text: "text-[#E2E8F0]", bg: "bg-[#334155]/30" };
@@ -84,51 +84,55 @@ export default function ManagerDashboardPage() {
 
     setUser(parsedUser);
     setLiveRate(Number(parsedUser.agentMaxRate || 0));
-
-    const todayStr = getUTCDateString();
-
-    const fetchAgentDashboardData = async () => {
-      try {
-        const [agentSummaryRes, userDetailsRes] = await Promise.all([
-          fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json()),
-          fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: parsedUser.email }) }).then(r => r.json())
-        ]);
-
-        if (userDetailsRes && userDetailsRes.user) {
-           setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
-           setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); 
-        }
-
-        if (agentSummaryRes && agentSummaryRes.success) {
-           const todayData = agentSummaryRes.groupedRawData[todayStr] || { total: 0, success: 0 };
-           setStats(p => ({ 
-               ...p, 
-               todayTotal: todayData.total, 
-               todaySuccess: agentSummaryRes.todaySuccess || 0,
-               todayRevenue: agentSummaryRes.todayRevenue || 0,
-               yesterdaySuccess: agentSummaryRes.yesterdaySuccess || 0,
-               yesterdayRevenue: agentSummaryRes.yesterdayRevenue || 0
-           }));
-           
-           if (agentSummaryRes.todayAppCounts) setTopApps(formatTopApps(agentSummaryRes.todayAppCounts));
-           
-           // 💥 THE BOSS FIX: Instantly map traffic data to BOTH charts to prevent infinite loading
-           if (agentSummaryRes.todayHourlyTraffic) {
-               setTrafficData(agentSummaryRes.todayHourlyTraffic);
-               setGlobalTrafficData(agentSummaryRes.todayHourlyTraffic); 
-           }
-           
-           if (agentSummaryRes.topPerformers) setTopUsers(agentSummaryRes.topPerformers); 
-           if (agentSummaryRes.inactiveUsers) setInactiveUsers(agentSummaryRes.inactiveUsers); 
-        }
-      } catch (e) {} finally { setIsPageLoading(false); }
-    };
-
-    fetchAgentDashboardData();
-    // 💥 SERVER OPTIMIZATION: Manager Dashboard changed to 25 Seconds polling! 💥
-    const interval = setInterval(fetchAgentDashboardData, 25000);
-    return () => clearInterval(interval);
   }, [router]);
+
+  const fetchManagerData = async (email: string) => {
+    const todayStr = getUTCDateString();
+    const [agentSummaryRes, userDetailsRes] = await Promise.all([
+      fetch("/api/agent-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }).then(r => r.json()),
+      fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }).then(r => r.json())
+    ]);
+    return { agentSummaryRes, userDetailsRes, todayStr };
+  };
+
+  const { data, isLoading } = useSWR(
+    user?.email ? ["managerData", user.email] : null,
+    ([_, email]) => fetchManagerData(email as string),
+    { refreshInterval: 25000, keepPreviousData: true, revalidateOnFocus: false }
+  );
+
+  useEffect(() => {
+    if (data) {
+      const { agentSummaryRes, userDetailsRes, todayStr } = data;
+      
+      if (userDetailsRes && userDetailsRes.user) {
+         setStats(p => ({ ...p, balance: Number(userDetailsRes.user.balance || 0).toFixed(2) }));
+         setLiveRate(Number(userDetailsRes.user.agentMaxRate || 0)); 
+      }
+
+      if (agentSummaryRes && agentSummaryRes.success) {
+         const todayData = agentSummaryRes.groupedRawData[todayStr] || { total: 0, success: 0 };
+         setStats(p => ({ 
+             ...p, 
+             todayTotal: todayData.total, 
+             todaySuccess: agentSummaryRes.todaySuccess || 0,
+             todayRevenue: agentSummaryRes.todayRevenue || 0,
+             yesterdaySuccess: agentSummaryRes.yesterdaySuccess || 0,
+             yesterdayRevenue: agentSummaryRes.yesterdayRevenue || 0
+         }));
+         
+         if (agentSummaryRes.todayAppCounts) setTopApps(formatTopApps(agentSummaryRes.todayAppCounts));
+         
+         if (agentSummaryRes.todayHourlyTraffic) {
+             setTrafficData(agentSummaryRes.todayHourlyTraffic);
+             setGlobalTrafficData(agentSummaryRes.todayHourlyTraffic); 
+         }
+         
+         if (agentSummaryRes.topPerformers) setTopUsers(agentSummaryRes.topPerformers); 
+         if (agentSummaryRes.inactiveUsers) setInactiveUsers(agentSummaryRes.inactiveUsers); 
+      }
+    }
+  }, [data]);
 
   const generateTrafficPath = (data: number[]) => {
     const maxVal = Math.max(...data, 1); 
@@ -141,7 +145,7 @@ export default function ManagerDashboardPage() {
     return path;
   };
 
-  if (isPageLoading) return (
+  if ((!data && isLoading) || !user) return (
     <DashboardLayout>
       <div className="min-h-screen bg-[#0B0F1A] flex flex-col items-center justify-center text-white">
         <div className="w-12 h-12 border-4 border-[#334155] border-t-[#A855F7] rounded-full animate-spin mb-4"></div>
@@ -350,7 +354,6 @@ export default function ManagerDashboardPage() {
                                                 </div>
                                             </div>
                                             
-                                            {/* 💥 THE BOSS FIX: Text is now an absolute badge over the track, guaranteed visibility 💥 */}
                                             <div className="flex-1 relative flex items-center h-5 md:h-7 bg-[#0F172A] rounded overflow-hidden border border-[#334155] mx-2">
                                                 <div className={`absolute left-0 top-0 bottom-0 bg-gradient-to-r ${barColor} transition-all duration-1000 z-0`} style={{width: `${percentage}%`}}></div>
                                                 <div className="absolute right-0 top-0 bottom-0 flex items-center pr-1 md:pr-1.5 z-10">
@@ -369,7 +372,6 @@ export default function ManagerDashboardPage() {
                 )}
             </div>
 
-            {/* 💥 UNSEEN USERS BOX (WITH FIXED ACTION BUTTONS) 💥 */}
             <div className="w-full rounded-2xl bg-[#1E293B]/80 border border-[#334155] backdrop-blur-xl p-4 md:p-6 shadow-xl">
                 <div className="flex items-center justify-between mb-4 md:mb-6 border-b border-[#334155] pb-4">
                    <div>
@@ -393,9 +395,10 @@ export default function ManagerDashboardPage() {
                             const initials = u.name.substring(0, 2).toUpperCase();
                             const lastSeenText = u.inactiveText || "Unknown";
                             
+                            // 💥 THE BOSS FIX: STYLING FOR "NEVER" USERS 💥
                             let statusColor = "text-orange-400"; 
-                            if (lastSeenText === "Never") statusColor = "text-red-500";
-                            else if (lastSeenText === "New Account") statusColor = "text-emerald-400";
+                            if (lastSeenText.includes("Never")) statusColor = "text-red-500";
+                            else if (lastSeenText === "Today" || lastSeenText === "Yesterday") statusColor = "text-emerald-400";
 
                             const handleUserAction = async (targetEmail: string, action: string) => {
                                 if (!targetEmail) {
@@ -417,10 +420,10 @@ export default function ManagerDashboardPage() {
                                         newStatus: action 
                                       })
                                    });
-                                   const data = await res.json();
+                                   const resultData = await res.json();
                                    
                                    if (!res.ok) {
-                                      alert(`Failed: ${data.message}`);
+                                      alert(`Failed: ${resultData.message}`);
                                       setInactiveUsers(previousUsers);
                                    }
                                 } catch (e) { 

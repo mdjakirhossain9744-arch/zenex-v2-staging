@@ -6,10 +6,9 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
-// 💥 THE BOSS FIX: PER-AGENT CACHE LOCK & DATA STREAMING (Zero RAM Overload) 💥
 let agentSummaryCache: Record<string, { data: any, timestamp: number }> = {};
 let activeAgentLocks: Record<string, boolean> = {}; 
-const CACHE_DURATION = 2 * 60 * 1000; // 2 Minutes 
+const CACHE_DURATION = 2 * 60 * 1000; 
 
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
@@ -47,8 +46,7 @@ export async function POST(req: Request) {
   if (!email) return NextResponse.json({ success: false, message: "Email required" });
 
   const safeAgentEmail = email.toLowerCase().trim();
-  // 💥 CACHE KEY CHANGED to bypass old inaccurate cache
-  const cacheKey = `agent_v3_exact_${safeAgentEmail}_${limitDays}`;
+  const cacheKey = `agent_v7_exact_inactive_${safeAgentEmail}_${limitDays}`;
   const now = Date.now();
 
   try {
@@ -75,9 +73,17 @@ export async function POST(req: Request) {
     const agentEmailArray = [exactAgentEmail];
     if (customAgentEmail) agentEmailArray.push(customAgentEmail);
 
-    const networkUsers = await User.find({ agentEmail: { $in: agentEmailArray }, role: "user" })
-      .select("email otpRate fullName uid _id lastLogin createdAt balance status")
-      .lean();
+    const networkUsers = await User.find({ 
+        agentEmail: { $in: agentEmailArray }, 
+        role: "user",
+        $or: [
+          { status: "active" },
+          { status: { $exists: false } },
+          { status: "" }
+        ]
+    })
+    .select("email otpRate fullName uid _id lastLogin updatedAt createdAt activeSessions balance status")
+    .lean();
 
     const exactTargetEmails = [exactAgentEmail];
     if (customAgentEmail) exactTargetEmails.push(customAgentEmail);
@@ -149,7 +155,6 @@ export async function POST(req: Request) {
     const todayAppCounts: Record<string, number> = {};
     const todayHourlyTraffic = [0, 0, 0, 0, 0, 0];
 
-    // 🔥 Exact Logic Application for Old Data
     dailyStatsAgg.forEach((ds: any) => {
         let finalTotal = ds.total || ds.allocation || 0;
         if (finalTotal === 0 && (ds.success > 0 || ds.failed > 0)) {
@@ -161,8 +166,6 @@ export async function POST(req: Request) {
         };
     });
     
-    // 💥 RAM SAVER: MongoDB Cursor Instead of Loading Full Array 💥
-    // 🔥 Added `processedKeys` to selection
     const ordersCursor = Order.find(orderQuery)
         .select("status createdAt updatedAt dateString fullMessage userEmail email orderCommission processedKeys")
         .lean()
@@ -184,8 +187,6 @@ export async function POST(req: Request) {
        groupedRawData[finalDateStr].allocation += 1; 
 
        if (currentStatus === "DONE" || currentStatus === "SUCCESS") {
-          
-          // 🔥 EXACT MULTI-OTP LOGIC INJECTED 🔥
           let exactValidCount = 0;
           if (Array.isArray(o.processedKeys) && o.processedKeys.length > 0) {
               exactValidCount = o.processedKeys.length;
@@ -223,37 +224,30 @@ export async function POST(req: Request) {
 
     const nowTime = new Date().getTime();
     
-    const activeNetworkUsers = networkUsers.filter((u: any) => {
-        const s = (u.status || "active").toLowerCase();
-        return s !== "banned" && s !== "pending" && s !== "suspended";
-    });
-
-    const inactiveUsersArr = activeNetworkUsers.map((u: any) => {
+    // 💥 THE BOSS FIX: BULLETPROOF "LAST LOGIN" CALCULATION 💥
+    const inactiveUsersArr = networkUsers.map((u: any) => {
         const createdTime = new Date(u.createdAt || nowTime).getTime();
-        const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : null;
-        let timeText = ""; let sortValue = 0; 
         
-        if (loginTime) {
-            sortValue = loginTime;
-            const diffDays = Math.floor((nowTime - loginTime) / (1000 * 60 * 60 * 24));
+        // Use true lastLogin if it exists, otherwise fallback to updatedAt if they have active sessions
+        let referenceTime = createdTime;
+        if (u.lastLogin) {
+            referenceTime = new Date(u.lastLogin).getTime();
+        } else if (u.activeSessions && u.activeSessions.length > 0 && u.updatedAt) {
+            referenceTime = new Date(u.updatedAt).getTime();
+        }
+
+        const sortValue = referenceTime; // Older time = smaller number
+        const diffDays = Math.floor((nowTime - referenceTime) / (1000 * 60 * 60 * 24));
+        
+        let timeText = ""; 
+        if (u.lastLogin || (u.activeSessions && u.activeSessions.length > 0)) {
             if (diffDays === 0) timeText = "Today";
             else if (diffDays === 1) timeText = "Yesterday";
-            else if (diffDays < 7) timeText = `${diffDays} days ago`;
-            else if (diffDays < 30) {
-                const weeks = Math.floor(diffDays / 7);
-                timeText = weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
-            } else if (diffDays < 365) {
-                const months = Math.floor(diffDays / 30);
-                timeText = months === 1 ? "1 month ago" : `${months} months ago`;
-            } else {
-                const years = Math.floor(diffDays / 365);
-                timeText = years === 1 ? "1 year ago" : `${years} years ago`;
-            }
+            else timeText = `${diffDays} days ago`;
         } else {
-            sortValue = createdTime; 
-            const diffDays = Math.floor((nowTime - createdTime) / (1000 * 60 * 60 * 24));
-            if (diffDays > 3) timeText = "Never"; 
-            else timeText = "New Account"; 
+            // Literally NEVER logged in!
+            if (diffDays === 0) timeText = "Never (Created Today)";
+            else timeText = `Never (${diffDays}d ago)`;
         }
         
         return {
@@ -264,7 +258,9 @@ export async function POST(req: Request) {
             balance: u.balance || 0, 
             sortValue
         };
-    }).sort((a, b) => a.sortValue - b.sortValue).slice(0, 15);
+    })
+    .sort((a, b) => a.sortValue - b.sortValue)
+    .slice(0, 20);
 
     const yesterdayDate = new Date();
     yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);

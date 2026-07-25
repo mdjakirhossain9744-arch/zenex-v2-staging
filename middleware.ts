@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+// 💥 HELPER FUNCTION: Inject VPN Optimization & Edge Caching Headers 💥
+function applySpeedHeaders(response: NextResponse, path: string) {
+  // Static pages (Login/Register) can be cached safely in CDN & Browser
+  if (path === '/login' || path === '/register') {
+    response.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
+  }
+  // Tell the browser and proxy that we support Brotli and Gzip compression (Crucial for VPN users)
+  response.headers.set('Accept-Encoding', 'gzip, deflate, br');
+  return response;
+}
+
 export function middleware(req: NextRequest) {
   const token = req.cookies.get("zenex_token")?.value;
   const path = req.nextUrl.pathname;
@@ -17,12 +28,14 @@ export function middleware(req: NextRequest) {
         { status: 401 }
       );
     }
-    return NextResponse.next();
+    const response = NextResponse.next();
+    return applySpeedHeaders(response, path);
   }
 
   // 2. Allow normal API routes
   if (path.startsWith("/api")) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    return applySpeedHeaders(response, path);
   }
 
   // 3. Login/Register page handling
@@ -30,7 +43,8 @@ export function middleware(req: NextRequest) {
     if (token) {
       return NextResponse.redirect(new URL("/", req.url));
     }
-    return NextResponse.next();
+    const response = NextResponse.next();
+    return applySpeedHeaders(response, path);
   }
 
   // 4. Protect all other pages: Kick to login if no token
@@ -61,14 +75,15 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  return NextResponse.next(); // Instantly proceed for normal pages
+  // 6. Proceed for normal pages securely
+  const finalResponse = NextResponse.next(); 
+  return applySpeedHeaders(finalResponse, path);
 }
 
+// 💥 UNIVERSAL MATCHER: Protects ALL current and future pages automatically!
+// Skips internal Next.js static files (_next), images, and fonts to save CPU & RAM.
 export const config = {
   matcher: [
-    "/api/:path*", "/", "/login", "/register",
-    "/admin/:path*", "/users/:path*", "/console/:path*", 
-    "/summary/:path*", "/get-number/:path*", "/payment/:path*", 
-    "/profile/:path*", "/my-users/:path*"
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2)$).*)"
   ],
 };

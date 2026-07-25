@@ -51,18 +51,20 @@ export async function POST(req: Request) {
     let currentSessions = Array.isArray(user.activeSessions) ? user.activeSessions : [];
     currentSessions.push(sessionId);
 
-    // যদি ৫টার বেশি ডিভাইস হয়, সবচেয়ে পুরনো সেশনগুলো রিমুভ করে দেবে
     if (currentSessions.length > MAX_SESSIONS) {
        currentSessions = currentSessions.slice(currentSessions.length - MAX_SESSIONS);
     }
+    
+    // 💥 THE BOSS FIX: SAVE ACCURATE LOGIN TIME TO DB 💥
     user.activeSessions = currentSessions;
+    user.lastLogin = new Date(); // Save pure exact time!
     await user.save();
 
-    // 💥 ১. JWT টোকেন তৈরি (২৪ ঘণ্টার মেয়াদ এবং sessionId সহ) - UPDATED 💥
+    // 💥 ১. JWT টোকেন তৈরি 💥
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role, sessionId: sessionId },
       JWT_SECRET,
-      { expiresIn: "24h" } // 💥 12h থেকে 24h করা হলো
+      { expiresIn: "24h" } 
     );
 
     const response = NextResponse.json({ 
@@ -83,12 +85,12 @@ export async function POST(req: Request) {
       }
     }, { status: 200 });
 
-    // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে - UPDATED 💥
+    // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে 💥
     response.cookies.set("zenex_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 24 * 60 * 60, // 💥 12 থেকে 24 ঘণ্টা করা হলো (24 * 60 * 60)
+      maxAge: 24 * 60 * 60, 
       path: "/",
     });
 

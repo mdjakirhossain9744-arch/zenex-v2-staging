@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; 
 import DashboardLayout from "../../DashboardLayout"; 
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+// 💥 SWR IMPORTED FOR LIGHTNING CACHE 💥
+import useSWR from "swr";
 
 export default function AdminSummary() {
   const router = useRouter(); 
 
   const [dateFilter, setDateFilter] = useState("7"); 
+  const [user, setUser] = useState<any>(null);
+
   const [reportData, setReportData] = useState<any[]>([]);
   const [totals, setTotals] = useState({ allocation: 0, success: 0, failed: 0, amount: 0 });
   const [overallRate, setOverallRate] = useState("0%");
-  const [loading, setLoading] = useState(true);
 
   // 💥 PURE UTC DATE RANGE GENERATOR 💥
   const generateDateRange = (days: number, baseDateStr: string) => {
@@ -26,8 +29,7 @@ export default function AdminSummary() {
     return dates;
   };
 
-  const loadSummaryData = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true); 
+  useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) { router.push("/login"); return; }
     
@@ -35,68 +37,95 @@ export default function AdminSummary() {
 
     if (parsedUser.role === "agent") { router.push("/manager/summary"); return; }
     if (parsedUser.role !== "admin") { router.push("/summary"); return; }
-
-    try {
-      // 💥 THE BOSS FIX: Pointing to the new Dedicated Admin Caching API 💥
-      const res = await fetch("/api/admin/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: parsedUser.email, role: "admin", limitDays: dateFilter === "today" ? 1 : dateFilter })
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        const serverDate = data.serverDate || new Date().toISOString().split('T')[0]; 
-        const rawData = data.groupedRawData || {};
-
-        // 🔥 Dynamic Days Calculation for "All Time" 🔥
-        let daysToShow = 7;
-        if (dateFilter === "today") daysToShow = 1;
-        else if (dateFilter !== "all") daysToShow = Number(dateFilter);
-        else {
-           const keys = Object.keys(rawData).sort();
-           if (keys.length > 0) {
-               const oldestDate = new Date(keys[0]);
-               const todayDate = new Date(serverDate);
-               const diffTime = Math.abs(todayDate.getTime() - oldestDate.getTime());
-               daysToShow = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-           } else {
-               daysToShow = 30; // Fallback
-           }
-        }
-
-        const finalData = generateDateRange(daysToShow, serverDate).map(dateStr => {
-          let existingData = rawData[dateStr];
-          return {
-            dateStr: dateStr, 
-            displayDate: new Date(dateStr).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }),
-            allocation: existingData ? existingData.allocation : 0, 
-            success: existingData ? existingData.success : 0,
-            failed: existingData ? existingData.failed : 0, 
-            amount: existingData ? existingData.amount : 0,
-            rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
-          };
-        });
-
-        setReportData(finalData);
-        const t = finalData.reduce((acc: any, curr: any) => ({
-            allocation: acc.allocation + curr.allocation, success: acc.success + curr.success,
-            failed: acc.failed + curr.failed, amount: acc.amount + curr.amount,
-        }), { allocation: 0, success: 0, failed: 0, amount: 0 });
-
-        setTotals(t);
-        setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
-      }
-    } catch (e) { console.error("Failed to load summary"); }
     
-    if (!isSilent) setLoading(false);
-  }, [dateFilter, router]);
+    setUser(parsedUser);
+  }, [router]);
 
+  // 💥 SWR FETCHER 💥
+  const fetchAdminSummary = async ([_, email, filter]: [string, string, string]) => {
+    const res = await fetch("/api/admin/summary", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, role: "admin", limitDays: filter === "today" ? 1 : filter })
+    });
+    return res.json();
+  };
+
+  // 💥 SWR HOOK: Prevents reloading animation on revisit 💥
+  const { data, isLoading } = useSWR(
+    user?.email ? ["adminSummary", user.email, dateFilter] : null,
+    fetchAdminSummary,
+    { refreshInterval: 10000, keepPreviousData: true, revalidateOnFocus: false }
+  );
+
+  // Sync SWR Data to UI
   useEffect(() => {
-    loadSummaryData(false); 
-    const interval = setInterval(() => { loadSummaryData(true); }, 10000); 
-    return () => clearInterval(interval);
-  }, [loadSummaryData]); 
+    if (data && data.success) {
+      const serverDate = data.serverDate || new Date().toISOString().split('T')[0]; 
+      const rawData = data.groupedRawData || {};
+
+      // 🔥 Dynamic Days Calculation for "All Time" 🔥
+      let daysToShow = 7;
+      if (dateFilter === "today") daysToShow = 1;
+      else if (dateFilter !== "all") daysToShow = Number(dateFilter);
+      else {
+         const keys = Object.keys(rawData).sort();
+         if (keys.length > 0) {
+             const oldestDate = new Date(keys[0]);
+             const todayDate = new Date(serverDate);
+             const diffTime = Math.abs(todayDate.getTime() - oldestDate.getTime());
+             daysToShow = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+         } else {
+             daysToShow = 30; // Fallback
+         }
+      }
+
+      const finalData = generateDateRange(daysToShow, serverDate).map(dateStr => {
+        let existingData = rawData[dateStr];
+        return {
+          dateStr: dateStr, 
+          displayDate: new Date(dateStr).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }),
+          allocation: existingData ? existingData.allocation : 0, 
+          success: existingData ? existingData.success : 0,
+          failed: existingData ? existingData.failed : 0, 
+          amount: existingData ? existingData.amount : 0,
+          rate: existingData && existingData.allocation > 0 ? ((existingData.success / existingData.allocation) * 100).toFixed(0) + "%" : "0%"
+        };
+      });
+
+      setReportData(finalData);
+      const t = finalData.reduce((acc: any, curr: any) => ({
+          allocation: acc.allocation + curr.allocation, success: acc.success + curr.success,
+          failed: acc.failed + curr.failed, amount: acc.amount + curr.amount,
+      }), { allocation: 0, success: 0, failed: 0, amount: 0 });
+
+      setTotals(t);
+      setOverallRate(t.allocation > 0 ? ((t.success / t.allocation) * 100).toFixed(0) + "%" : "0%");
+    }
+  }, [data, dateFilter]);
+
+  // 💥 PREMIUM SKELETON LOADING 💥
+  if (!data && isLoading) return (
+    <DashboardLayout>
+      <div className="p-4 md:p-10 w-full animate-pulse font-sans">
+        <div className="h-8 bg-[#1E293B] w-64 rounded-xl mb-2"></div>
+        <div className="h-4 bg-[#1E293B] w-96 rounded-xl mb-8"></div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-28 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+           <div className="h-[350px] bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+           <div className="h-[350px] bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+        </div>
+
+        <div className="h-64 bg-[#1E293B]/80 rounded-2xl border border-[#334155]"></div>
+      </div>
+    </DashboardLayout>
+  );
 
   return (
     <DashboardLayout>
@@ -195,7 +224,7 @@ export default function AdminSummary() {
                  </tr>
                </thead>
                <tbody className="text-sm font-medium text-[#E2E8F0] divide-y divide-[#334155]/50">
-                 {loading ? <tr><td colSpan={6} className="text-center p-8 text-[#3B82F6] font-bold">Loading Report...</td></tr> : reportData.map((row, index) => (
+                 {reportData.map((row, index) => (
                      <tr key={index} className="hover:bg-[#334155]/20 transition-colors">
                        <td className="p-4 pl-6 text-[#94A3B8] font-mono font-bold">{row.displayDate}</td>
                        <td className="p-4 text-center font-bold text-white">{row.allocation}</td>

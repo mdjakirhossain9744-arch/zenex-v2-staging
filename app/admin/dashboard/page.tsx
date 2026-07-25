@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "../../DashboardLayout"; 
+// 💥 SWR FOR LIGHTNING FAST CACHE (Zero Loading Screen & MongoDB Protection) 💥
+import useSWR from "swr";
 
 const getUTCDateString = (dateObj: any = new Date()) => {
   try { return new Date(dateObj).toISOString().split('T')[0]; } 
@@ -12,7 +14,7 @@ const getUTCDateString = (dateObj: any = new Date()) => {
 export default function AdminGlobalDashboard() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [adminEmail, setAdminEmail] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("");
 
   const [adminStats, setAdminStats] = useState({ totalUsers: 0, totalAgents: 0, systemLiability: "0.00", globalTodaySuccess: 0 });
@@ -20,9 +22,6 @@ export default function AdminGlobalDashboard() {
   const [currentMonthName, setCurrentMonthName] = useState("");
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [trafficData, setTrafficData] = useState<number[]>([0, 0, 0, 0, 0, 0]);
-
-  // 💥 MAGIC FIX: ANTI-SPAM LOCK FOR HEAVY AGGREGATIONS 💥
-  const isFetchingRef = useRef(false);
 
   // 🔥 DYNAMIC APP FORMATTER 🔥
   const formatTopApps = (countsObj: Record<string, number>) => {
@@ -80,42 +79,46 @@ export default function AdminGlobalDashboard() {
     }
 
     setIsAdmin(true); 
-    fetchAdminDashboardData(parsedUser.email);
-    
-    // 💥 LOCK IMPLEMENTED: Prevents massive overlapping API calls 💥
-    const intervalData = setInterval(() => fetchAdminDashboardData(parsedUser.email), 30000);
-    return () => clearInterval(intervalData);
+    setAdminEmail(parsedUser.email);
   }, [router]);
 
-  const fetchAdminDashboardData = async (email: string) => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
+  // 💥 SWR FETCHER: Merges 3 heavy Admin APIs into 1 Cache Block 💥
+  const fetchAdminData = async (email: string) => {
+    const todayStr = getUTCDateString();
+    const [userData, reportData, summaryRes] = await Promise.all([
+      fetch("/api/get-all-users").then(r => r.json()), 
+      fetch("/api/admin-agent-report").then(r => r.json()),
+      fetch("/api/admin/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role: "admin" }) }).then(r => r.json())
+    ]);
+    return { userData, reportData, summaryRes, todayStr };
+  };
 
-    try {
-      const todayStr = getUTCDateString();
-      const [userData, reportData, summaryRes] = await Promise.all([
-        fetch("/api/get-all-users").then(r => r.json()), 
-        fetch("/api/admin-agent-report").then(r => r.json()),
-        // 💥 Fetching from the new Dedicated Admin API 💥
-        fetch("/api/admin/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role: "admin" }) }).then(r => r.json())
-      ]);
+  // 💥 SWR HOOK: Runs every 30s. Prevents skeleton loading on revisit 💥
+  const { data, isLoading } = useSWR(
+    adminEmail ? ["adminData", adminEmail] : null,
+    ([_, email]) => fetchAdminData(email as string),
+    { refreshInterval: 30000, keepPreviousData: true, revalidateOnFocus: false }
+  );
 
+  // Sync SWR cache to UI states securely
+  useEffect(() => {
+    if (data) {
+      const { userData, reportData, summaryRes, todayStr } = data;
       if (summaryRes && summaryRes.success) {
          const todayData = summaryRes.groupedRawData[todayStr] || { success: 0 };
          setAdminStats(p => ({ ...p, globalTodaySuccess: todayData.success || 0 }));
          if (summaryRes.todayAppCounts) setTopPerformers(formatTopApps(summaryRes.todayAppCounts));
          if (summaryRes.todayHourlyTraffic) setTrafficData(summaryRes.todayHourlyTraffic);
       }
-      if (reportData && reportData.success) { setAgentReport(reportData.report); setCurrentMonthName(reportData.currentMonth); }
+      if (reportData && reportData.success) { 
+         setAgentReport(reportData.report); 
+         setCurrentMonthName(reportData.currentMonth); 
+      }
       if (userData.stats) {
         setAdminStats(p => ({ ...p, totalUsers: userData.stats.totalUsers || 0, totalAgents: userData.stats.totalAgents || 0, systemLiability: userData.stats.systemLiability || "0.00" }));
       }
-    } catch (e) {} 
-    finally { 
-        setLoading(false); 
-        isFetchingRef.current = false; 
     }
-  };
+  }, [data]);
 
   const generateTrafficPath = (data: number[]) => {
     const maxVal = Math.max(...data, 1); 
@@ -128,7 +131,7 @@ export default function AdminGlobalDashboard() {
     return path;
   };
 
-  if (loading || !isAdmin) return (
+  if ((!data && isLoading) || !isAdmin) return (
     <DashboardLayout>
       <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center text-white">
         <div className="w-12 h-12 border-4 border-[#334155] border-t-[#3B82F6] rounded-full animate-spin mb-4"></div>
