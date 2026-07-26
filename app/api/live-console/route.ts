@@ -10,17 +10,35 @@ let cachedData: any = null;
 let lastFetchTime = 0;
 const CACHE_TTL = 4000; // 4 seconds cache
 
-const getServiceName = (message: string) => {
-  const msgLower = (message || "").toLowerCase();
-  const popularApps = ['facebook', 'whatsapp', 'telegram', 'instagram', 'google', 'tiktok', 'apple', 'amazon', 'netflix', 'yahoo', 'twitter', 'paypal', 'discord', 'tinder', 'uber', 'viber', 'line', 'coinw'];
-  for (const app of popularApps) {
-    if (msgLower.includes(app)) return app.toUpperCase();
-  }
-  if (msgLower.includes(" fb ")) return "FACEBOOK";
-  if (msgLower.includes(" ig ")) return "INSTAGRAM";
-  if (msgLower.includes(" wa ")) return "WHATSAPP";
-  if (msgLower.includes(" tg ")) return "TELEGRAM";
-  return "OTHER";
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (No more "Other" in Graph) 💥
+const extractServiceName = (msg: string) => {
+    if (!msg) return "Other";
+
+    // 1. Read Exact Tag Injected by Engine-2 AI Scanner
+    const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
+    if (serviceMatch && serviceMatch[1]) {
+        return serviceMatch[1].trim(); 
+    }
+
+    // 2. Manual Fallback
+    const lowerMsg = msg.toLowerCase();
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WhatsApp';
+    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
+    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
+    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
+    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
+    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
+    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'Amazon';
+    if (lowerMsg.includes('netflix')) return 'Netflix';
+    if (lowerMsg.includes('paypal')) return 'PayPal';
+    if (lowerMsg.includes('tiktok')) return 'TikTok';
+    if (lowerMsg.includes('tinder')) return 'Tinder';
+    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'Uber';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    if (lowerMsg.includes('imo')) return 'IMO';
+    if (lowerMsg.includes('viber')) return 'Viber';
+
+    return "Other"; 
 };
 
 export async function GET(req: NextRequest) {
@@ -46,7 +64,8 @@ export async function GET(req: NextRequest) {
     const carrierCounts: Record<string, number> = {};
 
     statsOrders.forEach((log: any) => {
-      const service = getServiceName(log.fullMessage || log.otp);
+      // 💥 AI Extractor applied here for the Bar Chart! 💥
+      const service = extractServiceName(log.fullMessage || log.otp);
       const op = log.operator || "Other";
       appCounts[service] = (appCounts[service] || 0) + 1;
       carrierCounts[op] = (carrierCounts[op] || 0) + 1;
@@ -91,7 +110,7 @@ export async function GET(req: NextRequest) {
         otp: maskedMsg,    // HACKER WILL NEVER SEE THE REAL OTP
         country: log.country || "BD",
         operator: log.operator || "Other",
-        service: getServiceName(rawMsg),
+        service: extractServiceName(rawMsg), // Apply AI Extractor here too
         createdAt: new Date(log.updatedAt || log.createdAt).getTime()
       };
     });
