@@ -36,11 +36,6 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
 
-// 💥 THE BOSS FIX: STRICT STABLE SORTING (NO JUMPING) 💥
-const getSortTime = (item: any) => {
-    return new Date(item.createdAt).getTime() || 0;
-};
-
 export default function GetNumber() {
   const [rangeInput, setRangeInput] = useState("");
   const [isNational, setIsNational] = useState(false);
@@ -83,9 +78,7 @@ export default function GetNumber() {
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -149,13 +142,12 @@ export default function GetNumber() {
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(timeMs));
   };
 
-  // 💥 THE BOSS FIX: SMART DISPLAY TIME (Reads from individual split rows) 💥
   const getDisplayTime = (item: any) => {
       const cTime = new Date(item.createdAt).getTime();
       if (item.status === 'FAIL' || (item.status === 'WAIT' && (adjustedTime - cTime) >= 20 * 60 * 1000)) {
           if (item.otp === "Timeout") return cTime + (20 * 60 * 1000); 
       }
-      return item.displayTime || cTime; 
+      return item.displayTime || item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime(); 
   };
 
   const fetchDbOrders = useCallback(async (pageNum = 1, isBackground = false) => {
@@ -208,7 +200,8 @@ export default function GetNumber() {
                  prevMap.set(itemId, fetchedItem);
               }
            });
-           return Array.from(prevMap.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
+           // Sorting logic moved to final render section
+           return Array.from(prevMap.values());
         });
         if(data.pagination) setHasMore(data.pagination.hasMore);
       }
@@ -257,13 +250,12 @@ export default function GetNumber() {
                if (!currentMsgs.includes(fullMessage.trim())) {
                    const combinedMessage = item.fullMessage ? `${item.fullMessage} _||_ ${fullMessage}` : fullMessage;
                    showToast(`New OTP: ${cleanOTPDisplay(fullMessage)}`);
-                   // 💥 THE BOSS FIX: Set receivedAt so the new Multi-OTP gets "Just Now" time
                    return { ...item, status: "DONE", otp, fullMessage: combinedMessage, isMulti: true, receivedAt: Date.now() + timeOffset };
                }
              }
           }
           return item;
-        }).sort((a, b) => getSortTime(b) - getSortTime(a));
+        });
       }); 
     };
 
@@ -313,7 +305,7 @@ export default function GetNumber() {
         };
         
         if (activeFilter === "ALL" || activeFilter === "WAIT") {
-           setNumbersList((prev) => [newEntry, ...prev].sort((a, b) => getSortTime(b) - getSortTime(a)));
+           setNumbersList((prev) => [newEntry, ...prev]);
         }
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
@@ -346,7 +338,7 @@ export default function GetNumber() {
       return true;
   });
 
-  // 💥 THE BOSS FIX: TIME SPLITTING FOR MULTI-OTP ROWS 💥
+  // 💥 THE BOSS FIX: MULTI-OTP SPLIT SORTING (NEW JUMPS, OLD STAYS) 💥
   const expandedNumbers: any[] = [];
   deduplicatedNumbers.forEach((item: any) => {
       if (item.status === "DONE" && item.fullMessage && item.fullMessage.includes("_||_")) {
@@ -354,10 +346,13 @@ export default function GetNumber() {
           msgsArray.forEach((msg: string, idx: number) => {
               const extracted = cleanOTPDisplay(msg);
               
-              // Magic Timestamping: The oldest gets original creation time, the newest gets the latest update time!
-              let specificTime = new Date(item.createdAt).getTime();
+              let specificTime;
               if (idx === msgsArray.length - 1) {
+                  // Latest OTP jumps to top
                   specificTime = item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime();
+              } else {
+                  // Old OTPs stay down based on their original creation time
+                  specificTime = new Date(item.createdAt).getTime() + (idx * 1000);
               }
 
               expandedNumbers.push({ 
@@ -370,15 +365,21 @@ export default function GetNumber() {
               });
           });
       } else {
+          // Single OTP or Pending
+          let specificTime = new Date(item.createdAt).getTime();
+          if (item.status === "DONE") {
+             specificTime = item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime();
+          }
           expandedNumbers.push({ 
               ...item, 
               id: item._id || item.id,
-              displayTime: item.status === "DONE" ? (item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime()) : new Date(item.createdAt).getTime()
+              displayTime: specificTime
           });
       }
   });
 
-  const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => getSortTime(b) - getSortTime(a));
+  // Final rendering sort based entirely on displayTime
+  const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => (b.displayTime || 0) - (a.displayTime || 0));
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
   const downloadAllSuccessOTPs = async () => {
