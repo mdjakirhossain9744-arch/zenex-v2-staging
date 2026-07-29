@@ -10,35 +10,35 @@ let cachedData: any = null;
 let lastFetchTime = 0;
 const CACHE_TTL = 4000; // 4 seconds cache
 
-// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (No more "Other" in Graph) 💥
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (UPPERCASE for UI Colors & Bold Charts) 💥
 const extractServiceName = (msg: string) => {
-    if (!msg) return "Other";
+    if (!msg) return "OTHER";
 
-    // 1. Read Exact Tag Injected by Engine-2 AI Scanner
+    // 1. Read Exact Tag Injected by Engine-2 AI Scanner & Make it UPPERCASE
     const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
     if (serviceMatch && serviceMatch[1]) {
-        return serviceMatch[1].trim(); 
+        return serviceMatch[1].trim().toUpperCase(); 
     }
 
-    // 2. Manual Fallback
+    // 2. Manual Fallback (Returns UPPERCASE for UI color matching)
     const lowerMsg = msg.toLowerCase();
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WhatsApp';
-    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
-    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
-    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
-    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
-    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'Amazon';
-    if (lowerMsg.includes('netflix')) return 'Netflix';
-    if (lowerMsg.includes('paypal')) return 'PayPal';
-    if (lowerMsg.includes('tiktok')) return 'TikTok';
-    if (lowerMsg.includes('tinder')) return 'Tinder';
-    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'Uber';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WHATSAPP';
+    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'TELEGRAM';
+    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'FACEBOOK';
+    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'INSTAGRAM';
+    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'GOOGLE';
+    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'MICROSOFT';
+    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'AMAZON';
+    if (lowerMsg.includes('netflix')) return 'NETFLIX';
+    if (lowerMsg.includes('paypal')) return 'PAYPAL';
+    if (lowerMsg.includes('tiktok')) return 'TIKTOK';
+    if (lowerMsg.includes('tinder')) return 'TINDER';
+    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'UBER';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'TWITTER/X';
     if (lowerMsg.includes('imo')) return 'IMO';
-    if (lowerMsg.includes('viber')) return 'Viber';
+    if (lowerMsg.includes('viber')) return 'VIBER';
 
-    return "Other"; 
+    return "OTHER"; 
 };
 
 export async function GET(req: NextRequest) {
