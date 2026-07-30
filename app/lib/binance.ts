@@ -83,7 +83,7 @@ export const getLiveUsdtRate = async () => {
 
             const averageBuyPrice = totalPrice / totalMerchants;
             
-            const finalRateWithMargin = averageBuyPrice + 1.00; 
+            const finalRateWithMargin = averageBuyPrice + 2.00; 
 
             return parseFloat(finalRateWithMargin.toFixed(2)); 
         }
