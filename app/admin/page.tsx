@@ -23,10 +23,11 @@ export default function AdminDashboard() {
   const [hiddenKeywords, setHiddenKeywords] = useState("");
 
   const [blockedRequests, setBlockedRequests] = useState(124);
-  const [activeConnections, setActiveConnections] = useState(0);
 
-  // 🔥 THE BOSS FIX: Changed initial state to strings to fix TypeScript Error 🔥
-  const [hardware, setHardware] = useState({ cpu: "0", ram: "0", disk: "0", ramDetails: "Loading...", cpuCores: 0 });
+  // 🔥 THE BOSS FIX: Hardware State now includes REAL activeSessions 🔥
+  const [hardware, setHardware] = useState({ 
+      cpu: "0", ram: "0", disk: "0", ramDetails: "Loading...", cpuCores: 0, activeSessions: 0 
+  });
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -43,8 +44,7 @@ export default function AdminDashboard() {
         fetchHardware(); // Initial hardware fetch
         
         const interval = setInterval(() => {
-           setActiveConnections(Math.floor(Math.random() * 15) + 5);
-           fetchHardware(); // 🔥 Fetch Hardware Every 5s
+           fetchHardware(); // 🔥 Fetch Hardware & Real Active Sessions Every 5s
         }, 5000);
         return () => clearInterval(interval);
       }
@@ -58,7 +58,14 @@ export default function AdminDashboard() {
       const res = await fetch("/api/admin/server-health");
       const data = await res.json();
       if (data.success) {
-        setHardware({ cpu: data.cpu, ram: data.ram, disk: data.disk, ramDetails: data.ramDetails, cpuCores: data.cpuCores });
+        setHardware({ 
+            cpu: data.cpu, 
+            ram: data.ram, 
+            disk: data.disk, 
+            ramDetails: data.ramDetails, 
+            cpuCores: data.cpuCores,
+            activeSessions: data.activeSessions || 0
+        });
       }
     } catch (e) {}
   };
@@ -218,7 +225,7 @@ export default function AdminDashboard() {
            </div>
         </div>
 
-        {/* 🔥 NEW: LIVE HARDWARE MONITORING (CPU, RAM, DISK) 🔥 */}
+        {/* 🔥 LIVE HARDWARE MONITORING (CPU, RAM, DISK) 🔥 */}
         <div className="mb-8 p-6 md:p-8 rounded-3xl border border-[#334155] bg-gradient-to-br from-[#0F172A] to-[#1E293B] shadow-[0_0_30px_rgba(0,0,0,0.5)] relative z-10">
            <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-[#8B5CF6]/20 flex items-center justify-center border border-[#8B5CF6]/30">
@@ -375,8 +382,9 @@ export default function AdminDashboard() {
                     <span className="text-2xl font-black text-[#EAB308]">{blockedRequests}</span>
                  </div>
                  <div className="bg-[#1E293B] border border-[#334155] p-4 rounded-2xl flex flex-col justify-center">
-                    <span className="text-[10px] text-[#94A3B8] uppercase font-black tracking-widest mb-1">Active Sessions</span>
-                    <span className="text-2xl font-black text-[#00C6FF]">{activeConnections}</span>
+                    <span className="text-[10px] text-[#94A3B8] uppercase font-black tracking-widest mb-1">Active Sessions (15m)</span>
+                    {/* 🔥 THE BOSS FIX: Real Active Sessions Map 🔥 */}
+                    <span className="text-2xl font-black text-[#00C6FF]">{hardware.activeSessions}</span>
                  </div>
               </div>
 

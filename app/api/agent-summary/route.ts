@@ -33,7 +33,7 @@ const applyMasking = (text: string, keywords: string[]) => {
     return masked;
 };
 
-// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR 💥
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (Added Meta & X) 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
 
@@ -43,6 +43,9 @@ const extractServiceName = (msg: string) => {
     }
 
     const lowerMsg = msg.toLowerCase();
+    
+    if (lowerMsg.includes('meta')) return 'Meta';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ') || lowerMsg.includes('for x')) return 'X';
     if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WhatsApp';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
     if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
@@ -55,7 +58,6 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('tiktok')) return 'TikTok';
     if (lowerMsg.includes('tinder')) return 'Tinder';
     if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'Uber';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
     if (lowerMsg.includes('imo')) return 'IMO';
     if (lowerMsg.includes('viber')) return 'Viber';
 

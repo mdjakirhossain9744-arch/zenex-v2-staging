@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import os from 'os';
 import { execSync } from 'child_process';
+import connectToDatabase from '../../../lib/mongodb';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,15 +33,39 @@ export async function GET() {
             diskUsagePct = "N/A";
         }
 
+        // 4. 🔥 THE BOSS UPGRADE: REAL ACTIVE SESSIONS (Last 15 Minutes) 🔥
+        let realActiveSessions = 0;
+        try {
+            await connectToDatabase();
+            const db = mongoose.connection.db;
+            
+            // TS FIX: Check if db is defined before querying
+            if (db) {
+                const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
+                
+                // Count users who were updated or logged in within the last 15 mins
+                const activeUsersCount = await db.collection("users").countDocuments({
+                    $or: [
+                        { updatedAt: { $gte: fifteenMinsAgo } },
+                        { lastLogin: { $gte: fifteenMinsAgo } }
+                    ]
+                });
+                realActiveSessions = activeUsersCount;
+            }
+        } catch (dbError) {
+            console.error("Health API DB Error:", dbError);
+        }
+
         return NextResponse.json({
             success: true,
             cpu: cpuUsagePct,
             ram: ramUsagePct,
             ramDetails: `${usedRamGb} GB / ${totalRamGb} GB`,
             disk: diskUsagePct,
-            cpuCores: cpuCount
+            cpuCores: cpuCount,
+            activeSessions: realActiveSessions
         });
     } catch (error) {
-        return NextResponse.json({ success: false, cpu: 0, ram: 0, disk: 0 });
+        return NextResponse.json({ success: false, cpu: 0, ram: 0, disk: 0, activeSessions: 0 });
     }
 }

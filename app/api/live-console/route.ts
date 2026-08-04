@@ -24,7 +24,8 @@ const applyMasking = (text: string, keywords: string[]) => {
         const word = w.trim();
         if (word && word.length > 1) {
             const regex = new RegExp(escapeRegExp(word), 'gi');
-            masked = masked.replace(regex, (match) => {
+            // TS FIX: Added ': string' to match
+            masked = masked.replace(regex, (match: string) => {
                 return match.replace(/[^\s]/g, '*');
             });
         }
@@ -36,14 +37,19 @@ const applyMasking = (text: string, keywords: string[]) => {
 const extractServiceName = (msg: string) => {
     if (!msg) return "OTHER";
 
-    // 1. Read Exact Tag Injected by Engine-2 AI Scanner & Make it UPPERCASE
+    // 1. Read Exact Tag Injected by Engine-2 AI Scanner (for legacy data)
     const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
     if (serviceMatch && serviceMatch[1]) {
         return serviceMatch[1].trim().toUpperCase(); 
     }
 
-    // 2. Manual Fallback (Returns UPPERCASE for UI color matching)
+    // 2. Manual Fallback for NEW CLEAN DATA
     const lowerMsg = msg.toLowerCase();
+    
+    // 💥 Added META & X Detection 💥
+    if (lowerMsg.includes('meta')) return 'META';
+    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ') || lowerMsg.includes('for x')) return 'X';
+
     if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WHATSAPP';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'TELEGRAM';
     if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'FACEBOOK';
@@ -56,7 +62,6 @@ const extractServiceName = (msg: string) => {
     if (lowerMsg.includes('tiktok')) return 'TIKTOK';
     if (lowerMsg.includes('tinder')) return 'TINDER';
     if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'UBER';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'TWITTER/X';
     if (lowerMsg.includes('imo')) return 'IMO';
     if (lowerMsg.includes('viber')) return 'VIBER';
 
@@ -129,18 +134,31 @@ export async function GET(req: NextRequest) {
       // Mask Number: 23672928354 -> 23672928XXX
       const maskedNum = rawNum.length > 4 ? rawNum.slice(0, -3) + "XXX" : rawNum;
       
-      const rawMsg = log.fullMessage || log.otp || "";
-      // Mask Message: ALL digits are replaced with * (e.g. 58392 is your code -> ***** is your code)
-      let maskedMsg = rawMsg.replace(/\d/g, '*'); 
+      const originalMsg = log.fullMessage || log.otp || "";
+      
+      // 💥 Step 1: Detect Service Name BEFORE removing the tag
+      let rawService = extractServiceName(originalMsg);
+      let maskedServiceTag = applyMasking(rawService, hiddenKeywords);
+
+      // 💥 Step 2: Clean the public message by removing the injected [Service: ...] tag (for old legacy data)
+      let cleanMsg = originalMsg.replace(/\s*\[Service:\s*[^\]]+\]/gi, '');
+
+      // 💥 Step 3: Mask ONLY 3-8 digit OTPs, preserve single numbers and alphanumeric passwords
+      // TS FIX: Added ': string' to match
+      let maskedMsg = cleanMsg.replace(/\b\d{3,8}\b/g, (match: string) => {
+          return '*'.repeat(match.length);
+      }); 
+      
+      // 💥 Step 4: Apply Admin Hidden Keywords Masking
       maskedMsg = applyMasking(maskedMsg, hiddenKeywords);
 
       return {
         id: log._id.toString(),
         number: maskedNum, // HACKER WILL NEVER SEE THE FULL NUMBER
-        otp: maskedMsg,    // HACKER WILL NEVER SEE THE REAL OTP
+        otp: maskedMsg,    // CLEAN AND SAFE PUBLIC MESSAGE
         country: log.country || "BD",
         operator: log.operator || "Other",
-        service: applyMasking(extractServiceName(rawMsg), hiddenKeywords), // Apply AI Extractor here too
+        service: maskedServiceTag, 
         createdAt: new Date(log.updatedAt || log.createdAt).getTime()
       };
     });

@@ -6,15 +6,69 @@ import DailyStat from "../../../models/DailyStat";
 
 export const dynamic = "force-dynamic";
 
+// 💥 THE BOSS FIX: MASTER SERVICE EXTRACTOR (Added Meta & X) 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
-    const lowerMsg = msg.toLowerCase();
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
-    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
-    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
-    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
-    if (lowerMsg.includes('tiktok')) return 'TikTok';
+    const text = msg.toLowerCase();
+
+    if (text.includes("meta")) return "Meta";
+    if (text.includes("w5eue21qadh") || text.includes("imo")) return "IMO";
+    if (text.includes("ftptmjpdh") || text.includes("viber")) return "Viber";
+    if (text.includes('lalamove')) return 'Lalamove'; 
+    if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq')) return 'WhatsApp';
+    if (text.includes('telegram') || text.includes('t.me')) return 'Telegram';
+    if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk')) return 'Facebook';
+    if (text.includes('instagram') || text.includes(' ig ')) return 'Instagram';
+    if (text.includes('google') || /g-\d+/.test(text) || text.includes('gmail') || text.includes('youtube')) return 'Google';
+    if (text.includes('tiktok') || text.includes(' tt ')) return 'TikTok';
+    if (text.includes('snapchat')) return 'Snapchat';
+    if (text.includes('twitter') || text.includes(' x ') || text.includes('for x')) return 'X';
+    if (text.includes('apple') || text.includes('icloud')) return 'Apple';
+    if (text.includes('microsoft') || text.includes('live') || text.includes('outlook')) return 'Microsoft';
+    if (text.includes('amazon') || text.includes('prime')) return 'Amazon';
+    if (text.includes('netflix')) return 'Netflix';
+    if (text.includes('uber')) return 'Uber';
+    if (text.includes('paypal') || text.includes('pay pal')) return 'PayPal';
+    if (text.includes('cashapp') || text.includes('cash app')) return 'CashApp';
+    if (text.includes('venmo')) return 'Venmo';
+    if (text.includes('tinder')) return 'Tinder';
+    if (text.includes('bumble')) return 'Bumble';
+    if (text.includes('discord')) return 'Discord';
+    if (text.includes('twitch')) return 'Twitch';
+    if (text.includes('yahoo')) return 'Yahoo';
+    if (text.includes('wechat')) return 'WeChat';
+    if (text.includes('line')) return 'Line';
+    if (text.includes('kakaotalk')) return 'KakaoTalk';
+    if (text.includes('airbnb')) return 'Uber/Airbnb'; 
+    if (text.includes('binance')) return 'Binance';
+    if (text.includes('coinbase')) return 'Coinbase';
+    if (text.includes('kucoin')) return 'KuCoin';
+    if (text.includes('kraken')) return 'KuCoin/Kraken';
+    if (text.includes('epic games')) return 'Epic Games';
+    if (text.includes('steam')) return 'Steam';
+    if (text.includes('riot')) return 'Riot Games';
+    if (text.includes('daraz')) return 'Daraz';
+    if (text.includes('pathao')) return 'Pathao';
+    if (text.includes('foodpanda')) return 'Foodpanda';
+
+    const bracketMatch = msg.match(/(?:<|\[|【|\x1B<)\s*([A-Za-z0-9.\- ]{2,20})\s*(?:>|\]|】|\x1B>)/);
+    if (bracketMatch && bracketMatch[1]) {
+        const extracted = bracketMatch[1].trim();
+        const ignored = ["#", "code", "reply", "sms", "otp", "msg", "verification"];
+        if (!ignored.includes(extracted.toLowerCase())) {
+            return extracted.charAt(0).toUpperCase() + extracted.slice(1);
+        }
+    }
+
+    const opMatch = msg.match(/(?:operating on|code for|from)\s+([A-Za-z0-9.\-]{2,20})\b/i);
+    if (opMatch && opMatch[1]) {
+        const ext = opMatch[1].trim();
+        const ignored = ["the", "a", "an", "your", "this"];
+        if (!ignored.includes(ext.toLowerCase())) {
+            return ext.charAt(0).toUpperCase() + ext.slice(1);
+        }
+    }
+
     return "Other"; 
 };
 
