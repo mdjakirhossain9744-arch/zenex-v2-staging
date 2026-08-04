@@ -7,33 +7,58 @@ import redis from "../../../lib/redis";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store"; // 💥 Stop Next.js Aggressive Caching 💥
 
-// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR 💥
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (SYNCED WITH SERVER.JS) 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "Other";
 
-    // 1. Read Exact Tag Injected by Engine-2 AI Scanner
+    // 1. Read Exact Tag Injected by Engine-2 AI Scanner (For Old Legacy Data)
     const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
     if (serviceMatch && serviceMatch[1]) {
         return serviceMatch[1].trim(); 
     }
 
-    // 2. Manual Fallback
-    const lowerMsg = msg.toLowerCase();
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WhatsApp';
-    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'Telegram';
-    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
-    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
-    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
-    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'Amazon';
-    if (lowerMsg.includes('netflix')) return 'Netflix';
-    if (lowerMsg.includes('paypal')) return 'PayPal';
-    if (lowerMsg.includes('tiktok')) return 'TikTok';
-    if (lowerMsg.includes('tinder')) return 'Tinder';
-    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'Uber';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
-    if (lowerMsg.includes('imo')) return 'IMO';
-    if (lowerMsg.includes('viber')) return 'Viber';
+    // 2. Comprehensive AI Fallback for Pure Raw Messages
+    const text = msg.toLowerCase();
+    
+    if (text.includes("meta")) return "Meta";
+    if (text.includes("w5eue21qadh") || text.includes("imo")) return "IMO";
+    if (text.includes("ftptmjpdh") || text.includes("viber")) return "Viber";
+    if (text.includes('lalamove')) return 'Lalamove'; 
+    if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq')) return 'WhatsApp';
+    if (text.includes('telegram') || text.includes('t.me')) return 'Telegram';
+    if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk')) return 'Facebook';
+    if (text.includes('instagram') || text.includes(' ig ')) return 'Instagram';
+    if (text.includes('google') || /g-\d+/.test(text) || text.includes('gmail') || text.includes('youtube')) return 'Google';
+    if (text.includes('tiktok') || text.includes(' tt ')) return 'TikTok';
+    if (text.includes('snapchat')) return 'Snapchat';
+    if (text.includes('twitter') || text.includes(' x ') || text.includes('for x')) return 'X';
+    if (text.includes('apple') || text.includes('icloud')) return 'Apple';
+    if (text.includes('microsoft') || text.includes('live') || text.includes('outlook')) return 'Microsoft';
+    if (text.includes('amazon') || text.includes('prime')) return 'Amazon';
+    if (text.includes('netflix')) return 'Netflix';
+    if (text.includes('uber')) return 'Uber';
+    if (text.includes('paypal') || text.includes('pay pal')) return 'PayPal';
+    if (text.includes('cashapp') || text.includes('cash app')) return 'CashApp';
+    if (text.includes('venmo')) return 'Venmo';
+    if (text.includes('tinder')) return 'Tinder';
+    if (text.includes('bumble')) return 'Bumble';
+    if (text.includes('discord')) return 'Discord';
+    if (text.includes('twitch')) return 'Twitch';
+    if (text.includes('yahoo')) return 'Yahoo';
+    if (text.includes('wechat')) return 'WeChat';
+    if (text.includes('line')) return 'Line';
+    if (text.includes('kakaotalk')) return 'KakaoTalk';
+    if (text.includes('airbnb')) return 'Uber/Airbnb'; 
+    if (text.includes('binance')) return 'Binance';
+    if (text.includes('coinbase')) return 'Coinbase';
+    if (text.includes('kucoin')) return 'KuCoin';
+    if (text.includes('kraken')) return 'KuCoin/Kraken';
+    if (text.includes('epic games')) return 'Epic Games';
+    if (text.includes('steam')) return 'Steam';
+    if (text.includes('riot')) return 'Riot Games';
+    if (text.includes('daraz')) return 'Daraz';
+    if (text.includes('pathao')) return 'Pathao';
+    if (text.includes('foodpanda')) return 'Foodpanda';
 
     return "Other"; 
 };

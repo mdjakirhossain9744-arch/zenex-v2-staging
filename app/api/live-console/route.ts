@@ -24,7 +24,6 @@ const applyMasking = (text: string, keywords: string[]) => {
         const word = w.trim();
         if (word && word.length > 1) {
             const regex = new RegExp(escapeRegExp(word), 'gi');
-            // TS FIX: Added ': string' to match
             masked = masked.replace(regex, (match: string) => {
                 return match.replace(/[^\s]/g, '*');
             });
@@ -33,7 +32,7 @@ const applyMasking = (text: string, keywords: string[]) => {
     return masked;
 };
 
-// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (UPPERCASE for UI Colors & Bold Charts) 💥
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (SYNCED WITH SERVER.JS & UPPERCASE FOR UI) 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "OTHER";
 
@@ -43,27 +42,47 @@ const extractServiceName = (msg: string) => {
         return serviceMatch[1].trim().toUpperCase(); 
     }
 
-    // 2. Manual Fallback for NEW CLEAN DATA
-    const lowerMsg = msg.toLowerCase();
+    // 2. Comprehensive AI Fallback for NEW CLEAN DATA
+    const text = msg.toLowerCase();
     
-    // 💥 Added META & X Detection 💥
-    if (lowerMsg.includes('meta')) return 'META';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ') || lowerMsg.includes('for x')) return 'X';
-
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WHATSAPP';
-    if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'TELEGRAM';
-    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'FACEBOOK';
-    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'INSTAGRAM';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'GOOGLE';
-    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'MICROSOFT';
-    if (lowerMsg.includes('amazon') || lowerMsg.includes('aws')) return 'AMAZON';
-    if (lowerMsg.includes('netflix')) return 'NETFLIX';
-    if (lowerMsg.includes('paypal')) return 'PAYPAL';
-    if (lowerMsg.includes('tiktok')) return 'TIKTOK';
-    if (lowerMsg.includes('tinder')) return 'TINDER';
-    if (lowerMsg.includes('uber') || lowerMsg.includes('airbnb')) return 'UBER';
-    if (lowerMsg.includes('imo')) return 'IMO';
-    if (lowerMsg.includes('viber')) return 'VIBER';
+    if (text.includes("meta")) return "META";
+    if (text.includes("w5eue21qadh") || text.includes("imo")) return "IMO";
+    if (text.includes("ftptmjpdh") || text.includes("viber")) return "VIBER";
+    if (text.includes('lalamove')) return 'LALAMOVE'; 
+    if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq')) return 'WHATSAPP';
+    if (text.includes('telegram') || text.includes('t.me')) return 'TELEGRAM';
+    if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk')) return 'FACEBOOK';
+    if (text.includes('instagram') || text.includes(' ig ')) return 'INSTAGRAM';
+    if (text.includes('google') || /g-\d+/.test(text) || text.includes('gmail') || text.includes('youtube')) return 'GOOGLE';
+    if (text.includes('tiktok') || text.includes(' tt ')) return 'TIKTOK';
+    if (text.includes('snapchat')) return 'SNAPCHAT';
+    if (text.includes('twitter') || text.includes(' x ') || text.includes('for x')) return 'X';
+    if (text.includes('apple') || text.includes('icloud')) return 'APPLE';
+    if (text.includes('microsoft') || text.includes('live') || text.includes('outlook')) return 'MICROSOFT';
+    if (text.includes('amazon') || text.includes('prime')) return 'AMAZON';
+    if (text.includes('netflix')) return 'NETFLIX';
+    if (text.includes('uber')) return 'UBER';
+    if (text.includes('paypal') || text.includes('pay pal')) return 'PAYPAL';
+    if (text.includes('cashapp') || text.includes('cash app')) return 'CASHAPP';
+    if (text.includes('venmo')) return 'VENMO';
+    if (text.includes('tinder')) return 'TINDER';
+    if (text.includes('bumble')) return 'BUMBLE';
+    if (text.includes('discord')) return 'DISCORD';
+    if (text.includes('twitch')) return 'TWITCH';
+    if (text.includes('yahoo')) return 'YAHOO';
+    if (text.includes('wechat')) return 'WECHAT';
+    if (text.includes('line')) return 'LINE';
+    if (text.includes('kakaotalk')) return 'KAKAOTALK';
+    if (text.includes('airbnb')) return 'AIRBNB'; 
+    if (text.includes('binance')) return 'BINANCE';
+    if (text.includes('coinbase')) return 'COINBASE';
+    if (text.includes('kucoin') || text.includes('kraken')) return 'KUCOIN';
+    if (text.includes('epic games')) return 'EPIC GAMES';
+    if (text.includes('steam')) return 'STEAM';
+    if (text.includes('riot')) return 'RIOT GAMES';
+    if (text.includes('daraz')) return 'DARAZ';
+    if (text.includes('pathao')) return 'PATHAO';
+    if (text.includes('foodpanda')) return 'FOODPANDA';
 
     return "OTHER"; 
 };
@@ -144,7 +163,6 @@ export async function GET(req: NextRequest) {
       let cleanMsg = originalMsg.replace(/\s*\[Service:\s*[^\]]+\]/gi, '');
 
       // 💥 Step 3: Mask ONLY 3-8 digit OTPs, preserve single numbers and alphanumeric passwords
-      // TS FIX: Added ': string' to match
       let maskedMsg = cleanMsg.replace(/\b\d{3,8}\b/g, (match: string) => {
           return '*'.repeat(match.length);
       }); 
