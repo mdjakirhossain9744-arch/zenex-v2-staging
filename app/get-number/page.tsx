@@ -31,10 +31,11 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
 const cleanOTPDisplay = (rawOtp: string) => {
   if (!rawOtp || rawOtp === "Waiting..." || rawOtp === "Timeout") return rawOtp;
   const strOtp = String(rawOtp).trim();
-  // 💥 THE BOSS FIX: REVERTED TO 4-8 DIGITS SO USERNAME IS IGNORED 💥
+  // 💥 THE BOSS FIX: REVERTED TO 4-8 DIGITS + FALLBACK TO 00000 💥
   const match = strOtp.match(/(?:\b\d{4,8}\b)|(?:\b\d{3}[\s-]\d{3,4}\b)|(?:G-\d{6,8})/);
   if (match) return match[0];
-  return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
+  
+  return "00000";
 };
 
 export default function GetNumber() {
@@ -588,12 +589,13 @@ export default function GetNumber() {
                                     <div className="absolute inset-0 bg-gradient-to-r from-[#10B981]/0 via-[#10B981]/10 to-[#10B981]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                     <span className="text-xs md:text-sm font-mono font-black text-[#10B981] tracking-wider relative z-10">{cleanOTPDisplay(item.otp)}</span>
                                     <div className="bg-[#10B981]/10 p-0.5 rounded group-hover:bg-[#10B981] transition-colors relative z-10">
-                                       <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                       <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#10B981] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                                     </div>
                                  </button>
                                )}
                             </div>
 
+                            {/* 💥 THE BOSS FIX: RESTORED RAW MESSAGE SECTION AS REQUESTED 💥 */}
                             <div className="flex items-center h-[18px] w-full shrink-0 overflow-hidden">
                                {item.status === "DONE" && item.fullMessage ? (
                                   <span className="text-[9px] text-[#64748B] w-full truncate leading-none block">{item.fullMessage}</span>
