@@ -25,6 +25,9 @@ export default function AdminDashboard() {
   const [blockedRequests, setBlockedRequests] = useState(124);
   const [activeConnections, setActiveConnections] = useState(0);
 
+  // 🔥 THE BOSS FIX: Changed initial state to strings to fix TypeScript Error 🔥
+  const [hardware, setHardware] = useState({ cpu: "0", ram: "0", disk: "0", ramDetails: "Loading...", cpuCores: 0 });
+
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
@@ -37,9 +40,11 @@ export default function AdminDashboard() {
         checkSystemHealth();
         fetchSystemSettings();
         fetchGlobalLinks();
+        fetchHardware(); // Initial hardware fetch
         
         const interval = setInterval(() => {
            setActiveConnections(Math.floor(Math.random() * 15) + 5);
+           fetchHardware(); // 🔥 Fetch Hardware Every 5s
         }, 5000);
         return () => clearInterval(interval);
       }
@@ -47,6 +52,16 @@ export default function AdminDashboard() {
       router.push("/login"); 
     }
   }, [router]);
+
+  const fetchHardware = async () => {
+    try {
+      const res = await fetch("/api/admin/server-health");
+      const data = await res.json();
+      if (data.success) {
+        setHardware({ cpu: data.cpu, ram: data.ram, disk: data.disk, ramDetails: data.ramDetails, cpuCores: data.cpuCores });
+      }
+    } catch (e) {}
+  };
 
   const fetchSystemSettings = async () => {
     try {
@@ -177,7 +192,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 relative z-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 relative z-10">
            <div className={`p-6 rounded-2xl border flex flex-col shadow-lg transition-all ${apiStatus === 'ONLINE' ? 'bg-gradient-to-br from-[#10B981]/10 to-[#0F172A] border-[#10B981]/30' : 'bg-gradient-to-br from-[#F43F5E]/10 to-[#0F172A] border-[#F43F5E]/30'}`}>
               <div className="flex justify-between items-center mb-4">
                 <p className="text-[10px] uppercase font-black tracking-widest text-[#94A3B8]">Server Network</p>
@@ -200,6 +215,59 @@ export default function AdminDashboard() {
                 <svg className="w-4 h-4 text-[#94A3B8]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
               </div>
               <h2 className="text-3xl md:text-4xl font-black text-white">{ping} <span className="text-sm md:text-lg text-[#64748B]">ms</span></h2>
+           </div>
+        </div>
+
+        {/* 🔥 NEW: LIVE HARDWARE MONITORING (CPU, RAM, DISK) 🔥 */}
+        <div className="mb-8 p-6 md:p-8 rounded-3xl border border-[#334155] bg-gradient-to-br from-[#0F172A] to-[#1E293B] shadow-[0_0_30px_rgba(0,0,0,0.5)] relative z-10">
+           <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-[#8B5CF6]/20 flex items-center justify-center border border-[#8B5CF6]/30">
+                 <svg className="w-5 h-5 text-[#8B5CF6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>
+              </div>
+              <h3 className="text-xl font-black text-white tracking-wide">Live VPS Hardware Monitor</h3>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* CPU */}
+              <div className="bg-[#0B0F1A] border border-[#334155] rounded-2xl p-5 flex items-center justify-between shadow-inner">
+                 <div>
+                    <p className="text-[10px] text-[#94A3B8] font-black uppercase tracking-widest mb-1">CPU Load ({hardware.cpuCores || 0} Cores)</p>
+                    <p className="text-2xl font-black text-[#F43F5E]">{hardware.cpu}%</p>
+                 </div>
+                 <div className="relative w-16 h-16 flex items-center justify-center">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                       <path className="text-[#1E293B] stroke-current" strokeWidth="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                       <path className="text-[#F43F5E] stroke-current transition-all duration-1000 ease-out" strokeWidth="3" strokeDasharray={`${hardware.cpu}, 100`} fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                 </div>
+              </div>
+              {/* RAM */}
+              <div className="bg-[#0B0F1A] border border-[#334155] rounded-2xl p-5 flex items-center justify-between shadow-inner">
+                 <div>
+                    <p className="text-[10px] text-[#94A3B8] font-black uppercase tracking-widest mb-1">RAM Usage</p>
+                    <p className="text-2xl font-black text-[#3B82F6]">{hardware.ram}%</p>
+                    <p className="text-[9px] text-[#64748B] mt-1 font-mono font-bold">{hardware.ramDetails}</p>
+                 </div>
+                 <div className="relative w-16 h-16 flex items-center justify-center">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                       <path className="text-[#1E293B] stroke-current" strokeWidth="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                       <path className="text-[#3B82F6] stroke-current transition-all duration-1000 ease-out" strokeWidth="3" strokeDasharray={`${hardware.ram}, 100`} fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                 </div>
+              </div>
+              {/* Storage */}
+              <div className="bg-[#0B0F1A] border border-[#334155] rounded-2xl p-5 flex items-center justify-between shadow-inner">
+                 <div>
+                    <p className="text-[10px] text-[#94A3B8] font-black uppercase tracking-widest mb-1">Disk Space (SSD)</p>
+                    <p className="text-2xl font-black text-[#10B981]">{hardware.disk === 'N/A' ? 'N/A' : `${hardware.disk}%`}</p>
+                 </div>
+                 <div className="relative w-16 h-16 flex items-center justify-center">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                       <path className="text-[#1E293B] stroke-current" strokeWidth="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                       <path className="text-[#10B981] stroke-current transition-all duration-1000 ease-out" strokeWidth="3" strokeDasharray={`${hardware.disk === 'N/A' ? 0 : hardware.disk}, 100`} fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                 </div>
+              </div>
            </div>
         </div>
 
