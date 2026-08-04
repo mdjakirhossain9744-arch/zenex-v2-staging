@@ -172,8 +172,8 @@ export async function GET(req: NextRequest) {
       // 💥 Step 2: Keep Legacy Data intact (No On-the-fly cleaner)
       let cleanMsg = originalMsg;
 
-      // 💥 Step 3: Mask ONLY 3-8 digit OTPs, preserve single numbers and alphanumeric passwords
-      let maskedMsg = cleanMsg.replace(/\b\d{3,8}\b/g, (match: string) => {
+      // 💥 Step 3: Mask ALL numbers between 3 to 12 digits (Catches large 10-digit usernames) 💥
+      let maskedMsg = cleanMsg.replace(/\b\d{3,12}\b/g, (match: string) => {
           return '*'.repeat(match.length);
       }); 
       

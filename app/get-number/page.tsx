@@ -31,7 +31,8 @@ const getUTCDateString = (dateObj: Date | number | string = new Date()) => {
 const cleanOTPDisplay = (rawOtp: string) => {
   if (!rawOtp || rawOtp === "Waiting..." || rawOtp === "Timeout") return rawOtp;
   const strOtp = String(rawOtp).trim();
-  const match = strOtp.match(/(?:\b\d{4,8}\b)|(?:\b\d{3}[\s-]\d{3,4}\b)|(?:G-\d{6,8})/);
+  // 💥 THE BOSS FIX: FRONTEND OTP EXTRACTOR UPDATED TO 12 DIGITS 💥
+  const match = strOtp.match(/(?:\b\d{4,12}\b)|(?:\b\d{3}[\s-]\d{3,4}\b)|(?:G-\d{6,12})/);
   if (match) return match[0];
   return strOtp.length > 12 ? strOtp.substring(0, 12) + "..." : strOtp;
 };
@@ -200,7 +201,6 @@ export default function GetNumber() {
                  prevMap.set(itemId, fetchedItem);
               }
            });
-           // Sorting logic moved to final render section
            return Array.from(prevMap.values());
         });
         if(data.pagination) setHasMore(data.pagination.hasMore);
@@ -338,7 +338,6 @@ export default function GetNumber() {
       return true;
   });
 
-  // 💥 THE BOSS FIX: MULTI-OTP SPLIT SORTING (NEW JUMPS, OLD STAYS) 💥
   const expandedNumbers: any[] = [];
   deduplicatedNumbers.forEach((item: any) => {
       if (item.status === "DONE" && item.fullMessage && item.fullMessage.includes("_||_")) {
@@ -348,10 +347,8 @@ export default function GetNumber() {
               
               let specificTime;
               if (idx === msgsArray.length - 1) {
-                  // Latest OTP jumps to top
                   specificTime = item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime();
               } else {
-                  // Old OTPs stay down based on their original creation time
                   specificTime = new Date(item.createdAt).getTime() + (idx * 1000);
               }
 
@@ -365,7 +362,6 @@ export default function GetNumber() {
               });
           });
       } else {
-          // Single OTP or Pending
           let specificTime = new Date(item.createdAt).getTime();
           if (item.status === "DONE") {
              specificTime = item.receivedAt || new Date(item.updatedAt || item.createdAt).getTime();
@@ -378,7 +374,6 @@ export default function GetNumber() {
       }
   });
 
-  // Final rendering sort based entirely on displayTime
   const sortedFilteredNumbers = [...expandedNumbers].sort((a, b) => (b.displayTime || 0) - (a.displayTime || 0));
   const successRate = stats.total > 0 ? ((stats.success / stats.total) * 100).toFixed(1) : "0.0";
 
