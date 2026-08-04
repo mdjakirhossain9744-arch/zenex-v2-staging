@@ -3,6 +3,7 @@ import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
+import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store"; // 💥 Stop Next.js Aggressive Caching 💥
@@ -10,6 +11,27 @@ export const fetchCache = "force-no-store"; // 💥 Stop Next.js Aggressive Cach
 let agentSummaryCache: Record<string, { data: any, timestamp: number }> = {};
 let activeAgentLocks: Record<string, boolean> = {}; 
 const CACHE_DURATION = 15 * 1000; 
+
+// 💥 BOSS UPGRADE: REGEX ESCAPER 💥
+const escapeRegExp = (string: string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// 💥 BOSS UPGRADE: DYNAMIC STAR & SPACE PRESERVER ENGINE 💥
+const applyMasking = (text: string, keywords: string[]) => {
+    if (!text) return text;
+    let masked = text;
+    keywords.forEach(w => {
+        const word = w.trim();
+        if (word && word.length > 1) {
+            const regex = new RegExp(escapeRegExp(word), 'gi');
+            masked = masked.replace(regex, (match) => {
+                return match.replace(/[^\s]/g, '*');
+            });
+        }
+    });
+    return masked;
+};
 
 // 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR 💥
 const extractServiceName = (msg: string) => {
@@ -77,6 +99,11 @@ export async function POST(req: Request) {
 
     activeAgentLocks[cacheKey] = true;
     await connectToDatabase();
+
+    // 💥 FETCH SECRET MASKING KEYWORDS FROM DB 💥
+    const settingsCollection = mongoose.connection.collection("system_settings");
+    const sysSettings = await settingsCollection.findOne({ type: "global" });
+    const hiddenKeywords = sysSettings?.hiddenKeywords || [];
 
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) {
@@ -227,6 +254,7 @@ export async function POST(req: Request) {
               if (userInfoMap[safeUserEmail]) userInfoMap[safeUserEmail].todayOTP += exactValidCount;
 
               let sName = extractServiceName(o.fullMessage);
+              sName = applyMasking(sName, hiddenKeywords); // 💥 BOSS UPGRADE: MASK SERVICE NAME
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += exactValidCount;
           }

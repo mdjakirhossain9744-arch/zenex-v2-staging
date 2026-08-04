@@ -11,15 +11,38 @@ let cachedData: any = null;
 let lastFetchTime = 0;
 const CACHE_TTL = 4000; // 4 seconds cache
 
-// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR 💥
+// 💥 BOSS UPGRADE: REGEX ESCAPER 💥
+const escapeRegExp = (string: string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// 💥 BOSS UPGRADE: DYNAMIC STAR & SPACE PRESERVER ENGINE 💥
+const applyMasking = (text: string, keywords: string[]) => {
+    if (!text) return text;
+    let masked = text;
+    keywords.forEach(w => {
+        const word = w.trim();
+        if (word && word.length > 1) {
+            const regex = new RegExp(escapeRegExp(word), 'gi');
+            masked = masked.replace(regex, (match) => {
+                return match.replace(/[^\s]/g, '*');
+            });
+        }
+    });
+    return masked;
+};
+
+// 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (UPPERCASE for UI Colors & Bold Charts) 💥
 const extractServiceName = (msg: string) => {
     if (!msg) return "OTHER";
 
+    // 1. Read Exact Tag Injected by Engine-2 AI Scanner & Make it UPPERCASE
     const serviceMatch = msg.match(/\[Service:\s*([^\]]+)\]/i);
     if (serviceMatch && serviceMatch[1]) {
         return serviceMatch[1].trim().toUpperCase(); 
     }
 
+    // 2. Manual Fallback (Returns UPPERCASE for UI color matching)
     const lowerMsg = msg.toLowerCase();
     if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ') || lowerMsg.includes('vwaq')) return 'WHATSAPP';
     if (lowerMsg.includes('telegram') || lowerMsg.includes('t.me')) return 'TELEGRAM';
@@ -40,22 +63,9 @@ const extractServiceName = (msg: string) => {
     return "OTHER"; 
 };
 
-// 💥 BOSS UPGRADE: TEXT MASKING ENGINE 💥
-const applyMasking = (text: string, keywords: string[]) => {
-    if (!text) return text;
-    let maskedText = text;
-    keywords.forEach(word => {
-        if (word && word.length > 1) {
-            // Case-insensitive global replacement with ****
-            const regex = new RegExp(word, 'gi');
-            maskedText = maskedText.replace(regex, '****');
-        }
-    });
-    return maskedText;
-};
-
 export async function GET(req: NextRequest) {
   try {
+    // 💥 1. CACHE INTERCEPTOR: Serve instantly from RAM to save DB 💥
     if (cachedData && (Date.now() - lastFetchTime < CACHE_TTL)) {
       return NextResponse.json(cachedData);
     }
@@ -69,6 +79,7 @@ export async function GET(req: NextRequest) {
 
     const oneHourAgoDate = new Date(Date.now() - 60 * 60 * 1000); 
 
+    // 💥 2. QUERY ONE (For Charts): Fetch Unlimited Logs for exact 1-Hour calculation 💥
     const statsOrders = await Order.find({ 
       status: { $in: ["DONE", "Success"] },
       updatedAt: { $gte: oneHourAgoDate } 
@@ -80,13 +91,12 @@ export async function GET(req: NextRequest) {
     const carrierCounts: Record<string, number> = {};
 
     statsOrders.forEach((log: any) => {
-      let rawService = extractServiceName(log.fullMessage || log.otp);
-      
-      // 🛡️ APPLY MASKING TO CHARTS/GRAPHS 🛡️
-      const finalService = applyMasking(rawService, hiddenKeywords);
+      // 💥 AI Extractor applied here for the Bar Chart! 💥
+      const rawService = extractServiceName(log.fullMessage || log.otp);
+      const service = applyMasking(rawService, hiddenKeywords);
       
       const op = log.operator || "Other";
-      appCounts[finalService] = (appCounts[finalService] || 0) + 1;
+      appCounts[service] = (appCounts[service] || 0) + 1;
       carrierCounts[op] = (carrierCounts[op] || 0) + 1;
     });
 
@@ -106,6 +116,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
+    // 💥 3. QUERY TWO (For UI Feed): Fetch ONLY the latest 50 logs 💥
     const feedOrders = await Order.find({ status: { $in: ["DONE", "Success"] } })
       .sort({ updatedAt: -1 }) 
       .select("searchNumber number fullMessage otp country operator createdAt updatedAt") 
@@ -115,29 +126,26 @@ export async function GET(req: NextRequest) {
     // 🛡️ 100% BULLETPROOF SERVER-SIDE DATA MASKING 🛡️
     const localLogs = feedOrders.map((log: any) => {
       const rawNum = log.searchNumber || log.number || "";
+      // Mask Number: 23672928354 -> 23672928XXX
       const maskedNum = rawNum.length > 4 ? rawNum.slice(0, -3) + "XXX" : rawNum;
       
       const rawMsg = log.fullMessage || log.otp || "";
-      // 1. Mask Digits
+      // Mask Message: ALL digits are replaced with * (e.g. 58392 is your code -> ***** is your code)
       let maskedMsg = rawMsg.replace(/\d/g, '*'); 
-      // 2. Mask Secret Keywords (e.g. Facebook)
       maskedMsg = applyMasking(maskedMsg, hiddenKeywords);
-
-      let rawService = extractServiceName(rawMsg);
-      // 3. Mask Service Tag
-      let maskedServiceTag = applyMasking(rawService, hiddenKeywords);
 
       return {
         id: log._id.toString(),
-        number: maskedNum, 
-        otp: maskedMsg,    
+        number: maskedNum, // HACKER WILL NEVER SEE THE FULL NUMBER
+        otp: maskedMsg,    // HACKER WILL NEVER SEE THE REAL OTP
         country: log.country || "BD",
         operator: log.operator || "Other",
-        service: maskedServiceTag, 
+        service: applyMasking(extractServiceName(rawMsg), hiddenKeywords), // Apply AI Extractor here too
         createdAt: new Date(log.updatedAt || log.createdAt).getTime()
       };
     });
 
+    // 💥 4. SAVE TO RAM CACHE AND RETURN 💥
     cachedData = { 
       success: true, 
       logs: localLogs, 
