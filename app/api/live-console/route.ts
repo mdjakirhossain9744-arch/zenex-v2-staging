@@ -45,23 +45,26 @@ const extractServiceName = (msg: string) => {
     // 2. Comprehensive AI Fallback for NEW CLEAN DATA
     const text = msg.toLowerCase();
     
-    if (text.includes("meta")) return "META";
-    if (text.includes("w5eue21qadh") || text.includes("imo")) return "IMO";
-    if (text.includes("ftptmjpdh") || text.includes("viber")) return "VIBER";
+    // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (Hashes, Short URLs, Foreign Languages) -> UPPERCASE 💥
+    if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი')) return 'FACEBOOK';
+    if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq') || text.includes('wa.me') || text.includes('واتساب') || text.includes('वाट्सएप') || text.includes('হোয়াটসঅ্যাপ') || text.includes('వాట్సాప్') || text.includes('왓츠앱')) return 'WHATSAPP';
+    if (text.includes('telegram') || text.includes('t.me') || text.includes('تيليجرام') || text.includes('टेलीग्राम') || text.includes('টেলিগ্রাম') || text.includes('телеграм') || text.includes('电报') || text.includes('ቴሌግራም')) return 'TELEGRAM';
+    if (text.includes('instagram') || text.includes(' ig ') || text.includes('ig.me') || text.includes('انستجرام') || text.includes('इंस्टाग्राम') || text.includes('ইন্সটাগ্রাম') || text.includes('인스타그램')) return 'INSTAGRAM';
+    if (text.includes('google') || /g-\d+/.test(text) || text.includes('gmail') || text.includes('youtube') || text.includes('g.co') || text.includes('جوجل') || text.includes('गूगल') || text.includes('গুগল') || text.includes('谷歌') || text.includes('구글') || text.includes('гугл')) return 'GOOGLE';
+    
+    if (text.includes('w5eue21qadh') || text.includes('imo') || text.includes('ايمو') || text.includes('ইমো')) return 'IMO';
+    if (text.includes('ftptmjpdh') || text.includes('viber') || text.includes('فايبر') || text.includes('ভাইবার')) return 'VIBER';
+    
+    if (text.includes('meta')) return 'META';
     if (text.includes('lalamove')) return 'LALAMOVE'; 
-    if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq')) return 'WHATSAPP';
-    if (text.includes('telegram') || text.includes('t.me')) return 'TELEGRAM';
-    if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk')) return 'FACEBOOK';
-    if (text.includes('instagram') || text.includes(' ig ')) return 'INSTAGRAM';
-    if (text.includes('google') || /g-\d+/.test(text) || text.includes('gmail') || text.includes('youtube')) return 'GOOGLE';
-    if (text.includes('tiktok') || text.includes(' tt ')) return 'TIKTOK';
+    if (text.includes('tiktok') || text.includes(' tt ') || text.includes('تيك توك') || text.includes('टिकटॉक') || text.includes('টিকটক') || text.includes('틱톡')) return 'TIKTOK';
     if (text.includes('snapchat')) return 'SNAPCHAT';
     if (text.includes('twitter') || text.includes(' x ') || text.includes('for x')) return 'X';
     if (text.includes('apple') || text.includes('icloud')) return 'APPLE';
     if (text.includes('microsoft') || text.includes('live') || text.includes('outlook')) return 'MICROSOFT';
     if (text.includes('amazon') || text.includes('prime')) return 'AMAZON';
     if (text.includes('netflix')) return 'NETFLIX';
-    if (text.includes('uber')) return 'UBER';
+    if (text.includes('uber') && !text.includes('airbnb')) return 'UBER';
     if (text.includes('paypal') || text.includes('pay pal')) return 'PAYPAL';
     if (text.includes('cashapp') || text.includes('cash app')) return 'CASHAPP';
     if (text.includes('venmo')) return 'VENMO';
@@ -73,10 +76,11 @@ const extractServiceName = (msg: string) => {
     if (text.includes('wechat')) return 'WECHAT';
     if (text.includes('line')) return 'LINE';
     if (text.includes('kakaotalk')) return 'KAKAOTALK';
-    if (text.includes('airbnb')) return 'AIRBNB'; 
-    if (text.includes('binance')) return 'BINANCE';
+    if (text.includes('airbnb')) return 'UBER/AIRBNB'; 
+    if (text.includes('binance') || text.includes('بینانس') || text.includes('बाइनेंस') || text.includes('বাইনান্স')) return 'BINANCE';
     if (text.includes('coinbase')) return 'COINBASE';
-    if (text.includes('kucoin') || text.includes('kraken')) return 'KUCOIN';
+    if (text.includes('kucoin') && !text.includes('kraken')) return 'KUCOIN';
+    if (text.includes('kraken')) return 'KUCOIN/KRAKEN';
     if (text.includes('epic games')) return 'EPIC GAMES';
     if (text.includes('steam')) return 'STEAM';
     if (text.includes('riot')) return 'RIOT GAMES';
