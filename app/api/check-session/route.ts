@@ -2,21 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import connectToDatabase from "../../lib/mongodb";
 import User from "../../../models/User";
+import redis from "../../lib/redis"; // 💥 Redis Imported 💥
 
 const JWT_SECRET = process.env.JWT_SECRET || "ZENEX_SUPER_SECRET_KEY_2024";
 
-export const dynamic = "force-dynamic"; // Vercel Caching Issue ফিক্স করার জন্য
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    // সরাসরি রিকোয়েস্ট থেকে কুকি রিড করা হচ্ছে
     const token = req.cookies.get("zenex_token")?.value;
 
     if (!token) {
       return NextResponse.json({ message: "No token found" }, { status: 401 });
     }
 
-    // 💥 ১. টোকেন ভেরিফিকেশন (এখানে ফেইল করলে তবেই 401 দিয়ে লগআউট করাবে) 💥
     let decoded: any;
     try {
       decoded = jwt.verify(token, JWT_SECRET) as { id: string; sessionId: string };
@@ -24,7 +23,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Invalid or Expired Token" }, { status: 401 });
     }
 
-    // 💥 ২. ডাটাবেস কানেকশন (এখানে স্লো হলে 500 দেবে, লগআউট করাবে না) 💥
+    // 💥 LAYER 1: REDIS SESSION CACHE (Zero-DB Verification) 💥
+    const CACHE_KEY = `zenex_session_${decoded.id}`;
+    if (redis) {
+      const cachedSession = await redis.get(CACHE_KEY);
+      if (cachedSession) {
+        const u = JSON.parse(cachedSession);
+        if (u.status === "banned" || u.status === "pending") {
+          return NextResponse.json({ message: "Account restricted" }, { status: 401 });
+        }
+        if (!u.activeSessions || !u.activeSessions.includes(decoded.sessionId)) {
+          return NextResponse.json({ message: "Logged in from another device. Session expired." }, { status: 401 });
+        }
+        return NextResponse.json({ message: "Session is valid (Cached)" }, { status: 200 });
+      }
+    }
+
+    // 💥 LAYER 2: FALLBACK TO MONGODB (Runs only once every 30 seconds per user) 💥
     try {
       await connectToDatabase();
       
@@ -34,11 +49,15 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ message: "User not found" }, { status: 401 });
       }
 
+      // Save to Redis for 30 Seconds to prevent DB load on rapid refreshes
+      if (redis) {
+        await redis.set(CACHE_KEY, JSON.stringify({ status: user.status, activeSessions: user.activeSessions }), "EX", 30);
+      }
+
       if (user.status === "banned" || user.status === "pending") {
          return NextResponse.json({ message: "Account restricted" }, { status: 401 });
       }
 
-      // সেশন আইডি চেক (ম্যাক্স ৫ ডিভাইসের লজিক)
       if (!user.activeSessions || !user.activeSessions.includes(decoded.sessionId)) {
         return NextResponse.json({ message: "Logged in from another device. Session expired." }, { status: 401 });
       }
@@ -46,7 +65,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Session is valid" }, { status: 200 });
 
     } catch (dbError) {
-      // 💥 আসল ফিক্স: ডাটাবেস স্লো হলে বা লোড নিতে না পারলে ইউজারকে লগআউট করবে না! 💥
       console.warn("DB Timeout in check-session. Skipping logout.");
       return NextResponse.json({ message: "Database busy, skipping check" }, { status: 500 });
     }

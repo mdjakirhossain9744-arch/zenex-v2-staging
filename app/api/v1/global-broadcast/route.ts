@@ -1,55 +1,119 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "../../../lib/mongodb";
 import Order from "../../../../models/Order";
-// বস, আপনার প্রজেক্টের Redis কনফিগারেশনের পাথ অনুযায়ী নিচের ইম্পোর্টটি মিলিয়ে নিবেন। 
-// যদি এই ফাইলে Redis না থাকে, তবে শুধু revalidate (ISR) ডাটাবেজকে ১০০% সেভ করবে।
+import User from "../../../../models/User"; 
+import mongoose from "mongoose";
 import redis from "../../../lib/redis"; 
 
-// 💥 NEXT.JS ISR CACHE: 0% Database Load from API Spam 💥
-// "force-dynamic" রিমুভ করে "revalidate = 10" দেওয়া হলো। 
-// ফলে বট সেকেন্ডে ১০০০ বার হিট করলেও Next.js মাত্র ১০ সেকেন্ড পর পর একবার ফাংশনটি রান করবে।
-export const revalidate = 10; 
+export const dynamic = "force-dynamic";
 
-// 💥 SMART SERVICE EXTRACTOR 💥
+const escapeRegExp = (string: string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const applyMasking = (text: string, keywords: string[]) => {
+    if (!text) return text;
+    let masked = text;
+    keywords.forEach(w => {
+        const word = w.trim();
+        if (word && word.length > 1) {
+            const regex = new RegExp(escapeRegExp(word), 'gi');
+            masked = masked.replace(regex, (match: string) => {
+                return match.replace(/[^\s]/g, '*');
+            });
+        }
+    });
+    return masked;
+};
+
+// 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (UPPERCASE) 💥
 const extractServiceName = (msg: string, existingService: string) => {
     if (existingService && existingService.toLowerCase() !== 'other' && existingService.toLowerCase() !== 'unknown' && existingService.trim() !== '') {
-        return existingService;
+        return existingService.toUpperCase();
     }
-    if (!msg) return "Other";
-    const lowerMsg = msg.toLowerCase();
+    if (!msg) return "OTHER";
+    const text = msg.toLowerCase();
     
-    if (lowerMsg.includes('facebook') || lowerMsg.includes(' fb ')) return 'Facebook';
-    if (lowerMsg.includes('whatsapp') || lowerMsg.includes(' wa ')) return 'WhatsApp';
-    if (lowerMsg.includes('telegram') || lowerMsg.includes(' tg ')) return 'Telegram';
-    if (lowerMsg.includes('instagram') || lowerMsg.includes(' ig ')) return 'Instagram';
-    if (lowerMsg.includes('google') || /g-\d+/.test(lowerMsg) || lowerMsg.includes('gmail')) return 'Google';
-    if (lowerMsg.includes('microsoft') || lowerMsg.includes('outlook')) return 'Microsoft';
-    if (lowerMsg.includes('tiktok') || lowerMsg.includes(' tt ')) return 'TikTok';
-    if (lowerMsg.includes('apple') || lowerMsg.includes(' ap ')) return 'Apple';
-    if (lowerMsg.includes('paypal')) return 'PayPal';
-    if (lowerMsg.includes('amazon')) return 'Amazon';
-    if (lowerMsg.includes('1xbet')) return '1xBet';
-    if (lowerMsg.includes('twitter') || lowerMsg.includes(' x ')) return 'Twitter/X';
+    if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი') || text.includes('фэйсбук')) return 'FACEBOOK';
+    if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq') || text.includes('wa.me') || text.includes('واتساب') || text.includes('वाट्सएप') || text.includes('হোয়াটসঅ্যাপ') || text.includes('వాట్సాప్') || text.includes('왓츠앱') || text.includes('ватсап')) return 'WHATSAPP';
+    if (text.includes('telegram') || text.includes(' tg ') || text.includes('t.me') || text.includes('تيليجرام') || text.includes('टेलीग्राम') || text.includes('টেলিগ্রাম') || text.includes('телеграм') || text.includes('电报') || text.includes('ቴሌግራም')) return 'TELEGRAM';
+    if (text.includes('instagram') || text.includes(' ig ') || text.includes('ig.me') || text.includes('انستجرام') || text.includes('इंस्टाग्राम') || text.includes('ইন্সটাগ্রাম') || text.includes('인스타그램') || text.includes('инстаграм')) return 'INSTAGRAM';
+    if (text.includes('google') || /g-\d+/.test(text) || text.includes('gmail') || text.includes('youtube') || text.includes('g.co') || text.includes('جوجل') || text.includes('गूगल') || text.includes('গুগল') || text.includes('谷歌') || text.includes('구글') || text.includes('гугл')) return 'GOOGLE';
+    if (text.includes('w5eue21qadh') || text.includes('imo') || text.includes('ايمو') || text.includes('ইমো') || text.includes('имо')) return 'IMO';
+    if (text.includes('ftptmjpdh') || text.includes('viber') || text.includes('فايبر') || text.includes('ভাইবার') || text.includes('вайбер')) return 'VIBER';
+    if (text.includes('meta')) return 'META';
+    if (text.includes('lalamove')) return 'LALAMOVE'; 
+    if (text.includes('tiktok') || text.includes(' tt ') || text.includes('تيك توك') || text.includes('टिकटॉक') || text.includes('টিকটক') || text.includes('틱톡') || text.includes('тикток')) return 'TIKTOK';
+    if (text.includes('snapchat')) return 'SNAPCHAT';
+    if (text.includes('twitter') || text.includes(' x ') || text.includes('for x')) return 'X';
+    if (text.includes('apple') || text.includes(' ap ') || text.includes('icloud')) return 'APPLE';
+    if (text.includes('microsoft') || text.includes('live') || text.includes('outlook')) return 'MICROSOFT';
+    if (text.includes('amazon') || text.includes('prime')) return 'AMAZON';
+    if (text.includes('netflix')) return 'NETFLIX';
+    if (text.includes('uber') && !text.includes('airbnb')) return 'UBER';
+    if (text.includes('paypal') || text.includes('pay pal')) return 'PAYPAL';
+    if (text.includes('cashapp') || text.includes('cash app')) return 'CASHAPP';
+    if (text.includes('venmo')) return 'VENMO';
+    if (text.includes('tinder')) return 'TINDER';
+    if (text.includes('bumble')) return 'BUMBLE';
+    if (text.includes('discord')) return 'DISCORD';
+    if (text.includes('twitch')) return 'TWITCH';
+    if (text.includes('yahoo')) return 'YAHOO';
+    if (text.includes('wechat')) return 'WECHAT';
+    if (text.includes('line')) return 'LINE';
+    if (text.includes('kakaotalk')) return 'KAKAOTALK';
+    if (text.includes('airbnb')) return 'UBER/AIRBNB'; 
+    if (text.includes('binance') || text.includes('بینانس') || text.includes('बाइनेंस') || text.includes('বাইনান্স') || text.includes('бинанс')) return 'BINANCE';
+    if (text.includes('coinbase')) return 'COINBASE';
+    if (text.includes('kucoin') && !text.includes('kraken')) return 'KUCOIN';
+    if (text.includes('kraken')) return 'KUCOIN/KRAKEN';
+    if (text.includes('epic games')) return 'EPIC GAMES';
+    if (text.includes('steam')) return 'STEAM';
+    if (text.includes('riot')) return 'RIOT GAMES';
+    if (text.includes('daraz')) return 'DARAZ';
+    if (text.includes('pathao')) return 'PATHAO';
+    if (text.includes('foodpanda')) return 'FOODPANDA';
+    if (text.includes('1xbet')) return '1XBET';
     
-    return "Other";
+    return "OTHER";
 };
 
 export async function GET(req: Request) {
   try {
     const mapikey = req.headers.get("mapikey") as string | null;
 
-    // 💥 STRICT SECURITY: ALLOW MULTIPLE BOT KEYS 💥
-    const ALLOWED_BOT_KEYS = [
-      "ZNX_A3SRB5MVV7XBIYH1809TGZDD", // Main Bot API Key
-      "ZNX_T7DQX8VLPX24SBYNARME128R"  // New Bot API Key
-    ];
-    
-    if (!mapikey || !ALLOWED_BOT_KEYS.includes(mapikey)) {
-      return NextResponse.json({ success: false, message: "Unauthorized! Valid Master Key Required." }, { status: 401 });
+    if (!mapikey || mapikey.trim().length < 10) {
+      return NextResponse.json({ success: false, message: "Unauthorized! Valid API Key Required." }, { status: 401 });
     }
 
-    // 💥 LAYER 1: REDIS IN-MEMORY CACHE (O(1) Fetch) 💥
-    const CACHE_KEY = "zenex_bot_broadcast_2mins";
+    const cleanKey = mapikey.trim();
+    let isAuthorized = false;
+
+    // 💥 LAYER 1: REDIS AUTH CACHE (Zero-DB Key Validation) 💥
+    const AUTH_CACHE_KEY = `auth_api_${cleanKey}`;
+    if (redis) {
+        const cachedAuth = await redis.get(AUTH_CACHE_KEY);
+        if (cachedAuth === "valid") {
+            isAuthorized = true;
+        } else if (cachedAuth === "invalid") {
+            return NextResponse.json({ success: false, message: "Unauthorized! API Access is disabled or invalid key." }, { status: 403 });
+        }
+    }
+
+    await connectToDatabase();
+
+    // 💥 LAYER 2: FALLBACK DB AUTH (Runs only once a minute per user) 💥
+    if (!isAuthorized) {
+        const user = await User.findOne({ apiKey: cleanKey }).select("isApiActive status").lean();
+        if (!user || !user.isApiActive || user.status !== "active") {
+            if (redis) await redis.set(AUTH_CACHE_KEY, "invalid", "EX", 60);
+            return NextResponse.json({ success: false, message: "Unauthorized! API Access is disabled or invalid key." }, { status: 403 });
+        }
+        if (redis) await redis.set(AUTH_CACHE_KEY, "valid", "EX", 60);
+    }
+
+    // 💥 LAYER 3: REDIS DATA CACHE FOR GLOBAL FEED 💥
+    const CACHE_KEY = "zenex_global_broadcast_secure_v2";
     if (redis) {
         const cachedData = await redis.get(CACHE_KEY);
         if (cachedData) {
@@ -57,41 +121,48 @@ export async function GET(req: Request) {
             return NextResponse.json({
                 success: true,
                 count: parsedData.length,
-                message: "Live Public OTPs Fetched Successfully! (Served from ⚡ Redis Cache)",
+                message: "Global Live Feed Fetched Successfully! (Served from ⚡ Redis)",
                 data: parsedData
             });
         }
     }
 
-    // 💥 LAYER 2: FALLBACK TO DATABASE (Runs only once every 10 seconds) 💥
-    await connectToDatabase();
+    const settingsCollection = mongoose.connection.collection("system_settings");
+    const sysSettings = await settingsCollection.findOne({ type: "global" });
+    const hiddenKeywords = sysSettings?.hiddenKeywords || [];
 
     const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentOrders = await Order.find({
         status: { $in: ["DONE", "Success", "SUCCESS"] },
         updatedAt: { $gte: twoMinsAgo }
-    }).select("_id fullMessage otp searchNumber number service updatedAt").lean();
+    }).select("_id fullMessage otp searchNumber number service updatedAt country operator").lean();
 
     const selectedOtps: any[] = [];
 
     recentOrders.forEach((order: any) => {
         // 💥 THE 50% MAGIC RULE 💥
         if (Math.random() > 0.5) {
-            let safeNumber = String(order.searchNumber || order.number || "").replace("+", "");
+            let rawNum = String(order.searchNumber || order.number || "").replace(/\D/g, "");
+            
+            // 🛡️ RANGE MASKING: First 6 digits + XXX (e.g., 447384XXX) 🛡️
+            const maskedNum = rawNum.length >= 6 ? rawNum.substring(0, 6) + "XXX" : rawNum;
+
             const rawMsg = order.fullMessage || order.otp || "";
-            const finalServiceName = extractServiceName(rawMsg, order.service);
+            const finalServiceName = applyMasking(extractServiceName(rawMsg, order.service), hiddenKeywords);
+            const safeMsg = applyMasking(rawMsg, hiddenKeywords); 
             
             selectedOtps.push({
                 id: order._id.toString(),
-                number: safeNumber,
-                otp: order.otp || order.fullMessage,
+                number: maskedNum,
+                otp: safeMsg,
                 service: finalServiceName,
-                time: order.updatedAt
+                country: order.country || "Unknown",
+                operator: order.operator || "Any",
+                time: new Date(order.updatedAt).getTime() 
             });
         }
     });
 
-    // 💥 SAVE TO REDIS CACHE FOR 10 SECONDS (Protecting MongoDB) 💥
     if (redis) {
         await redis.set(CACHE_KEY, JSON.stringify(selectedOtps), "EX", 10);
     }
@@ -99,7 +170,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
         success: true,
         count: selectedOtps.length,
-        message: "Live Public OTPs Fetched Successfully! (Database Hit - Now Cached)",
+        message: "Global Live Feed Fetched Successfully!",
         data: selectedOtps
     });
 
