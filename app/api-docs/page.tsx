@@ -18,7 +18,8 @@ export default function ApiDocumentation() {
     const docText = `=========================================
 ZENEX CORE API DOCUMENTATION - V4.0
 =========================================
-Base URL: https://api.zenexnetwork.com
+Core API Base URL: https://api.zenexnetwork.com
+Web API Base URL: https://www.zenexnetwork.com
 Authentication Header: mapikey: YOUR_API_KEY_HERE
 
 Note: Keep your API key secure. Route all requests through your backend server.
@@ -27,7 +28,7 @@ Note: Keep your API key secure. Route all requests through your backend server.
 1. PROVISION VIRTUAL NUMBER
 -----------------------------------------
 Method: POST
-Endpoint: /v1/getnum
+Endpoint: https://api.zenexnetwork.com/v1/getnum
 Description: Instantly provisions a temporary or permanent virtual number.
 
 Payload Example:
@@ -56,7 +57,7 @@ Response Example (Success):
 2. FETCH SMS/OTP PAYLOADS
 -----------------------------------------
 Method: GET
-Endpoint: /v1/numsuccess/info
+Endpoint: https://api.zenexnetwork.com/v1/numsuccess/info
 Description: Polls the Zenex Core Engine to fetch incoming SMS payloads.
 Important: Our OTP Engine is completely cache-free. Suggested polling rate is 3-5 seconds. Do not cancel numbers prematurely.
 
@@ -82,7 +83,7 @@ Response Example (Success):
 3. LIVE ENGINE ROUTES (BOT FEED)
 -----------------------------------------
 Method: GET
-Endpoint: /v1/active-ranges
+Endpoint: https://api.zenexnetwork.com/v1/active-ranges
 Description: Exports the global live routing matrix. Use this feed to dynamically populate your App/Bot buttons with highly successful prefixes.
 Important: Protected by 60s micro-caching. Optimal polling: Every 2-5 minutes.
 
@@ -97,22 +98,31 @@ Response Example (Success):
   }
 }
 
-Node.js Implementation Example:
-const axios = require('axios');
+-----------------------------------------
+4. GLOBAL LIVE CONSOLE (PUBLIC FEED)
+-----------------------------------------
+Method: GET
+Endpoint: https://www.zenexnetwork.com/api/v1/global-broadcast
+Description: Fetches the global live feed of recent successful OTPs across the entire ZENEX network. Phone numbers are strictly masked (e.g., 447384XXX) for privacy. Ideal for powering your own Telegram bots.
+Important: Protected by 10s Redis caching. Optimal polling: Every 5-8 seconds.
 
-async function checkZenexLiveFeed(targetService) {
-    try {
-        const response = await axios.get("https://api.zenexnetwork.com/v1/active-ranges", {
-            headers: { 'mapikey': 'YOUR_API_KEY_HERE' }
-        });
-        const activeRoutes = response.data.data.active_ranges;
-        const matchedRoutes = activeRoutes.filter(route => route.service === targetService);
-        if (matchedRoutes.length > 0) {
-            matchedRoutes.forEach(r => console.log(\`[Route: \${r.range}] -> \${r.hits} Success Hits\`));
-        }
-    } catch (error) { console.error("API Error"); }
+Response Example (Success):
+{
+  "success": true,
+  "count": 2,
+  "message": "Global Live Feed Fetched Successfully!",
+  "data": [
+    {
+      "id": "64b5c7d...8e9f",
+      "number": "447384XXX",
+      "otp": "Your code is 12345. Do not share.",
+      "service": "WHATSAPP",
+      "country": "United Kingdom",
+      "operator": "EE",
+      "time": 1779460000000
+    }
+  ]
 }
-checkZenexLiveFeed("Telegram");
 
 =========================================
 Generated from Zenex Network Core (V4.0)
@@ -188,10 +198,29 @@ Generated from Zenex Network Core (V4.0)
   "data": {
     "active_ranges": [
       { "range": "447384XXX", "service": "Telegram", "tag": "Premium", "hits": 312 },
-      { "range": "628123XXX", "service": "WhatsApp", "tag": "Physical", "hits": 245 },
-      { "range": "141598XXX", "service": "Netflix", "tag": "General", "hits": 89 }
+      { "range": "628123XXX", "service": "WhatsApp", "tag": "Physical", "hits": 245 }
     ]
   }
+}`;
+
+  const globalBroadcastRequest = `curl -X GET "https://www.zenexnetwork.com/api/v1/global-broadcast" \\
+  -H "mapikey: YOUR_API_KEY_HERE"`;
+
+  const globalBroadcastResponse = `{
+  "success": true,
+  "count": 2,
+  "message": "Global Live Feed Fetched Successfully!",
+  "data": [
+    {
+      "id": "64b5c7d...8e9f",
+      "number": "447384XXX",
+      "otp": "Your code is 12345. Do not share.",
+      "service": "WHATSAPP",
+      "country": "United Kingdom",
+      "operator": "EE",
+      "time": 1779460000000
+    }
+  ]
 }`;
 
   const botScriptExample = `const axios = require('axios');
@@ -291,7 +320,7 @@ checkZenexLiveFeed("WhatsApp");`;
                  <span className="bg-[#3B82F6] text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">POST</span>
                  Provision Virtual Number
               </h2>
-              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">/v1/getnum</code>
+              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">https://api.zenexnetwork.com/v1/getnum</code>
            </div>
            
            <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -320,7 +349,7 @@ checkZenexLiveFeed("WhatsApp");`;
                     <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
                        <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Client Request (cURL)</span>
                        <button onClick={() => handleCopy(getNumberRequest, 'req1')} className="text-[#64748B] hover:text-white transition-colors">
-                          {copiedSection === 'req1' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                          {copiedSection === 'req1' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                        </button>
                     </div>
                     <pre className="p-4 text-xs text-[#E2E8F0] font-mono overflow-x-auto custom-scrollbar">
@@ -350,7 +379,7 @@ checkZenexLiveFeed("WhatsApp");`;
                  <span className="bg-[#10B981] text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">GET</span>
                  Fetch SMS/OTP Payloads
               </h2>
-              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">/v1/numsuccess/info</code>
+              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">https://api.zenexnetwork.com/v1/numsuccess/info</code>
            </div>
            
            <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -391,7 +420,7 @@ checkZenexLiveFeed("WhatsApp");`;
                     <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
                        <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Client Request (cURL)</span>
                        <button onClick={() => handleCopy(checkOtpRequest, 'req2')} className="text-[#64748B] hover:text-white transition-colors">
-                          {copiedSection === 'req2' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                          {copiedSection === 'req2' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                        </button>
                     </div>
                     <pre className="p-4 text-xs text-[#E2E8F0] font-mono overflow-x-auto custom-scrollbar">
@@ -425,7 +454,7 @@ checkZenexLiveFeed("WhatsApp");`;
                  <span className="bg-[#10B981] text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">GET</span>
                  Live Engine Routes <span className="text-[10px] text-[#8B5CF6] border border-[#8B5CF6]/30 bg-[#8B5CF6]/10 px-2 py-0.5 rounded ml-2 hidden md:inline-block">BOT FEED</span>
               </h2>
-              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">/v1/active-ranges</code>
+              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">https://api.zenexnetwork.com/v1/active-ranges</code>
            </div>
            
            <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-8 relative z-10">
@@ -466,7 +495,7 @@ checkZenexLiveFeed("WhatsApp");`;
                     <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
                        <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Client Request (cURL)</span>
                        <button onClick={() => handleCopy(activeRangesRequest, 'req3')} className="text-[#64748B] hover:text-white transition-colors">
-                          {copiedSection === 'req3' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                          {copiedSection === 'req3' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                        </button>
                     </div>
                     <pre className="p-4 text-xs text-[#E2E8F0] font-mono overflow-x-auto custom-scrollbar">
@@ -483,6 +512,62 @@ checkZenexLiveFeed("WhatsApp");`;
                     </div>
                     <pre className="p-4 text-[10px] text-[#10B981] font-mono overflow-x-auto custom-scrollbar">
                        <code>{activeRangesResponse}</code>
+                    </pre>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        {/* 4. NEW: Global Live Console (Broadcast) */}
+        <div className="mb-12 bg-[#0F172A] border border-[#334155] rounded-2xl overflow-hidden shadow-lg relative border-l-4 border-l-[#EAB308]">
+           <div className="bg-[#1E293B] px-6 py-4 border-b border-[#334155] flex flex-wrap justify-between items-center gap-4 relative z-10">
+              <h2 className="text-lg font-black text-white flex items-center gap-3">
+                 <span className="bg-[#10B981] text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">GET</span>
+                 Global Live Console <span className="text-[10px] text-[#EAB308] border border-[#EAB308]/30 bg-[#EAB308]/10 px-2 py-0.5 rounded ml-2">PUBLIC FEED</span>
+              </h2>
+              {/* 💥 EXPLICITLY SHOWING THE FULL NEXT.JS PATH 💥 */}
+              <code className="text-xs text-[#94A3B8] font-bold bg-[#0F172A] px-3 py-1.5 rounded-lg border border-[#334155]">https://www.zenexnetwork.com/api/v1/global-broadcast</code>
+           </div>
+           
+           <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-8 relative z-10">
+              <div>
+                 <p className="text-[#94A3B8] text-sm mb-6 leading-relaxed">
+                   Fetches the global live feed of recent successful OTPs across the entire ZENEX network. Use this data to power your own Telegram Bots and attract users with live real-time proof.
+                 </p>
+                 
+                 <div className="p-4 rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/20 flex items-start gap-3 mb-6">
+                    <svg className="w-5 h-5 text-[#3B82F6] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" /></svg>
+                    <div>
+                       <p className="text-xs font-bold text-[#3B82F6] mb-1">Privacy & Shielded Output</p>
+                       <p className="text-[10px] text-[#94A3B8] leading-relaxed">
+                         Phone numbers are strictly masked using the Range Format (e.g., <strong>447384XXX</strong>) for privacy compliance. Protected by our 10-second micro-caching layer. Optimal polling: Every 5-8 seconds.
+                       </p>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="space-y-4">
+                 <div className="relative bg-[#1E293B] rounded-xl border border-[#334155] overflow-hidden">
+                    <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
+                       <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Client Request (cURL)</span>
+                       <button onClick={() => handleCopy(globalBroadcastRequest, 'req4')} className="text-[#64748B] hover:text-white transition-colors">
+                          {copiedSection === 'req4' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                       </button>
+                    </div>
+                    <pre className="p-4 text-xs text-[#E2E8F0] font-mono overflow-x-auto custom-scrollbar">
+                       <code>{globalBroadcastRequest}</code>
+                    </pre>
+                 </div>
+
+                 <div className="relative bg-[#1E293B] rounded-xl border border-[#334155] overflow-hidden">
+                    <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
+                       <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Server Response</span>
+                       <button onClick={() => handleCopy(globalBroadcastResponse, 'res4')} className="text-[#64748B] hover:text-white transition-colors">
+                          {copiedSection === 'res4' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+                       </button>
+                    </div>
+                    <pre className="p-4 text-[10px] text-[#10B981] font-mono overflow-x-auto custom-scrollbar">
+                       <code>{globalBroadcastResponse}</code>
                     </pre>
                  </div>
               </div>
