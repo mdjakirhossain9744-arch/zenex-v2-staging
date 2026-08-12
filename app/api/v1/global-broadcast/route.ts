@@ -158,7 +158,14 @@ export async function GET(req: Request) {
             // 🛡️ RANGE MASKING: First 6 digits + XXX (e.g., 447384XXX) 🛡️
             const maskedNum = rawNum.length >= 6 ? rawNum.substring(0, 6) + "XXX" : rawNum;
 
-            const rawMsg = order.fullMessage || order.otp || "";
+            let rawMsg = order.fullMessage || order.otp || "";
+            
+            // 💥 THE BOSS FIX: Extract ONLY the LATEST OTP if Multi-OTP exists 💥
+            if (rawMsg.includes("_||_")) {
+                const msgParts = rawMsg.split("_||_");
+                rawMsg = msgParts[msgParts.length - 1].trim(); 
+            }
+
             // 💥 Passed dynamicServices to Extractor 💥
             const finalServiceName = applyMasking(extractServiceName(rawMsg, order.service, dynamicServices), hiddenKeywords);
             const safeMsg = applyMasking(rawMsg, hiddenKeywords); 

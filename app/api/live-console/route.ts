@@ -9,7 +9,8 @@ export const fetchCache = "force-no-store";
 // 💥 SERVER-SIDE IN-MEMORY CACHE (Database Protector) 💥
 let cachedData: any = null;
 let lastFetchTime = 0;
-const CACHE_TTL = 4000; // 4 seconds cache
+// 💥 OPTIMIZATION: Increased Cache to 15 seconds to drop CPU Temperature 💥
+const CACHE_TTL = 15000; 
 
 // 💥 BOSS UPGRADE: REGEX ESCAPER 💥
 const escapeRegExp = (string: string) => {
@@ -33,7 +34,7 @@ const applyMasking = (text: string, keywords: string[]) => {
 };
 
 // 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (UPPERCASE FOR UI) 💥
-const extractServiceName = (msg: string) => {
+const extractServiceName = (msg: string, dynamicServices: string[] = []) => {
     if (!msg) return "OTHER";
 
     // 1. Read Exact Tag Injected by Engine-2 AI Scanner (for legacy data)
@@ -44,6 +45,15 @@ const extractServiceName = (msg: string) => {
 
     // 2. Comprehensive AI Fallback for NEW CLEAN DATA
     const text = msg.toLowerCase();
+    
+    // 💥 CMS Dynamic Services Check 💥
+    if (dynamicServices && dynamicServices.length > 0) {
+        for (const service of dynamicServices) {
+            if (text.includes(service.toLowerCase())) {
+                return service.toUpperCase();
+            }
+        }
+    }
     
     // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (Hashes, Short URLs, Foreign Languages) -> UPPERCASE 💥
     if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი')) return 'FACEBOOK';
@@ -100,24 +110,26 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    // 💥 AUTO INDEXING ENGINE (Prevents Lag & Speeds up 1-hour query by 90%) 💥
+    // 💥 AUTO INDEXING ENGINE (Prevents Lag) 💥
     try {
         if (Order.collection) {
             Order.collection.createIndex({ status: 1, updatedAt: -1 }, { background: true }).catch(() => {});
         }
     } catch (idxErr) {}
 
-    // 💥 FETCH SECRET MASKING KEYWORDS FROM DB 💥
+    // 💥 FETCH SECRET MASKING KEYWORDS & DYNAMIC SERVICES FROM DB 💥
     const settingsCollection = mongoose.connection.collection("system_settings");
     const sysSettings = await settingsCollection.findOne({ type: "global" });
     const hiddenKeywords = sysSettings?.hiddenKeywords || [];
+    const dynamicServices = sysSettings?.dynamicServices || []; 
 
-    const oneHourAgoDate = new Date(Date.now() - 60 * 60 * 1000); 
+    // 💥 OPTIMIZATION: Fetching Last 30 Minutes instead of 1 Hour 💥
+    const thirtyMinsAgoDate = new Date(Date.now() - 30 * 60 * 1000); 
 
-    // 💥 2. QUERY ONE (For Charts): Fetch Unlimited Logs but super optimized with Indexing 💥
+    // 💥 2. QUERY ONE (For Charts): Fetch optimized logs 💥
     const statsOrders = await Order.find({ 
       status: { $in: ["DONE", "Success"] },
-      updatedAt: { $gte: oneHourAgoDate } 
+      updatedAt: { $gte: thirtyMinsAgoDate } 
     })
     .select("fullMessage otp operator") 
     .lean();
@@ -126,7 +138,14 @@ export async function GET(req: NextRequest) {
     const carrierCounts: Record<string, number> = {};
 
     statsOrders.forEach((log: any) => {
-      const rawService = extractServiceName(log.fullMessage || log.otp);
+      // 🔥 Multi-OTP Fix for Graph: Extract from the latest msg if _||_ exists
+      let rawMsg = log.fullMessage || log.otp || "";
+      if (rawMsg.includes("_||_")) {
+          const msgParts = rawMsg.split("_||_");
+          rawMsg = msgParts[msgParts.length - 1].trim();
+      }
+
+      const rawService = extractServiceName(rawMsg, dynamicServices);
       const service = applyMasking(rawService, hiddenKeywords);
       
       const op = log.operator || "Other";
@@ -160,16 +179,23 @@ export async function GET(req: NextRequest) {
     // 🛡️ 100% BULLETPROOF SERVER-SIDE DATA MASKING 🛡️
     const localLogs = feedOrders.map((log: any) => {
       const rawNum = log.searchNumber || log.number || "";
-      // Mask Number: 23672928354 -> 23672928XXX
+      
+      // 💥 YOUR ORIGINAL MASKING LOGIC (Untouched) 💥
       const maskedNum = rawNum.length > 4 ? rawNum.slice(0, -3) + "XXX" : rawNum;
       
-      const originalMsg = log.fullMessage || log.otp || "";
+      let originalMsg = log.fullMessage || log.otp || "";
+      
+      // 💥 THE BOSS FIX: Extract ONLY the LATEST OTP if Multi-OTP exists 💥
+      if (originalMsg.includes("_||_")) {
+          const msgParts = originalMsg.split("_||_");
+          originalMsg = msgParts[msgParts.length - 1].trim(); 
+      }
       
       // 💥 Step 1: Detect Service Name
-      let rawService = extractServiceName(originalMsg);
+      let rawService = extractServiceName(originalMsg, dynamicServices);
       let maskedServiceTag = applyMasking(rawService, hiddenKeywords);
 
-      // 💥 Step 2: Keep Legacy Data intact (No On-the-fly cleaner)
+      // 💥 Step 2: Keep Legacy Data intact
       let cleanMsg = originalMsg;
 
       // 💥 Step 3: Mask ALL numbers between 3 to 12 digits (Catches large 10-digit usernames) 💥
@@ -182,8 +208,8 @@ export async function GET(req: NextRequest) {
 
       return {
         id: log._id.toString(),
-        number: maskedNum, // HACKER WILL NEVER SEE THE FULL NUMBER
-        otp: maskedMsg,    // CLEAN AND SAFE PUBLIC MESSAGE
+        number: maskedNum, 
+        otp: maskedMsg,    
         country: log.country || "BD",
         operator: log.operator || "Other",
         service: maskedServiceTag, 
