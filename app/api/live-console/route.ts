@@ -9,8 +9,12 @@ export const fetchCache = "force-no-store";
 // 💥 SERVER-SIDE IN-MEMORY CACHE (Database Protector) 💥
 let cachedData: any = null;
 let lastFetchTime = 0;
-// 💥 OPTIMIZATION: Increased Cache to 15 seconds to drop CPU Temperature 💥
-const CACHE_TTL = 15000; 
+
+// 💥 OPTIMIZATION: 3 Seconds Cache for LIVE Feel + Promise Lock for DB Protection 💥
+const CACHE_TTL = 3000; 
+
+// 🚀 BOSS UPGRADE: PROMISE LOCK (Prevents Thundering Herd / Cache Stampede) 🚀
+let fetchPromise: Promise<void> | null = null;
 
 // 💥 BOSS UPGRADE: REGEX ESCAPER 💥
 const escapeRegExp = (string: string) => {
@@ -55,7 +59,7 @@ const extractServiceName = (msg: string, dynamicServices: string[] = []) => {
         }
     }
     
-    // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (Hashes, Short URLs, Foreign Languages) -> UPPERCASE 💥
+    // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE -> UPPERCASE 💥
     if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი')) return 'FACEBOOK';
     if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq') || text.includes('wa.me') || text.includes('واتساب') || text.includes('वाट्सएप') || text.includes('হোয়াটসঅ্যাপ') || text.includes('వాట్సాప్') || text.includes('왓츠앱')) return 'WHATSAPP';
     if (text.includes('telegram') || text.includes('t.me') || text.includes('تيليجرام') || text.includes('टेलीग्राम') || text.includes('টেলিগ্রাম') || text.includes('телеграм') || text.includes('电报') || text.includes('ቴሌግራም')) return 'TELEGRAM';
@@ -108,127 +112,134 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(cachedData);
     }
 
-    await connectToDatabase();
-
-    // 💥 AUTO INDEXING ENGINE (Prevents Lag) 💥
-    try {
-        if (Order.collection) {
-            Order.collection.createIndex({ status: 1, updatedAt: -1 }, { background: true }).catch(() => {});
-        }
-    } catch (idxErr) {}
-
-    // 💥 FETCH SECRET MASKING KEYWORDS & DYNAMIC SERVICES FROM DB 💥
-    const settingsCollection = mongoose.connection.collection("system_settings");
-    const sysSettings = await settingsCollection.findOne({ type: "global" });
-    const hiddenKeywords = sysSettings?.hiddenKeywords || [];
-    const dynamicServices = sysSettings?.dynamicServices || []; 
-
-    // 💥 OPTIMIZATION: Fetching Last 30 Minutes instead of 1 Hour 💥
-    const thirtyMinsAgoDate = new Date(Date.now() - 30 * 60 * 1000); 
-
-    // 💥 2. QUERY ONE (For Charts): Fetch optimized logs 💥
-    const statsOrders = await Order.find({ 
-      status: { $in: ["DONE", "Success"] },
-      updatedAt: { $gte: thirtyMinsAgoDate } 
-    })
-    .select("fullMessage otp operator") 
-    .lean();
-
-    const appCounts: Record<string, number> = {};
-    const carrierCounts: Record<string, number> = {};
-
-    statsOrders.forEach((log: any) => {
-      // 🔥 Multi-OTP Fix for Graph: Extract from the latest msg if _||_ exists
-      let rawMsg = log.fullMessage || log.otp || "";
-      if (rawMsg.includes("_||_")) {
-          const msgParts = rawMsg.split("_||_");
-          rawMsg = msgParts[msgParts.length - 1].trim();
-      }
-
-      const rawService = extractServiceName(rawMsg, dynamicServices);
-      const service = applyMasking(rawService, hiddenKeywords);
-      
-      const op = log.operator || "Other";
-      appCounts[service] = (appCounts[service] || 0) + 1;
-      carrierCounts[op] = (carrierCounts[op] || 0) + 1;
-    });
-
-    let graphData = Object.keys(appCounts)
-      .map(key => ({ name: key, value: appCounts[key] }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8); 
-
-    let pad = " ";
-    while (graphData.length < 8) {
-      graphData.push({ name: pad, value: 0 });
-      pad += " ";
+    // 🚀 2. PROMISE LOCK INTERCEPTOR: If a DB fetch is already in progress, wait for it! 🚀
+    if (fetchPromise) {
+      await fetchPromise;
+      return NextResponse.json(cachedData);
     }
 
-    const carrierData = Object.keys(carrierCounts)
-      .map(key => ({ name: key, value: carrierCounts[key] }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
+    // 🚀 3. INITIALIZE DB FETCH WITH PROMISE LOCK 🚀
+    fetchPromise = (async () => {
+      await connectToDatabase();
 
-    // 💥 3. QUERY TWO (For UI Feed): Fetch ONLY the latest 50 logs 💥
-    const feedOrders = await Order.find({ status: { $in: ["DONE", "Success"] } })
-      .sort({ updatedAt: -1 }) 
-      .select("searchNumber number fullMessage otp country operator createdAt updatedAt") 
-      .limit(50) 
+      // 💥 AUTO INDEXING ENGINE (Prevents Lag) 💥
+      try {
+          if (Order.collection) {
+              Order.collection.createIndex({ status: 1, updatedAt: -1 }, { background: true }).catch(() => {});
+          }
+      } catch (idxErr) {}
+
+      // 💥 FETCH SECRET MASKING KEYWORDS & DYNAMIC SERVICES FROM DB 💥
+      const settingsCollection = mongoose.connection.collection("system_settings");
+      const sysSettings = await settingsCollection.findOne({ type: "global" });
+      const hiddenKeywords = sysSettings?.hiddenKeywords || [];
+      const dynamicServices = sysSettings?.dynamicServices || []; 
+
+      // 💥 OPTIMIZATION: Fetching Last 30 Minutes 💥
+      const thirtyMinsAgoDate = new Date(Date.now() - 30 * 60 * 1000); 
+
+      // 💥 QUERY ONE (For Charts): Fetch optimized logs 💥
+      const statsOrders = await Order.find({ 
+        status: { $in: ["DONE", "Success"] },
+        updatedAt: { $gte: thirtyMinsAgoDate } 
+      })
+      .select("fullMessage otp operator") 
       .lean();
 
-    // 🛡️ 100% BULLETPROOF SERVER-SIDE DATA MASKING 🛡️
-    const localLogs = feedOrders.map((log: any) => {
-      const rawNum = log.searchNumber || log.number || "";
-      
-      // 💥 YOUR ORIGINAL MASKING LOGIC (Untouched) 💥
-      const maskedNum = rawNum.length > 4 ? rawNum.slice(0, -3) + "XXX" : rawNum;
-      
-      let originalMsg = log.fullMessage || log.otp || "";
-      
-      // 💥 THE BOSS FIX: Extract ONLY the LATEST OTP if Multi-OTP exists 💥
-      if (originalMsg.includes("_||_")) {
-          const msgParts = originalMsg.split("_||_");
-          originalMsg = msgParts[msgParts.length - 1].trim(); 
+      const appCounts: Record<string, number> = {};
+      const carrierCounts: Record<string, number> = {};
+
+      statsOrders.forEach((log: any) => {
+        let rawMsg = log.fullMessage || log.otp || "";
+        if (rawMsg.includes("_||_")) {
+            const msgParts = rawMsg.split("_||_");
+            rawMsg = msgParts[msgParts.length - 1].trim();
+        }
+
+        const rawService = extractServiceName(rawMsg, dynamicServices);
+        const service = applyMasking(rawService, hiddenKeywords);
+        
+        const op = log.operator || "Other";
+        appCounts[service] = (appCounts[service] || 0) + 1;
+        carrierCounts[op] = (carrierCounts[op] || 0) + 1;
+      });
+
+      let graphData = Object.keys(appCounts)
+        .map(key => ({ name: key, value: appCounts[key] }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 8); 
+
+      let pad = " ";
+      while (graphData.length < 8) {
+        graphData.push({ name: pad, value: 0 });
+        pad += " ";
       }
-      
-      // 💥 Step 1: Detect Service Name
-      let rawService = extractServiceName(originalMsg, dynamicServices);
-      let maskedServiceTag = applyMasking(rawService, hiddenKeywords);
 
-      // 💥 Step 2: Keep Legacy Data intact
-      let cleanMsg = originalMsg;
+      const carrierData = Object.keys(carrierCounts)
+        .map(key => ({ name: key, value: carrierCounts[key] }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
 
-      // 💥 Step 3: Mask ALL numbers between 3 to 12 digits (Catches large 10-digit usernames) 💥
-      let maskedMsg = cleanMsg.replace(/\b\d{3,12}\b/g, (match: string) => {
-          return '*'.repeat(match.length);
-      }); 
-      
-      // 💥 Step 4: Apply Admin Hidden Keywords Masking
-      maskedMsg = applyMasking(maskedMsg, hiddenKeywords);
+      // 💥 QUERY TWO (For UI Feed): Fetch ONLY the latest 50 logs 💥
+      const feedOrders = await Order.find({ status: { $in: ["DONE", "Success"] } })
+        .sort({ updatedAt: -1 }) 
+        .select("searchNumber number fullMessage otp country operator createdAt updatedAt") 
+        .limit(50) 
+        .lean();
 
-      return {
-        id: log._id.toString(),
-        number: maskedNum, 
-        otp: maskedMsg,    
-        country: log.country || "BD",
-        operator: log.operator || "Other",
-        service: maskedServiceTag, 
-        createdAt: new Date(log.updatedAt || log.createdAt).getTime()
+      // 🛡️ 100% BULLETPROOF SERVER-SIDE DATA MASKING 🛡️
+      const localLogs = feedOrders.map((log: any) => {
+        const rawNum = log.searchNumber || log.number || "";
+        const maskedNum = rawNum.length > 4 ? rawNum.slice(0, -3) + "XXX" : rawNum;
+        
+        let originalMsg = log.fullMessage || log.otp || "";
+        if (originalMsg.includes("_||_")) {
+            const msgParts = originalMsg.split("_||_");
+            originalMsg = msgParts[msgParts.length - 1].trim(); 
+        }
+        
+        let rawService = extractServiceName(originalMsg, dynamicServices);
+        let maskedServiceTag = applyMasking(rawService, hiddenKeywords);
+        let cleanMsg = originalMsg;
+
+        let maskedMsg = cleanMsg.replace(/\b\d{3,12}\b/g, (match: string) => {
+            return '*'.repeat(match.length);
+        }); 
+        
+        maskedMsg = applyMasking(maskedMsg, hiddenKeywords);
+
+        return {
+          id: log._id.toString(),
+          number: maskedNum, 
+          otp: maskedMsg,    
+          country: log.country || "BD",
+          operator: log.operator || "Other",
+          service: maskedServiceTag, 
+          createdAt: new Date(log.updatedAt || log.createdAt).getTime()
+        };
+      });
+
+      // 💥 4. SAVE TO RAM CACHE 💥
+      cachedData = { 
+        success: true, 
+        logs: localLogs, 
+        graph: graphData, 
+        carrier: carrierData
       };
-    });
+      lastFetchTime = Date.now();
+    })();
 
-    // 💥 4. SAVE TO RAM CACHE AND RETURN 💥
-    cachedData = { 
-      success: true, 
-      logs: localLogs, 
-      graph: graphData, 
-      carrier: carrierData
-    };
-    lastFetchTime = Date.now();
+    // 🚀 Wait for the lock to resolve, then release it 🚀
+    try {
+      await fetchPromise;
+    } finally {
+      fetchPromise = null; 
+    }
 
     return NextResponse.json(cachedData);
 
   } catch (error: any) {
+    fetchPromise = null; // 💥 ALWAYS RELEASE LOCK ON ERROR 💥
     console.error("Live Console Critical Error:", error.message);
     if (cachedData) return NextResponse.json(cachedData);
     return NextResponse.json({ success: false, error: "Server Error" }, { status: 500 });
