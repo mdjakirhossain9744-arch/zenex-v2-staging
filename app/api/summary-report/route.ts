@@ -3,11 +3,12 @@ import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order";
 import User from "../../../models/User";
 import DailyStat from "../../../models/DailyStat";
+import mongoose from "mongoose"; // 💥 Ensure mongoose is available for settings
 
 export const dynamic = "force-dynamic";
 
-// 💥 THE BOSS FIX: MASTER SERVICE EXTRACTOR (Added Meta & X) 💥
-const extractServiceName = (msg: string) => {
+// 💥 THE BOSS FIX: MASTER SERVICE EXTRACTOR (Added CMS Dynamic Services) 💥
+const extractServiceName = (msg: string, dynamicServices: string[] = []) => {
     if (!msg) return "Other";
 
     // 1. Read Exact Tag Injected by Engine-2 AI Scanner (For Legacy Data)
@@ -18,6 +19,15 @@ const extractServiceName = (msg: string) => {
 
     // 2. Comprehensive AI Fallback for Pure Raw Messages
     const text = msg.toLowerCase();
+
+    // 💥 CMS Dynamic Services Check 💥
+    if (dynamicServices && dynamicServices.length > 0) {
+        for (const service of dynamicServices) {
+            if (text.includes(service.toLowerCase())) {
+                return service; // Return exactly as saved in Admin Panel CMS
+            }
+        }
+    }
 
     // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (Hashes, Short URLs, Foreign Languages) -> PascalCase 💥
     if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი')) return 'Facebook';
@@ -92,6 +102,11 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     
+    // 💥 FETCH DYNAMIC SERVICES FROM DB 💥
+    const settingsCollection = mongoose.connection.collection("system_settings");
+    const sysSettings = await settingsCollection.findOne({ type: "global" });
+    const dynamicServices = sysSettings?.dynamicServices || [];
+
     const { email, limitDays = 60 } = await req.json();
     const safeEmail = email.toLowerCase().trim();
 
@@ -186,7 +201,8 @@ export async function POST(req: Request) {
               const bIdx = Math.floor(hour / 4);
               if(bIdx >= 0 && bIdx <= 5) todayHourlyTraffic[bIdx] += exactValidCount;
 
-              let sName = extractServiceName(o.fullMessage);
+              // 💥 PASSED CMS SERVICES TO EXTRACTOR 💥
+              let sName = extractServiceName(o.fullMessage, dynamicServices);
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += exactValidCount;
           }

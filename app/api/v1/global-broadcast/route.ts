@@ -27,12 +27,22 @@ const applyMasking = (text: string, keywords: string[]) => {
 };
 
 // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (UPPERCASE) 💥
-const extractServiceName = (msg: string, existingService: string) => {
+// 🔥 Added dynamicServices array parameter from CMS 🔥
+const extractServiceName = (msg: string, existingService: string, dynamicServices: string[] = []) => {
     if (existingService && existingService.toLowerCase() !== 'other' && existingService.toLowerCase() !== 'unknown' && existingService.trim() !== '') {
         return existingService.toUpperCase();
     }
     if (!msg) return "OTHER";
     const text = msg.toLowerCase();
+    
+    // 💥 CMS Dynamic Services Check 💥
+    if (dynamicServices && dynamicServices.length > 0) {
+        for (const service of dynamicServices) {
+            if (text.includes(service.toLowerCase())) {
+                return service.toUpperCase();
+            }
+        }
+    }
     
     if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი') || text.includes('фэйсбук')) return 'FACEBOOK';
     if (text.includes('whatsapp') || text.includes(' wa ') || text.includes('vwaq') || text.includes('wa.me') || text.includes('واتساب') || text.includes('वाट्सएप') || text.includes('হোয়াটসঅ্যাপ') || text.includes('వాట్సాప్') || text.includes('왓츠앱') || text.includes('ватсап')) return 'WHATSAPP';
@@ -130,6 +140,7 @@ export async function GET(req: Request) {
     const settingsCollection = mongoose.connection.collection("system_settings");
     const sysSettings = await settingsCollection.findOne({ type: "global" });
     const hiddenKeywords = sysSettings?.hiddenKeywords || [];
+    const dynamicServices = sysSettings?.dynamicServices || []; // 🔥 Fetched CMS Services 🔥
 
     const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentOrders = await Order.find({
@@ -148,7 +159,8 @@ export async function GET(req: Request) {
             const maskedNum = rawNum.length >= 6 ? rawNum.substring(0, 6) + "XXX" : rawNum;
 
             const rawMsg = order.fullMessage || order.otp || "";
-            const finalServiceName = applyMasking(extractServiceName(rawMsg, order.service), hiddenKeywords);
+            // 💥 Passed dynamicServices to Extractor 💥
+            const finalServiceName = applyMasking(extractServiceName(rawMsg, order.service, dynamicServices), hiddenKeywords);
             const safeMsg = applyMasking(rawMsg, hiddenKeywords); 
             
             selectedOtps.push({

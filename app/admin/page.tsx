@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import DashboardLayout from "../DashboardLayout"; // 💥 Fixed Path
+import DashboardLayout from "../DashboardLayout"; 
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -15,16 +15,15 @@ export default function AdminDashboard() {
 
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   
-  // দুটো লিংকের স্টেট
   const [globalSupportLink, setGlobalSupportLink] = useState("https://t.me/Zenexacademy1");
   const [globalContactLink, setGlobalContactLink] = useState("https://t.me/abdullah_124");
 
-  // 🔥 NEW: Hidden Keywords State 🔥
+  // 🔥 Hidden Keywords & Dynamic Services State 🔥
   const [hiddenKeywords, setHiddenKeywords] = useState("");
+  const [dynamicServices, setDynamicServices] = useState(""); // 💥 BOSS UPGRADE: State for CMS Engine
 
   const [blockedRequests, setBlockedRequests] = useState(124);
 
-  // 🔥 THE BOSS FIX: Hardware State now includes REAL activeSessions 🔥
   const [hardware, setHardware] = useState({ 
       cpu: "0", ram: "0", disk: "0", ramDetails: "Loading...", cpuCores: 0, activeSessions: 0 
   });
@@ -41,10 +40,10 @@ export default function AdminDashboard() {
         checkSystemHealth();
         fetchSystemSettings();
         fetchGlobalLinks();
-        fetchHardware(); // Initial hardware fetch
+        fetchHardware(); 
         
         const interval = setInterval(() => {
-           fetchHardware(); // 🔥 Fetch Hardware & Real Active Sessions Every 5s
+           fetchHardware(); 
         }, 5000);
         return () => clearInterval(interval);
       }
@@ -76,9 +75,13 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (data) {
           setMaintenanceMode(data.maintenance || false);
-          // 🔥 Load Hidden Keywords from DB 🔥
+          
           if (data.hiddenKeywords && Array.isArray(data.hiddenKeywords)) {
               setHiddenKeywords(data.hiddenKeywords.join(", "));
+          }
+          // 💥 Load Dynamic Services from DB 💥
+          if (data.dynamicServices && Array.isArray(data.dynamicServices)) {
+              setDynamicServices(data.dynamicServices.join(", "));
           }
       }
     } catch (error) {}
@@ -133,7 +136,6 @@ export default function AdminDashboard() {
     } catch (error) {}
   };
 
-  // 🔥 Handle Saving Hidden Keywords 🔥
   const handleKeywordsSave = async () => {
     try {
       const keywordArray = hiddenKeywords.split(",").map(k => k.trim().toLowerCase()).filter(k => k);
@@ -144,6 +146,21 @@ export default function AdminDashboard() {
       });
       if(res.ok) alert("✅ Secret Keywords Masked Successfully!");
       else alert("❌ Failed to save keywords.");
+    } catch (error) { alert("❌ Server error."); }
+  };
+
+  // 💥 BOSS UPGRADE: Handle Dynamic Services Save 💥
+  const handleDynamicServicesSave = async () => {
+    try {
+      // Services will be saved in exact case or lowercase (we can match case-insensitively later)
+      const serviceArray = dynamicServices.split(",").map(k => k.trim()).filter(k => k);
+      const res = await fetch("/api/system-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dynamicServices: serviceArray })
+      });
+      if(res.ok) alert("✅ Dynamic Services Saved Successfully! Engine will now detect them.");
+      else alert("❌ Failed to save dynamic services.");
     } catch (error) { alert("❌ Server error."); }
   };
 
@@ -225,7 +242,6 @@ export default function AdminDashboard() {
            </div>
         </div>
 
-        {/* 🔥 LIVE HARDWARE MONITORING (CPU, RAM, DISK) 🔥 */}
         <div className="mb-8 p-6 md:p-8 rounded-3xl border border-[#334155] bg-gradient-to-br from-[#0F172A] to-[#1E293B] shadow-[0_0_30px_rgba(0,0,0,0.5)] relative z-10">
            <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-[#8B5CF6]/20 flex items-center justify-center border border-[#8B5CF6]/30">
@@ -235,7 +251,6 @@ export default function AdminDashboard() {
            </div>
 
            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* CPU */}
               <div className="bg-[#0B0F1A] border border-[#334155] rounded-2xl p-5 flex items-center justify-between shadow-inner">
                  <div>
                     <p className="text-[10px] text-[#94A3B8] font-black uppercase tracking-widest mb-1">CPU Load ({hardware.cpuCores || 0} Cores)</p>
@@ -248,7 +263,6 @@ export default function AdminDashboard() {
                     </svg>
                  </div>
               </div>
-              {/* RAM */}
               <div className="bg-[#0B0F1A] border border-[#334155] rounded-2xl p-5 flex items-center justify-between shadow-inner">
                  <div>
                     <p className="text-[10px] text-[#94A3B8] font-black uppercase tracking-widest mb-1">RAM Usage</p>
@@ -262,7 +276,6 @@ export default function AdminDashboard() {
                     </svg>
                  </div>
               </div>
-              {/* Storage */}
               <div className="bg-[#0B0F1A] border border-[#334155] rounded-2xl p-5 flex items-center justify-between shadow-inner">
                  <div>
                     <p className="text-[10px] text-[#94A3B8] font-black uppercase tracking-widest mb-1">Disk Space (SSD)</p>
@@ -290,7 +303,7 @@ export default function AdminDashboard() {
 
               <div className="space-y-6">
 
-                {/* 🔥 Secret Brand Masking Box 🔥 */}
+                {/* Secret Brand Masking Box */}
                 <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#F43F5E]/30 relative overflow-hidden">
                    <div className="absolute top-0 right-0 bg-[#F43F5E] text-white text-[8px] font-black px-2 py-0.5 rounded-bl-lg uppercase tracking-widest">Security</div>
                    <div className="mb-4">
@@ -312,8 +325,29 @@ export default function AdminDashboard() {
                    <button onClick={handleKeywordsSave} className="w-full bg-[#F43F5E]/10 border border-[#F43F5E]/50 text-[#F43F5E] font-black py-2.5 rounded-xl hover:bg-[#F43F5E] hover:text-white transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Mask Keywords</button>
                 </div>
 
+                {/* 💥 BOSS UPGRADE: Dynamic Service Engine (CMS) Box 💥 */}
+                <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#8B5CF6]/30 relative overflow-hidden">
+                   <div className="absolute top-0 right-0 bg-[#8B5CF6] text-white text-[8px] font-black px-2 py-0.5 rounded-bl-lg uppercase tracking-widest">AI Engine</div>
+                   <div className="mb-4">
+                     <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-[#8B5CF6] uppercase mb-2">
+                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                       Dynamic Service Engine (CMS)
+                     </label>
+                     <p className="text-xs text-[#94A3B8] mb-3 font-medium">Enter custom service names separated by commas. The system will automatically detect these in the raw messages and show the exact name instead of <span className="text-white font-mono bg-slate-800 px-1 rounded">OTHER</span>.</p>
+                     <div className="relative">
+                        <textarea 
+                           rows={2}
+                           value={dynamicServices} 
+                           onChange={(e)=>setDynamicServices(e.target.value)} 
+                           placeholder="inDrive, bKash, Nagad, Airtel..." 
+                           className="bg-[#1E293B] border border-[#334155] text-white p-3 rounded-xl w-full font-mono text-sm focus:outline-none focus:border-[#8B5CF6] transition-colors shadow-inner resize-none" 
+                        />
+                     </div>
+                   </div>
+                   <button onClick={handleDynamicServicesSave} className="w-full bg-[#8B5CF6]/10 border border-[#8B5CF6]/50 text-[#8B5CF6] font-black py-2.5 rounded-xl hover:bg-[#8B5CF6] hover:text-white transition-all hover:-translate-y-0.5 tracking-wider uppercase text-xs">Save Services</button>
+                </div>
+
                 <div className="bg-[#0F172A]/50 p-5 rounded-2xl border border-[#334155]/50">
-                   {/* Support Link */}
                    <div className="mb-4">
                      <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-2">Global Telegram Support Link</label>
                      <div className="relative">
@@ -324,7 +358,6 @@ export default function AdminDashboard() {
                      </div>
                    </div>
 
-                   {/* Contact Link */}
                    <div className="mb-4">
                      <label className="block text-[10px] font-black tracking-widest text-[#94A3B8] uppercase mb-2">Global Admin Contact Link</label>
                      <div className="relative">
@@ -383,7 +416,6 @@ export default function AdminDashboard() {
                  </div>
                  <div className="bg-[#1E293B] border border-[#334155] p-4 rounded-2xl flex flex-col justify-center">
                     <span className="text-[10px] text-[#94A3B8] uppercase font-black tracking-widest mb-1">Active Sessions (15m)</span>
-                    {/* 🔥 THE BOSS FIX: Real Active Sessions Map 🔥 */}
                     <span className="text-2xl font-black text-[#00C6FF]">{hardware.activeSessions}</span>
                  </div>
               </div>

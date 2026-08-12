@@ -34,7 +34,7 @@ const applyMasking = (text: string, keywords: string[]) => {
 };
 
 // 💥 THE BOSS FIX: DYNAMIC SERVICE EXTRACTOR (SYNCED WITH SERVER.JS) 💥
-const extractServiceName = (msg: string) => {
+const extractServiceName = (msg: string, dynamicServices: string[] = []) => {
     if (!msg) return "Other";
 
     // 1. Read Exact Tag Injected by Engine-2 AI Scanner (For Legacy Data)
@@ -45,6 +45,15 @@ const extractServiceName = (msg: string) => {
 
     // 2. Comprehensive AI Fallback for Pure Raw Messages
     const text = msg.toLowerCase();
+    
+    // 💥 CMS Dynamic Services Check 💥
+    if (dynamicServices && dynamicServices.length > 0) {
+        for (const service of dynamicServices) {
+            if (text.includes(service.toLowerCase())) {
+                return service; // Return exactly as saved in Admin Panel CMS
+            }
+        }
+    }
     
     // 💥 UPGRADE 1: GLOBAL SERVICE DETECTION ENGINE (Hashes, Short URLs, Foreign Languages) -> PascalCase 💥
     if (text.includes('facebook') || text.includes(' fb ') || text.includes('facebk') || text.includes('fb.me') || text.includes('h29q+fsn4sr') || text.includes('laz+nxcarlw') || text.includes('فيسبوك') || text.includes('फेसबुक') || text.includes('ফেসবুক') || text.includes('脸书') || text.includes('ፌስቡክ') || text.includes('ფეისბუქი')) return 'Facebook';
@@ -130,10 +139,11 @@ export async function POST(req: Request) {
     activeAgentLocks[cacheKey] = true;
     await connectToDatabase();
 
-    // 💥 FETCH SECRET MASKING KEYWORDS FROM DB 💥
+    // 💥 FETCH SECRET MASKING KEYWORDS & DYNAMIC SERVICES FROM DB 💥
     const settingsCollection = mongoose.connection.collection("system_settings");
     const sysSettings = await settingsCollection.findOne({ type: "global" });
     const hiddenKeywords = sysSettings?.hiddenKeywords || [];
+    const dynamicServices = sysSettings?.dynamicServices || []; // 🔥 Fetched CMS Services 🔥
 
     const agent = await User.findOne({ email: new RegExp(`^${safeAgentEmail}$`, 'i') }).lean();
     if (!agent) {
@@ -283,8 +293,9 @@ export async function POST(req: Request) {
 
               if (userInfoMap[safeUserEmail]) userInfoMap[safeUserEmail].todayOTP += exactValidCount;
 
-              let sName = extractServiceName(o.fullMessage);
-              sName = applyMasking(sName, hiddenKeywords); // 💥 BOSS UPGRADE: MASK SERVICE NAME
+              // 💥 Passed CMS Services to Extractor 💥
+              let sName = extractServiceName(o.fullMessage, dynamicServices);
+              sName = applyMasking(sName, hiddenKeywords); // 💥 MASK SERVICE NAME IF IN HIDDEN LIST 💥
               if (!todayAppCounts[sName]) todayAppCounts[sName] = 0;
               todayAppCounts[sName] += exactValidCount;
           }
