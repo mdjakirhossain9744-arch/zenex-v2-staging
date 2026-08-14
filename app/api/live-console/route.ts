@@ -122,13 +122,6 @@ export async function GET(req: NextRequest) {
     fetchPromise = (async () => {
       await connectToDatabase();
 
-      // 💥 AUTO INDEXING ENGINE (Prevents Lag) 💥
-      try {
-          if (Order.collection) {
-              Order.collection.createIndex({ status: 1, updatedAt: -1 }, { background: true }).catch(() => {});
-          }
-      } catch (idxErr) {}
-
       // 💥 FETCH SECRET MASKING KEYWORDS & DYNAMIC SERVICES FROM DB 💥
       const settingsCollection = mongoose.connection.collection("system_settings");
       const sysSettings = await settingsCollection.findOne({ type: "global" });
