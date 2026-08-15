@@ -54,24 +54,34 @@ Response Example (Success):
 }
 
 -----------------------------------------
-2. FETCH SMS/OTP PAYLOADS
+2. FETCH SMS/OTP PAYLOADS (MULTI-OTP UPGRADED)
 -----------------------------------------
 Method: GET
 Endpoint: https://api.zenexnetwork.com/v1/numsuccess/info
 Description: Polls the Zenex Core Engine to fetch incoming SMS payloads.
 Important: Our OTP Engine is completely cache-free. Suggested polling rate is 3-5 seconds. Do not cancel numbers prematurely.
 
+🔄 MULTI-OTP UPDATE: Multiple codes for the same number are now delivered as separate objects. To prevent duplicates and maintain backward compatibility, the 'nid' now includes a unique index (e.g., _0, _1). Your existing bots will automatically process Resend OTPs without any code changes!
+
 Response Example (Success):
 {
   "data": {
     "otps": [
       {
-        "nid": "ZX_9A8B7C6D5E",
+        "nid": "ZX_9A8B7C6D5E_0",
         "number": "447384561029",
         "otp": "849302 is your Instagram code. Don't share it.",
         "country": "United Kingdom",
         "operator": "T-Mobile",
         "created_at": "2024-05-18 14:45:12"
+      },
+      {
+        "nid": "ZX_9A8B7C6D5E_1",
+        "number": "447384561029",
+        "otp": "123456 is your NEW Resend code.",
+        "country": "United Kingdom",
+        "operator": "T-Mobile",
+        "created_at": "2024-05-18 14:46:05"
       }
     ]
   },
@@ -172,12 +182,20 @@ Generated from Zenex Network Core (V4.0)
   "data": {
     "otps": [
       {
-        "nid": "ZX_9A8B7C6D5E",
+        "nid": "ZX_9A8B7C6D5E_0",
         "number": "447384561029",
         "otp": "849302 is your Instagram code. Don't share it with anyone.",
         "country": "United Kingdom",
         "operator": "T-Mobile",
         "created_at": "2024-05-18 14:45:12"
+      },
+      {
+        "nid": "ZX_9A8B7C6D5E_1",
+        "number": "447384561029",
+        "otp": "123456 is your NEW Resend code.",
+        "country": "United Kingdom",
+        "operator": "T-Mobile",
+        "created_at": "2024-05-18 14:46:05"
       }
     ]
   },
@@ -386,7 +404,7 @@ checkZenexLiveFeed("WhatsApp");`;
               <div>
                  <p className="text-[#94A3B8] text-sm mb-6">Polls the Zenex Core Engine to fetch incoming SMS payloads associated with your active number queue.</p>
                  
-                 <div className="p-4 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-start gap-3 mb-6">
+                 <div className="p-4 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-start gap-3 mb-4">
                     <svg className="w-6 h-6 text-[#10B981] mt-0.5 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                     <div>
                        <p className="text-xs font-bold text-[#10B981] mb-1">🚀 ZENEX V4 API: Direct Real-Time Microservice</p>
@@ -398,11 +416,22 @@ checkZenexLiveFeed("WhatsApp");`;
                     </div>
                  </div>
 
+                 {/* 💥 MULTI-OTP UPDATE NOTICE 💥 */}
+                 <div className="p-4 rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/20 flex items-start gap-3 mb-6">
+                    <svg className="w-6 h-6 text-[#3B82F6] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    <div>
+                       <p className="text-xs font-bold text-[#3B82F6] mb-1">🔄 MULTI-OTP & RESEND UPGRADE</p>
+                       <p className="text-[10px] text-[#94A3B8] leading-relaxed">
+                         We now fully support Multi-OTP! Multiple codes for the same number are delivered as separate objects. To prevent duplicates and maintain backward compatibility, the <code className="text-[#3B82F6]">nid</code> now includes a unique index (e.g., <code className="text-[#3B82F6]">_0</code>, <code className="text-[#3B82F6]">_1</code>). Your existing bots will automatically process Resend OTPs without any code changes!
+                       </p>
+                    </div>
+                 </div>
+
                  <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-3 border-b border-[#334155] pb-2">Response Object Architecture</h4>
                  <ul className="space-y-3">
                     <li className="flex gap-4 items-start">
                        <code className="text-[#3B82F6] font-bold text-[10px] bg-[#3B82F6]/10 px-2 py-1 rounded">nid</code>
-                       <span className="text-xs text-[#94A3B8]">Cryptographic message identifier.</span>
+                       <span className="text-xs text-[#94A3B8]">Cryptographic message identifier (Now includes _0, _1 index for Multi-OTP).</span>
                     </li>
                     <li className="flex gap-4 items-start">
                        <code className="text-[#3B82F6] font-bold text-[10px] bg-[#3B82F6]/10 px-2 py-1 rounded">number</code>
@@ -430,7 +459,7 @@ checkZenexLiveFeed("WhatsApp");`;
 
                  <div className="relative bg-[#1E293B] rounded-xl border border-[#334155] overflow-hidden">
                     <div className="bg-[#0B0F1A] px-4 py-2 border-b border-[#334155] flex justify-between items-center">
-                       <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Server Response</span>
+                       <span className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Server Response (Shows Multi-OTP)</span>
                        <button onClick={() => handleCopy(checkOtpResponse, 'res2')} className="text-[#64748B] hover:text-white transition-colors">
                           {copiedSection === 'res2' ? <span className="text-[#10B981] text-[10px] font-black">COPIED!</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                        </button>
