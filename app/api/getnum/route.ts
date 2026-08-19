@@ -40,12 +40,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 🔥 THE BOSS FIX: Updated to NEW Official API Key
-    const API_KEY = "MBHLD9GWNSN";
+    const API_KEY = "MK2447V3313";
     
     const rid = (range || "22501").replace(/x/gi, ''); 
 
     // 🔥 THE BOSS FIX: Updated to NEW Official Endpoint (/tnemn/)
-    const response = await fetch("https://api.2oo9.cloud/MXS47FLFX0U/tnemn/@public/api/getnum", {
+    const response = await fetch("https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/getnum", {
       method: "POST",
       headers: {
         "mauthapi": API_KEY,
