@@ -1,5 +1,3 @@
-// File Path: app/api/getnum/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "../../lib/mongodb";
 import Order from "../../../models/Order"; 
@@ -45,10 +43,12 @@ export async function POST(request: NextRequest) {
 
     const CORE_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 
+    // 💥 THE BOSS FIX: Internal Dashboard Bypass Protocol 💥
     const response = await fetch(`${CORE_API_URL}/v1/getnum`, {
       method: "POST",
       headers: {
-        "mapikey": user.apiKey,
+        "mapikey": "ZENEX_INTERNAL_DASHBOARD_PASS", // Master Secret Key
+        "x-dashboard-user": user.email,             // Passing the email securely
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ range: rid }),
