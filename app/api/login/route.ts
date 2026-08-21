@@ -86,9 +86,10 @@ export async function POST(req: Request) {
     }, { status: 200 });
 
     // 💥 ২. HTTP-Only Cookie সেট করা হচ্ছে 💥
+    // 💥 THE BOSS FIX: Auto-detect HTTPS to allow local/IP testing without dropping the cookie 💥
     response.cookies.set("zenex_token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: req.url.startsWith("https://"), 
       sameSite: "strict",
       maxAge: 24 * 60 * 60, 
       path: "/",
