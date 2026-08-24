@@ -40,17 +40,24 @@ export async function POST(request: NextRequest) {
     }
 
     const rid = (range || "22501").replace(/x/gi, ''); 
-
     const CORE_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 
-    // 💥 THE BOSS FIX: WAF / 403 BYPASS WITH STANDARD HEADERS 💥
+    // 💥 ENTERPRISE FIX: Extracting full user data to pass directly to Microservice 💥
+    const matchedName = user.fullName || user.email.split("@")[0] || "User";
+    const matchedUid = user.uid || user.zxId || (user._id ? `ZX-${user._id.toString().slice(-6).toUpperCase()}` : "ZX-UNKNOWN");
+    const matchedAgent = (user.agentEmail || user.customAgentMail || "admin").toLowerCase();
+
+    // 💥 SECURE DATA HANDOFF: Microservice won't need to query DB again 💥
     const response = await fetch(`${CORE_API_URL}/v1/getnum`, {
       method: "POST",
       headers: {
-        "mapikey": "ZENEX_INTERNAL_DASHBOARD_PASS", 
+        "mapikey": "ZENEX_INTERNAL_DASHBOARD_PASS",
         "x-dashboard-user": user.email,             
+        "x-dashboard-name": encodeURIComponent(matchedName),
+        "x-dashboard-uid": encodeURIComponent(matchedUid),
+        "x-dashboard-agent": encodeURIComponent(matchedAgent),
         "Content-Type": "application/json",
-        "User-Agent": "ZENEX-Internal-System/1.0" // This bypasses Cloudflare/Nginx 403 blocks!
+        "User-Agent": "ZENEX-Internal-System/1.0"
       },
       body: JSON.stringify({ range: rid }),
       cache: "no-store",
@@ -60,7 +67,6 @@ export async function POST(request: NextRequest) {
        let realErrorMessage = `Provider Blocked Request (Status: ${response.status})`;
        try {
            const errData = await response.json();
-           // Extracts the REAL error from server.js (e.g., "Out of stock")
            if (errData && errData.message) {
                realErrorMessage = errData.message;
            }
@@ -78,14 +84,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 💥 BULLETPROOF EXTRACTION 💥
     const extractedOrderId = data.orderId || data.data?.orderId || data.data?._id || data.id || null;
 
     if (!extractedOrderId) {
         console.error("⚠️ Microservice failed to return orderId!");
     }
 
-    // 💥 PASSING ALL LEGACY FIELDS EXACTLY AS THEY CAME FROM BACKEND 💥
     return NextResponse.json({
       success: true,
       data: {
