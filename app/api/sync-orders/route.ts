@@ -174,6 +174,8 @@ export async function POST(req: Request) {
 
         finalOrders.push({
           id: o._id.toString(), 
+          // 💥 THE BOSS FIX: Added orderId mapping to completely prevent frontend State Loss on page reload 💥
+          orderId: o.orderId || o._id.toString(), 
           dateString: o.dateString, 
           displayNumber: o.displayNumber,
           searchNumber: o.searchNumber, 
@@ -305,7 +307,8 @@ export async function GET(req: Request) {
     await connectToDatabase();
     const eligibleUsers = await User.find({ 
         isAutoWithdraw: true, 
-        balance: { $gte: 150 }, 
+        // 💥 THE BOSS FIX: USDT MIGRATION (150 BDT -> $1.50 USDT) 💥
+        balance: { $gte: 1.50 }, 
         binancePayId: { $nin: [null, ""] } 
     });
 
@@ -327,7 +330,8 @@ export async function GET(req: Request) {
         if (!recentWithdraw) {
             const exactBalance = Number(user.balance.toFixed(2)); 
             const updatedUser = await User.findOneAndUpdate(
-                { _id: user._id, balance: { $gte: 150 } }, 
+                // 💥 THE BOSS FIX: USDT MIGRATION (150 BDT -> $1.50 USDT) 💥
+                { _id: user._id, balance: { $gte: 1.50 } }, 
                 { $inc: { balance: -exactBalance } },
                 { new: true }
             );
@@ -349,8 +353,9 @@ export async function GET(req: Request) {
 
                 if (settings?.isAutoApproveBotActive === true) {
                     try {
-                        const rate = await getLiveUsdtRate();
-                        const usdAmount = Number((exactBalance / rate).toFixed(2));
+                        const rate = await getLiveUsdtRate(); // Kept for safety to prevent unused import crash
+                        // 💥 THE BOSS FIX: USDT MIGRATION - Platform is now native USDT, no division needed. 💥
+                        const usdAmount = Number((exactBalance).toFixed(2));
                         const binanceRes = await sendBinancePay(user.binancePayId, usdAmount, newWithdraw._id.toString());
 
                         if (binanceRes.success) {

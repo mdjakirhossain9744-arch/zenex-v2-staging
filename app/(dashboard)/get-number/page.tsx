@@ -39,6 +39,26 @@ const cleanOTPDisplay = (rawOtp: string) => {
   return "00000";
 };
 
+// 💥 ROBUST CLIPBOARD FALLBACK FUNCTION 💥
+const copyToClipboardFallback = (text: string) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "absolute";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      textArea.remove();
+    }
+  } catch (e) {
+    console.warn("Copy failed", e);
+  }
+};
+
 export default function GetNumber() {
   const [rangeInput, setRangeInput] = useState("");
   const [isNational, setIsNational] = useState(false);
@@ -180,7 +200,12 @@ export default function GetNumber() {
            const prevMap = new Map();
            prev.forEach(item => prevMap.set(item._id || item.id, item));
            data.orders.forEach((fetchedItem: any) => {
-              const itemId = fetchedItem._id || fetchedItem.id;
+              // 💥 FIX: State Loss mapping for orderId and dateString
+              const itemId = fetchedItem.orderId || fetchedItem._id || fetchedItem.id;
+              fetchedItem._id = itemId;
+              fetchedItem.id = itemId;
+              fetchedItem.dateString = fetchedItem.dateString || getUTCDateString(fetchedItem.createdAt || Date.now());
+              
               const existingItem = prevMap.get(itemId);
               
               if (existingItem) {
@@ -302,11 +327,7 @@ export default function GetNumber() {
         console.log("   -> Extracted Number:", textToCopy);
 
         // 💥 HIDDEN BUG FIX: Sometimes Clipboard API crashes the frontend if not in secure context
-        try {
-            await navigator.clipboard.writeText(textToCopy);
-        } catch (clipErr) {
-            console.warn("⚠️ Clipboard write failed (ignoring):", clipErr);
-        }
+        copyToClipboardFallback(textToCopy);
         
         showToast(`Copied: ${textToCopy}`);
 
@@ -606,7 +627,7 @@ export default function GetNumber() {
                             <div className="flex items-center gap-2 h-[26px] w-full shrink-0">
                               <div onClick={() => { 
                                  const textToCopy = formatCopyNumber(item.displayNumber || item.searchNumber, isNational, removePlus);
-                                 navigator.clipboard.writeText(textToCopy); 
+                                 copyToClipboardFallback(textToCopy);
                                  showToast("Number Copied!"); 
                               }} className="text-sm md:text-base font-bold text-[#F8FAFC] tracking-wider cursor-pointer hover:text-[#00D2FF] transition-colors truncate font-mono">
                                 {String(item.displayNumber || item.searchNumber).replace(/\D/g, '')}
@@ -625,13 +646,13 @@ export default function GetNumber() {
                                {item.status === "WAIT" ? (
                                  <div className="flex items-center gap-2">
                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#60A5FA] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#60A5FA]"></span></span>
-                                   <span className="text-[11px] font-medium italic text-[#6C84A3]">Intercepting...</span>
+                                   <span className="text-[11px] font-medium italic text-[#6C84A3]">Waiting...</span>
                                  </div>
                                ) : item.status === "FAIL" ? (
                                  <span className="text-[11px] font-semibold text-[#F43F5E]">{item.otp}</span>
                                ) : (
                                  <button 
-                                    onClick={() => { navigator.clipboard.writeText(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
+                                    onClick={() => { copyToClipboardFallback(cleanOTPDisplay(item.otp).replace(/[\s-]+/g, '')); showToast("OTP Copied!"); }} 
                                     className="group relative inline-flex items-center gap-1.5 bg-[#101726] border border-[#00D2FF]/30 hover:border-[#00D2FF] px-2 py-0.5 rounded cursor-pointer transition-all duration-300 shadow-[0_0_10px_rgba(0,210,255,0.05)] hover:shadow-[0_0_15px_rgba(0,210,255,0.2)] overflow-hidden shrink-0"
                                  >
                                     <div className="absolute inset-0 bg-gradient-to-r from-[#00D2FF]/0 via-[#00D2FF]/10 to-[#00D2FF]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
