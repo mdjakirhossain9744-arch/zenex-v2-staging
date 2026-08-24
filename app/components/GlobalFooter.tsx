@@ -22,26 +22,26 @@ export default function GlobalFooter() {
   }, []);
 
   return (
-    <footer className="w-full bg-[#0F172A] border-t border-[#334155]/50 py-5 px-6 mt-auto shrink-0 z-20">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 w-full max-w-7xl mx-auto">
-         <p className="text-[11px] text-[#64748B] font-bold tracking-widest uppercase text-center md:text-left">
+    <footer className="w-full bg-[#0B152A] border-t border-[#162749] py-5 px-6 mt-auto shrink-0 z-20">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 w-full max-w-[1600px] mx-auto">
+         <p className="text-[11px] text-[#6C84A3] font-bold tracking-widest uppercase text-center md:text-left">
            © 2026 ZENEX NETWORK. ALL RIGHTS RESERVED.
          </p>
-         <div className="flex items-center justify-center gap-3 md:gap-4 text-[10px] md:text-[11px] font-black tracking-widest uppercase">
-            <a href={supportLink} target="_blank" rel="noopener noreferrer" className="text-[#94A3B8] hover:text-[#3B82F6] transition-colors">
+         <div className="flex items-center justify-center gap-3 md:gap-4 text-[10px] md:text-[11px] font-bold tracking-widest uppercase">
+            <a href={supportLink} target="_blank" rel="noopener noreferrer" className="text-[#6C84A3] hover:text-[#00D2FF] transition-colors">
               Support
             </a>
-            <span className="text-[#334155]">|</span>
-            <a href={contactLink} target="_blank" rel="noopener noreferrer" className="text-[#94A3B8] hover:text-[#10B981] transition-colors">
+            <span className="text-[#162749]">|</span>
+            <a href={contactLink} target="_blank" rel="noopener noreferrer" className="text-[#6C84A3] hover:text-[#60A5FA] transition-colors">
               Contact
             </a>
-            <span className="text-[#334155]">|</span>
-            <Link href="/faq" className="text-[#94A3B8] hover:text-[#A855F7] transition-colors">
+            <span className="text-[#162749]">|</span>
+            <Link href="/faq" className="text-[#6C84A3] hover:text-[#00D2FF] transition-colors">
               FAQ
             </Link>
-            <span className="text-[#334155]">|</span>
+            <span className="text-[#162749]">|</span>
             {/* 💥 Simple Legal Link 💥 */}
-            <Link href="/terms" className="text-[#F43F5E] hover:text-white transition-colors">
+            <Link href="/terms" className="text-[#F43F5E] hover:text-[#F8FAFC] transition-colors">
               Legal & Terms
             </Link>
          </div>

@@ -1,98 +1,106 @@
 import Link from "next/link";
+import GlobalFooter from "../components/GlobalFooter";
 
 export default function TermsAndConditions() {
   return (
-    <div className="min-h-screen bg-[#0F172A] text-slate-200 font-sans selection:bg-[#3B82F6] selection:text-white pb-20 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0B0F1A] text-slate-200 font-sans selection:bg-cyan-500/30 selection:text-white flex flex-col">
       
-      {/* Background Glows */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#3B82F6] rounded-full blur-[150px] opacity-10 pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#F43F5E] rounded-full blur-[150px] opacity-[0.05] pointer-events-none"></div>
-
-      {/* Header */}
-      <header className="bg-[#1E293B]/80 backdrop-blur-xl border-b border-[#334155] sticky top-0 z-50">
+      {/* Header - V2 Solid Premium Look */}
+      <header className="bg-[#0B0F1A]/90 backdrop-blur-xl border-b border-slate-800/80 sticky top-0 z-50 shadow-sm">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-[#3B82F6]/10 flex items-center justify-center border border-[#3B82F6]/30 group-hover:scale-105 transition-transform">
-              <span className="text-[#3B82F6] font-black text-sm">ZX</span>
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center border border-slate-700/50 shadow-sm group-hover:border-cyan-500/30 transition-colors">
+              <span className="text-cyan-400 font-bold text-xs tracking-wider">ZX</span>
             </div>
-            <h1 className="text-xl font-black tracking-widest bg-gradient-to-r from-[#FFFFFF] to-[#3B82F6] text-transparent bg-clip-text">ZENEX</h1>
+            <h1 className="text-xl font-extrabold tracking-[0.15em] bg-gradient-to-r from-blue-400 via-cyan-300 to-blue-400 bg-clip-text text-transparent uppercase">
+              ZENEX NETWORK
+            </h1>
           </Link>
-          <Link href="/login" className="text-xs font-bold text-[#94A3B8] hover:text-white uppercase tracking-widest border border-[#334155] px-4 py-2 rounded-md hover:bg-[#334155]/50 transition-colors">
+          <Link href="/login" className="text-[11px] font-bold text-slate-400 hover:text-white uppercase tracking-widest border border-slate-700/60 px-4 py-2 rounded-md bg-[#111827] hover:bg-slate-800 hover:border-slate-600 transition-all shadow-sm">
             Back to Login
           </Link>
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-4xl mx-auto px-6 mt-12 relative z-10">
+      {/* Main Content */}
+      <main className="flex-grow max-w-4xl mx-auto px-6 mt-12 mb-16 relative z-10 w-full">
         
-        <div className="mb-12 border-b border-[#334155] pb-8 text-center">
-          <h1 className="text-3xl md:text-5xl font-black text-white uppercase tracking-widest mb-4">Terms & Conditions</h1>
-          <p className="text-[#94A3B8] text-sm md:text-base font-bold max-w-2xl mx-auto leading-relaxed">
+        <div className="mb-14 border-b border-slate-800 pb-10 text-center">
+          <div className="inline-flex items-center justify-center mb-4">
+            <span className="bg-cyan-900/20 text-cyan-400 px-3 py-1 rounded-sm border border-cyan-800/30 text-[10px] uppercase font-bold tracking-widest">
+              Legal Document
+            </span>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-white uppercase tracking-widest mb-4">
+            Terms & Conditions
+          </h1>
+          <p className="text-slate-400 text-sm md:text-base font-medium max-w-2xl mx-auto leading-relaxed">
             Please read these terms carefully before using ZENEX NETWORK. By accessing our services, you agree to be bound by these strict usage policies.
           </p>
         </div>
 
-        <div className="space-y-10 text-sm md:text-base text-[#94A3B8] leading-relaxed">
+        <div className="space-y-6 text-sm md:text-base text-slate-300 leading-relaxed">
           
           {/* Section 1 */}
-          <section className="bg-[#1E293B] border border-[#334155] p-6 md:p-8 rounded-2xl shadow-lg">
-            <h2 className="text-xl font-black text-white mb-4 flex items-center gap-3">
-              <span className="text-[#3B82F6]">01.</span> General Provision & Service Usage
+          <section className="bg-[#111827] border border-slate-800/80 p-6 md:p-8 rounded-xl shadow-lg hover:border-slate-700 transition-colors duration-300">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-3 tracking-wide">
+              <span className="text-cyan-400 font-black text-xl">01.</span> General Provision & Service Usage
             </h2>
-            <p className="mb-4">
+            <p className="text-slate-400 font-medium">
               ZENEX NETWORK provides temporary and permanent virtual numbers exclusively for legitimate marketing, automation, API integration, and standard account verification purposes. We act solely as a technology provider bridging the gap between global telecom aggregators and end-users.
             </p>
           </section>
 
           {/* Section 2 */}
-          <section className="bg-[#F43F5E]/5 border border-[#F43F5E]/30 p-6 md:p-8 rounded-2xl shadow-lg relative overflow-hidden">
-            <h2 className="text-xl font-black text-[#F43F5E] mb-4 flex items-center gap-3 relative z-10">
-              <span className="text-[#F43F5E]">02.</span> Zero-Tolerance Policy (Anti-Fraud)
+          <section className="bg-[#111827] border border-slate-800/80 p-6 md:p-8 rounded-xl shadow-lg hover:border-slate-700 transition-colors duration-300">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-3 tracking-wide">
+              <span className="text-cyan-400 font-black text-xl">02.</span> Zero-Tolerance Policy (Anti-Fraud)
             </h2>
-            <p className="mb-4 relative z-10 text-[#E2E8F0] font-medium">
-              We maintain a strictly enforced <span className="font-black text-white">Zero-Tolerance Policy</span> against all forms of illegal activities. 
+            <p className="mb-4 text-slate-300 font-medium">
+              We maintain a strictly enforced <span className="font-bold text-white">Zero-Tolerance Policy</span> against all forms of illegal activities. 
             </p>
-            <ul className="list-disc pl-5 space-y-2 relative z-10 font-bold text-[#F43F5E]/80">
+            <ul className="list-disc pl-5 space-y-2 font-medium text-slate-400">
               <li>Using our numbers for phishing, scamming, blackmailing, or financial fraud is absolutely prohibited.</li>
               <li>Impersonating individuals or government entities will result in an immediate permanent network ban.</li>
             </ul>
           </section>
 
           {/* Section 3 */}
-          <section className="bg-[#1E293B] border border-[#334155] p-6 md:p-8 rounded-2xl shadow-lg">
-            <h2 className="text-xl font-black text-white mb-4 flex items-center gap-3">
-              <span className="text-[#EAB308]">03.</span> Limitation of Liability (Disclaimer)
+          <section className="bg-[#111827] border border-slate-800/80 p-6 md:p-8 rounded-xl shadow-lg hover:border-slate-700 transition-colors duration-300">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-3 tracking-wide">
+              <span className="text-cyan-400 font-black text-xl">03.</span> Limitation of Liability (Disclaimer)
             </h2>
-            <p className="mb-4">
+            <p className="mb-4 text-slate-400 font-medium">
               By using our service, you acknowledge that ZENEX NETWORK operates merely as an API/Routing infrastructure. 
             </p>
-            <p className="font-bold text-[#E2E8F0]">
+            <p className="font-semibold text-slate-300">
               We do not track, endorse, or take responsibility for how users utilize the generated numbers. Under no circumstances shall ZENEX NETWORK be held liable for any damages, losses, or legal disputes arising from the misuse of our platform by independent users.
             </p>
           </section>
 
-          {/* 💥 Section 4 (UPDATED based on your Earning Model) 💥 */}
-          <section className="bg-[#1E293B] border border-[#334155] p-6 md:p-8 rounded-2xl shadow-lg">
-            <h2 className="text-xl font-black text-white mb-4 flex items-center gap-3">
-              <span className="text-[#3B82F6]">04.</span> Account & Earnings Policy
+          {/* Section 4 */}
+          <section className="bg-[#111827] border border-slate-800/80 p-6 md:p-8 rounded-xl shadow-lg hover:border-slate-700 transition-colors duration-300">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-3 tracking-wide">
+              <span className="text-cyan-400 font-black text-xl">04.</span> Account & Earnings Policy
             </h2>
-            <ul className="list-disc pl-5 space-y-3">
-              <li><strong className="text-white">Free Platform:</strong> ZENEX is a 100% free-to-use platform. Users earn money exclusively by successfully processing valid OTPs. We never ask for deposits.</li>
-              <li><strong className="text-white">Security:</strong> API Keys and Passwords must be kept confidential. We are not responsible for unauthorized usage of your account due to leaked credentials.</li>
-              <li><strong className="text-white">Fund Confiscation:</strong> Management reserves the absolute right to suspend or terminate any account and confiscate all earned balances without prior explanation if fraudulent activities or network rules violations are detected.</li>
+            <ul className="list-disc pl-5 space-y-3 text-slate-400 font-medium">
+              <li><strong className="text-slate-200">Free Platform:</strong> ZENEX is a 100% free-to-use platform. Users earn money exclusively by successfully processing valid OTPs. We never ask for deposits.</li>
+              <li><strong className="text-slate-200">Security:</strong> API Keys and Passwords must be kept confidential. We are not responsible for unauthorized usage of your account due to leaked credentials.</li>
+              <li><strong className="text-slate-200">Fund Confiscation:</strong> Management reserves the absolute right to suspend or terminate any account and confiscate all earned balances without prior explanation if fraudulent activities or network rules violations are detected.</li>
             </ul>
           </section>
 
         </div>
+      </main>
 
-        <div className="mt-16 border-t border-[#334155] pt-8 text-center pb-10">
-          <p className="text-xs font-bold text-[#64748B] uppercase tracking-widest">
+      <div className="w-full mt-auto relative z-10 bg-[#0B0F1A]">
+        <div className="text-center pt-8 pb-6 border-t border-slate-800/50">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
             Last Updated: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
-
-      </main>
+        <GlobalFooter />
+      </div>
     </div>
   );
 }

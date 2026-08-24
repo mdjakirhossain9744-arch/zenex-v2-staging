@@ -11,6 +11,12 @@ const orderSchema = new Schema(
 
     searchNumber: { type: String, required: true, index: true },
     displayNumber: { type: String, required: true },
+    
+    // 💥 V2 MASTERPLAN UPGRADE FIELDS 💥
+    trxId: { type: String, index: true }, 
+    requestedRange: { type: String }, 
+    trueService: { type: String, default: "Unknown" }, 
+
     country: { type: String, default: "Unknown" },
     operator: { type: String, default: "Any" },
     
@@ -37,6 +43,7 @@ const orderSchema = new Schema(
 // 💥 THE MASTER ARCHITECT TRICK: Compound Indexing 💥
 orderSchema.index({ userEmail: 1, dateString: 1 });
 orderSchema.index({ searchNumber: 1, status: 1 });
+orderSchema.index({ trxId: 1 }); // Added for Ultra-Fast Webhook/Poller Lookup
 
 // 💥 ADDED: The Ultimate Dashboard Covering Index! 
 // (Without this, your dashboard API scans thousands of documents slowly)

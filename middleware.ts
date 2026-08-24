@@ -3,8 +3,8 @@ import type { NextRequest } from "next/server";
 
 // 💥 HELPER FUNCTION: Inject VPN Optimization & Edge Caching Headers 💥
 function applySpeedHeaders(response: NextResponse, path: string) {
-  // Static pages (Login/Register) can be cached safely in CDN & Browser
-  if (path === '/login' || path === '/register') {
+  // Static pages (Login/Register/Terms) can be cached safely in CDN & Browser
+  if (path === '/login' || path === '/register' || path === '/terms') {
     response.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
   }
   // Tell the browser and proxy that we support Brotli and Gzip compression (Crucial for VPN users)
@@ -32,8 +32,9 @@ export function middleware(req: NextRequest) {
     return applySpeedHeaders(response, path);
   }
 
-  // 2. Allow normal API routes
-  if (path.startsWith("/api")) {
+  // 2. Allow normal API routes & PUBLIC Pages (e.g. /terms)
+  // 💥 FIX: Terms page is now fully public and accessible without login 💥
+  if (path.startsWith("/api") || path === "/terms") {
     const response = NextResponse.next();
     return applySpeedHeaders(response, path);
   }
