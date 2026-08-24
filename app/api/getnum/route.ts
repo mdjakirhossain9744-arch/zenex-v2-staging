@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 💥 BUG FIXED: Passing the Dynamic orderId from Backend to Frontend UI 💥
     return NextResponse.json({
       success: true,
       data: {
@@ -79,7 +80,8 @@ export async function POST(request: NextRequest) {
           operator: data.data.operator,
           status: data.data.status
       },
-      orderId: null 
+      orderId: data.orderId || null, 
+      message: data.message || "Virtual number provisioned successfully"
     });
 
   } catch (error: any) {
