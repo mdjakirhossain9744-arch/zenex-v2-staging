@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     let { range, email } = body; 
 
+    // 💥 STRICT SESSION VERIFICATION (V1 Logic: Ensures 100% Data Isolation) 💥
     if (!email) {
         const token = request.cookies.get("zenex_token")?.value;
         if (token) {
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
                 const decodedPayload = JSON.parse(atob(payloadBase64));
                 email = decodedPayload.email;
             } catch (e) {
-                console.error("JWT Decode error in getnum");
+                console.error("JWT Decode error");
             }
         }
     }
@@ -39,77 +40,114 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Account Inactive or Blocked" }, { status: 403 });
     }
 
-    const rid = (range || "22501").replace(/x/gi, ''); 
-    const CORE_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+    const rid = (range || "22501").replace(/x/gi, '').trim(); 
+    if (!rid) return NextResponse.json({ error: "Invalid Range Format" }, { status: 400 });
 
-    // 💥 ENTERPRISE FIX: Extracting full user data to pass directly to Microservice 💥
-    const matchedName = user.fullName || user.email.split("@")[0] || "User";
-    const matchedUid = user.uid || user.zxId || (user._id ? `ZX-${user._id.toString().slice(-6).toUpperCase()}` : "ZX-UNKNOWN");
-    const matchedAgent = (user.agentEmail || user.customAgentMail || "admin").toLowerCase();
+    // 💥 V1 ARCHITECTURE: CALLING IPRN PROVIDER DIRECTLY 💥
+    const IPRN_API_URL = "https://api.iprn-elite.com/v1.0";
+    const IPRN_API_KEY = process.env.IPRN_API_KEY || "1ddOYcGxRcWUlyi6T7oZzA"; 
 
-    // 💥 SECURE DATA HANDOFF: Microservice won't need to query DB again 💥
-    const response = await fetch(`${CORE_API_URL}/v1/getnum`, {
-      method: "POST",
-      headers: {
-        "mapikey": "ZENEX_INTERNAL_DASHBOARD_PASS",
-        "x-dashboard-user": user.email,             
-        "x-dashboard-name": encodeURIComponent(matchedName),
-        "x-dashboard-uid": encodeURIComponent(matchedUid),
-        "x-dashboard-agent": encodeURIComponent(matchedAgent),
-        "Content-Type": "application/json",
-        "User-Agent": "ZENEX-Internal-System/1.0"
-      },
-      body: JSON.stringify({ range: rid }),
-      cache: "no-store",
-    });
+    const payload = {
+        jsonrpc: "2.0",
+        method: "sms.realtime:allocate",
+        params: { 
+            senderid: "OTP", 
+            prefix_list: [String(rid).toUpperCase()], 
+            dont_check_access: true
+        },
+        id: Date.now()
+    };
 
-    if (!response.ok) {
-       let realErrorMessage = `Provider Blocked Request (Status: ${response.status})`;
-       try {
-           const errData = await response.json();
-           if (errData && errData.message) {
-               realErrorMessage = errData.message;
-           }
-       } catch (parseErr) {}
-       
-       return NextResponse.json({ error: realErrorMessage }, { status: response.status === 403 ? 403 : 400 });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); 
+
+    let response;
+    try {
+        response = await fetch(IPRN_API_URL, {
+            method: "POST",
+            headers: { "Api-Key": IPRN_API_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+    } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        return NextResponse.json({ error: "Provider is slow or timed out. Try again." }, { status: 504 });
     }
 
     const data = await response.json();
 
-    if (data.meta?.code !== 200 || !data.data) {
-      return NextResponse.json(
-        { error: data.message || "Failed to get number from Provider. Out of Stock?" },
-        { status: 400 }
-      );
+    if (data.error) {
+        return NextResponse.json({ error: data.error.message || "Out of stock or Invalid Range" }, { status: 400 });
     }
 
-    const extractedOrderId = data.orderId || data.data?.orderId || data.data?._id || data.id || null;
+    // 💥 INSTANT NUMBER EXTRACTION & DIRECT DB SAVE 💥
+    if (data.result && data.result.number && data.result.number.full) {
+        const trxId = data.result.message_id || "";
+        const fullNumStr = String(data.result.number.full);
+        const localNumStr = String(data.result.number.local_number || fullNumStr);
 
-    if (!extractedOrderId) {
-        console.error("⚠️ Microservice failed to return orderId!");
+        let exactCountry = "Unknown";
+        let exactOperator = "Mobile";
+        if (data.result.sde_name) { 
+            let rawName = data.result.sde_name.replace(/\s*\([\d+X]+\)\s*$/g, '').trim();
+            const parts = rawName.split(' - ');
+            exactCountry = parts[0] ? parts[0].trim() : "Unknown";
+            if (parts.length >= 3) exactOperator = parts[2].trim();
+            else if (parts.length === 2) exactOperator = parts[1].trim().toLowerCase() === "mobile" ? "Mobile" : parts[1].trim();
+        }
+
+        const matchedName = user.fullName || user.email.split("@")[0] || "User";
+        const matchedUid = user.uid || user.zxId || (user._id ? `ZX-${user._id.toString().slice(-6).toUpperCase()}` : "ZX-UNKNOWN");
+        const matchedAgent = (user.agentEmail || user.customAgentMail || "admin").toLowerCase();
+
+        let savedOrderId = null;
+        try {
+            const newOrder = new Order({
+                userEmail: user.email,
+                userName: matchedName,
+                userUid: matchedUid,
+                agentEmail: matchedAgent,
+                searchNumber: fullNumStr,
+                requestedRange: rid,
+                trxId: String(trxId),
+                displayNumber: `+${fullNumStr}`,
+                country: exactCountry,
+                operator: exactOperator,
+                status: "WAIT",
+                fullMessage: "Waiting...",
+                otp: "Waiting...",
+                trueService: "Unknown",
+                dateString: getUTCDateString(),
+                expireAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+            });
+            const savedRecord = await newOrder.save();
+            savedOrderId = savedRecord._id.toString();
+        } catch (dbError) {
+            console.error("⚠️ Next.js DB Save Error:", dbError);
+            return NextResponse.json({ error: "Failed to save order to Database" }, { status: 500 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                copy: `+${fullNumStr}`,
+                number: `+${fullNumStr}`,
+                full_number: `+${fullNumStr}`,
+                national_number: localNumStr,
+                no_plus_number: fullNumStr,
+                country: exactCountry,
+                operator: exactOperator,
+                status: "WAIT"
+            },
+            orderId: savedOrderId,
+            message: "number allocated"
+        });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-          copy: data.data.copy,
-          number: data.data.number,
-          full_number: data.data.full_number,
-          national_number: data.data.national_number,
-          no_plus_number: data.data.no_plus_number,
-          country: data.data.country,
-          operator: data.data.operator,
-          status: data.data.status || "pending"
-      },
-      orderId: extractedOrderId, 
-      message: data.message || "Virtual number provisioned successfully"
-    });
+    return NextResponse.json({ error: "Failed to allocate number from Provider." }, { status: 400 });
 
   } catch (error: any) {
-    return NextResponse.json(
-      { error: "Internal Server Error or Provider Timeout" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
