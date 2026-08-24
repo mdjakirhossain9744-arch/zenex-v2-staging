@@ -10,12 +10,35 @@ const getUTCDateString = (dateObj: any = new Date()) => {
   catch(e) { return new Date().toISOString().split('T')[0]; }
 };
 
+// 💥 THE BOSS FIX: Added Global SDE Mapper in Next.js to fix "Country Unknown" 💥
+const globalSdeMap = new Map();
+let isSdeFetched = false;
+
+async function fetchSdeList(apiKey: string) {
+    if (isSdeFetched) return;
+    try {
+        const payload = { jsonrpc: "2.0", method: "sms.realtime:get_subdestination_list", params: {}, id: Date.now() };
+        const res = await fetch("https://api.iprn-elite.com/v1.0", {
+            method: "POST",
+            headers: { "Api-Key": apiKey, "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data?.result?.subdestination_list) {
+            data.result.subdestination_list.forEach((item: any) => {
+                globalSdeMap.set(item.sde_key, item.name);
+            });
+            isSdeFetched = true;
+        }
+    } catch (e) {}
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     let { range, email } = body; 
 
-    // 💥 STRICT SESSION VERIFICATION (V1 Logic: Ensures 100% Data Isolation) 💥
+    // STRICT SESSION VERIFICATION
     if (!email) {
         const token = request.cookies.get("zenex_token")?.value;
         if (token) {
@@ -40,12 +63,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Account Inactive or Blocked" }, { status: 403 });
     }
 
-    const rid = (range || "22501").replace(/x/gi, '').trim(); 
+    const rid = (range || "").replace(/x/gi, '').trim(); 
     if (!rid) return NextResponse.json({ error: "Invalid Range Format" }, { status: 400 });
 
-    // 💥 V1 ARCHITECTURE: CALLING IPRN PROVIDER DIRECTLY 💥
     const IPRN_API_URL = "https://api.iprn-elite.com/v1.0";
     const IPRN_API_KEY = process.env.IPRN_API_KEY || "1ddOYcGxRcWUlyi6T7oZzA"; 
+
+    // Fetch SDE List to resolve exact country name
+    await fetchSdeList(IPRN_API_KEY);
 
     const payload = {
         jsonrpc: "2.0",
@@ -81,20 +106,25 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: data.error.message || "Out of stock or Invalid Range" }, { status: 400 });
     }
 
-    // 💥 INSTANT NUMBER EXTRACTION & DIRECT DB SAVE 💥
+    // INSTANT NUMBER EXTRACTION & DIRECT DB SAVE
     if (data.result && data.result.number && data.result.number.full) {
         const trxId = data.result.message_id || "";
         const fullNumStr = String(data.result.number.full);
         const localNumStr = String(data.result.number.local_number || fullNumStr);
 
+        // 💥 Resolve Exact Country & Operator 💥
         let exactCountry = "Unknown";
         let exactOperator = "Mobile";
-        if (data.result.sde_name) { 
-            let rawName = data.result.sde_name.replace(/\s*\([\d+X]+\)\s*$/g, '').trim();
+        if (data.result.sde_key && globalSdeMap.has(data.result.sde_key)) {
+            let rawName = globalSdeMap.get(data.result.sde_key);
+            rawName = rawName.replace(/\s*\([\d+X]+\)\s*$/g, '').trim();
             const parts = rawName.split(' - ');
             exactCountry = parts[0] ? parts[0].trim() : "Unknown";
-            if (parts.length >= 3) exactOperator = parts[2].trim();
-            else if (parts.length === 2) exactOperator = parts[1].trim().toLowerCase() === "mobile" ? "Mobile" : parts[1].trim();
+            if (parts.length >= 3) {
+                exactOperator = parts[2].trim();
+            } else if (parts.length === 2) {
+                exactOperator = parts[1].trim().toLowerCase() === "mobile" ? "Mobile" : parts[1].trim();
+            }
         }
 
         const matchedName = user.fullName || user.email.split("@")[0] || "User";
@@ -128,17 +158,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Failed to save order to Database" }, { status: 500 });
         }
 
+        // 💥 CRITICAL PAYLOAD CLEANUP (Exactly as instructed) 💥
         return NextResponse.json({
             success: true,
             data: {
-                copy: `+${fullNumStr}`,
-                number: `+${fullNumStr}`,
                 full_number: `+${fullNumStr}`,
                 national_number: localNumStr,
                 no_plus_number: fullNumStr,
                 country: exactCountry,
                 operator: exactOperator,
-                status: "WAIT"
+                status: "pending"
             },
             orderId: savedOrderId,
             message: "number allocated"
