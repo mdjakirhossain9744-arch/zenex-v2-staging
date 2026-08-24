@@ -68,7 +68,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 💥 BUG FIXED: Passing the Dynamic orderId from Backend to Frontend UI 💥
+    // 💥 BULLETPROOF EXTRACTION: Check root or inside data object
+    const extractedOrderId = data.orderId || data.data?.orderId || data.data?._id || data.id || null;
+
+    if (!extractedOrderId) {
+        console.error("⚠️ Microservice failed to return orderId!");
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -80,7 +86,7 @@ export async function POST(request: NextRequest) {
           operator: data.data.operator,
           status: data.data.status
       },
-      orderId: data.orderId || null, 
+      orderId: extractedOrderId, // Pass safely to frontend
       message: data.message || "Virtual number provisioned successfully"
     });
 
