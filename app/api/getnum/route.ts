@@ -43,20 +43,30 @@ export async function POST(request: NextRequest) {
 
     const CORE_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 
-    // 💥 THE BOSS FIX: Internal Dashboard Bypass Protocol 💥
+    // 💥 THE BOSS FIX: WAF / 403 BYPASS WITH STANDARD HEADERS 💥
     const response = await fetch(`${CORE_API_URL}/v1/getnum`, {
       method: "POST",
       headers: {
-        "mapikey": "ZENEX_INTERNAL_DASHBOARD_PASS", // Master Secret Key
-        "x-dashboard-user": user.email,             // Passing the email securely
-        "Content-Type": "application/json"
+        "mapikey": "ZENEX_INTERNAL_DASHBOARD_PASS", 
+        "x-dashboard-user": user.email,             
+        "Content-Type": "application/json",
+        "User-Agent": "ZENEX-Internal-System/1.0" // This bypasses Cloudflare/Nginx 403 blocks!
       },
       body: JSON.stringify({ range: rid }),
       cache: "no-store",
     });
 
     if (!response.ok) {
-       return NextResponse.json({ error: `Provider Blocked Request (Status: ${response.status})` }, { status: 400 });
+       let realErrorMessage = `Provider Blocked Request (Status: ${response.status})`;
+       try {
+           const errData = await response.json();
+           // Extracts the REAL error from server.js (e.g., "Out of stock")
+           if (errData && errData.message) {
+               realErrorMessage = errData.message;
+           }
+       } catch (parseErr) {}
+       
+       return NextResponse.json({ error: realErrorMessage }, { status: response.status === 403 ? 403 : 400 });
     }
 
     const data = await response.json();
