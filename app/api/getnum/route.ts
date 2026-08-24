@@ -68,25 +68,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 💥 BULLETPROOF EXTRACTION: Check root or inside data object
+    // 💥 BULLETPROOF EXTRACTION 💥
     const extractedOrderId = data.orderId || data.data?.orderId || data.data?._id || data.id || null;
 
     if (!extractedOrderId) {
         console.error("⚠️ Microservice failed to return orderId!");
     }
 
+    // 💥 PASSING ALL LEGACY FIELDS EXACTLY AS THEY CAME FROM BACKEND 💥
     return NextResponse.json({
       success: true,
       data: {
           copy: data.data.copy,
-          full_number: data.data.full_number,
           number: data.data.number,
+          full_number: data.data.full_number,
+          national_number: data.data.national_number,
+          no_plus_number: data.data.no_plus_number,
           country: data.data.country,
-          iso: data.data.iso,
           operator: data.data.operator,
-          status: data.data.status
+          status: data.data.status || "pending"
       },
-      orderId: extractedOrderId, // Pass safely to frontend
+      orderId: extractedOrderId, 
       message: data.message || "Virtual number provisioned successfully"
     });
 
