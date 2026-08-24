@@ -283,38 +283,63 @@ export default function GetNumber() {
     if (!rangeInput) { showToast("Please enter a Range!"); return; }
     setIsLoading(true);
     try {
+      console.log("1. Sending Request to /api/getnum...");
       const response = await fetch("/api/getnum", {
         method: "POST", headers: { "Content-Type": "application/json" }, cache: 'no-store',
         body: JSON.stringify({ range: rangeInput, is_national: isNational, remove_plus: removePlus }),
       });
+      console.log("2. Response Status:", response.status);
+      
       const result = await response.json();
+      console.log("3. Parsed JSON Data:", result);
       
       if (response.ok && result.success) {
-        const rawServerNumber = result.data.full_number || result.data.number || result.data.copy || "";
+        console.log("4. API Success! Extracting Data...");
+        const rawServerNumber = result.data?.full_number || result.data?.number || result.data?.copy || "";
         const pureFeedNumber = String(rawServerNumber).replace(/\D/g, ''); 
         const textToCopy = formatCopyNumber(pureFeedNumber, isNational, removePlus);
-        navigator.clipboard.writeText(textToCopy);
+        
+        console.log("   -> Extracted Number:", textToCopy);
+
+        // 💥 HIDDEN BUG FIX: Sometimes Clipboard API crashes the frontend if not in secure context
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+        } catch (clipErr) {
+            console.warn("⚠️ Clipboard write failed (ignoring):", clipErr);
+        }
+        
         showToast(`Copied: ${textToCopy}`);
 
         const todayStr = getUTCDateString();
         const realId = result.orderId || Date.now().toString();
+        
+        console.log("5. Generating newEntry with ID:", realId);
 
         const newEntry = {
           id: realId, _id: realId, dateString: todayStr, displayNumber: pureFeedNumber, searchNumber: pureFeedNumber,  
-          copyNumber: textToCopy, country: result.data.country || "Unknown", operator: result.data.operator || "Any", 
+          copyNumber: textToCopy, country: result.data?.country || "Unknown", operator: result.data?.operator || "Any", 
           status: "WAIT", otp: "Waiting...", fullMessage: "", seenMessages: [], isDup: false, isMulti: false,
           createdAt: new Date(Date.now() + timeOffset).toISOString(), receivedAt: null 
         };
         
+        console.log("6. Updating React States...");
         if (activeFilter === "ALL" || activeFilter === "WAIT") {
            setNumbersList((prev) => [newEntry, ...prev]);
         }
         setStats(prev => ({ ...prev, total: prev.total + 1, wait: prev.wait + 1 })); 
         setSelectedDate(todayStr);
+        
+        console.log("✅ 7. UI Updated Successfully!");
       } else {
-        showToast(result.error || "Failed!");
+        console.error("❌ 4. API returned Error:", result.error || result.message);
+        showToast(result.error || result.message || "Failed!");
       }
-    } catch (error) { showToast("Error occurred!"); } finally { setIsLoading(false); }
+    } catch (error) { 
+      console.error("❌ CRITICAL CRASH IN TRY-CATCH:", error);
+      showToast("Error occurred!"); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   const isToday = selectedDate === getUTCDateString();
