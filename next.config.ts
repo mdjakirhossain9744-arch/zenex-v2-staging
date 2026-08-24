@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
+  // 💥 BUG FIXED: Silence Workspace/Lockfile warnings
+  outputFileTracingRoot: process.env.NODE_ENV === 'production' ? path.join(process.cwd(), '../') : undefined,
+
   // 💥 1. Enable Strict Compression (Reduces Bandwidth by 70% for VPN & Slow Internet)
   compress: true, 
 

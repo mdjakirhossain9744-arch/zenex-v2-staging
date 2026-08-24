@@ -12,8 +12,8 @@ const orderSchema = new Schema(
     searchNumber: { type: String, required: true, index: true },
     displayNumber: { type: String, required: true },
     
-    // 💥 V2 MASTERPLAN UPGRADE FIELDS 💥
-    trxId: { type: String, index: true }, 
+    // 💥 BUG FIXED: Removed inline `index: true` to prevent Duplicate Index Warning
+    trxId: { type: String }, 
     requestedRange: { type: String }, 
     trueService: { type: String, default: "Unknown" }, 
 
@@ -43,12 +43,12 @@ const orderSchema = new Schema(
 // 💥 THE MASTER ARCHITECT TRICK: Compound Indexing 💥
 orderSchema.index({ userEmail: 1, dateString: 1 });
 orderSchema.index({ searchNumber: 1, status: 1 });
-orderSchema.index({ trxId: 1 }); // Added for Ultra-Fast Webhook/Poller Lookup
+// 💥 Single definitive index for Webhook Lookup
+orderSchema.index({ trxId: 1 }); 
 
-// 💥 ADDED: The Ultimate Dashboard Covering Index! 
-// (Without this, your dashboard API scans thousands of documents slowly)
+// 💥 The Ultimate Dashboard Covering Index! 
 orderSchema.index({ userEmail: 1, dateString: 1, status: 1 });
-// 💥 ADDED: For API Microservice Fast Lookup
+// 💥 For API Microservice Fast Lookup
 orderSchema.index({ userEmail: 1, status: 1, updatedAt: -1 });
 
 // TTL Index for Auto Delete
