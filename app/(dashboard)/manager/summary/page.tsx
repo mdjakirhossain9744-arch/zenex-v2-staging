@@ -11,8 +11,9 @@ export default function ManagerSummary() {
   const [dateFilter, setDateFilter] = useState("7"); 
   const [user, setUser] = useState<any>(null);
 
-  const [userRate, setUserRate] = useState(0.50);
-  const [dbEarnings, setDbEarnings] = useState("0.00"); 
+  // 💥 THE GREAT USDT MIGRATION: 4-Decimal Defaults 💥
+  const [userRate, setUserRate] = useState(0.0000);
+  const [dbEarnings, setDbEarnings] = useState("0.0000"); 
 
   const [reportData, setReportData] = useState<any[]>([]);
   const [totals, setTotals] = useState({ allocation: 0, success: 0, failed: 0, amount: 0 });
@@ -58,8 +59,10 @@ export default function ManagerSummary() {
 
   useEffect(() => {
     if (data && data.success) {
-      setUserRate(data.userRate || 0.50);
-      setDbEarnings(Number(data.balance || 0).toFixed(2));
+      // 💥 THE GREAT USDT MIGRATION: 4-Decimal Value Assignment 💥
+      setUserRate(data.userRate || 0.0000);
+      setDbEarnings(Number(data.balance || 0).toFixed(4));
+      
       let daysToShow = dateFilter === "today" ? 1 : dateFilter === "15" ? 15 : dateFilter === "30" ? 30 : dateFilter === "all" ? 60 : 7;
       const serverDate = data.serverDate || new Date().toISOString(); 
       const dateTemplate = generateDateRange(daysToShow, serverDate);
@@ -157,7 +160,8 @@ export default function ManagerSummary() {
             <div className="absolute top-0 left-0 w-full h-[2px] bg-[#3B82F6] opacity-30 group-hover:opacity-100 transition-opacity"></div>
             <div>
                <span className="text-[10px] font-semibold text-[#6C84A3] uppercase tracking-widest mb-1.5 block">Your Max Limit</span>
-               <div className="flex items-end gap-2 mb-2"><span className="text-2xl md:text-3xl font-bold text-[#F8FAFC]">${userRate.toFixed(2)}</span></div>
+               {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal UI Fix 💥 */}
+               <div className="flex items-end gap-2 mb-2"><span className="text-2xl md:text-3xl font-bold text-[#F8FAFC]">${userRate.toFixed(4)}</span></div>
             </div>
             <span className="text-[9px] font-semibold text-[#60A5FA] bg-[#60A5FA]/10 px-2 py-0.5 rounded tracking-widest uppercase border border-[#60A5FA]/20 w-max">Per OTP Cap</span>
           </div>
@@ -202,7 +206,8 @@ export default function ManagerSummary() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#162749" vertical={false} />
                     <XAxis dataKey="displayDate" stroke="#6C84A3" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => val.substring(0, 6)} tick={{ fill: '#6C84A3', fontWeight: 500 }} />
                     <YAxis stroke="#6C84A3" fontSize={10} tickLine={false} axisLine={false} tick={{ fill: '#6C84A3', fontWeight: 500 }} />
-                    <Tooltip contentStyle={{backgroundColor: '#0B152A', borderColor: '#162749', borderRadius: '8px', color: '#F8FAFC', fontSize: '12px'}} formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Revenue']} />
+                    {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal UI Fix 💥 */}
+                    <Tooltip contentStyle={{backgroundColor: '#0B152A', borderColor: '#162749', borderRadius: '8px', color: '#F8FAFC', fontSize: '12px'}} formatter={(value: any) => [`$${Number(value).toFixed(4)}`, 'Revenue']} />
                     <Line type="monotone" dataKey="amount" name="Revenue" stroke="#60A5FA" strokeWidth={3} dot={{r: 4, fill: '#60A5FA', strokeWidth: 2}} activeDot={{r: 6, fill: '#00D2FF', stroke: '#00D2FF'}} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -241,7 +246,8 @@ export default function ManagerSummary() {
                       <td className="p-4 text-center font-bold text-[#00D2FF]">{row.success}</td>
                       <td className="p-4 text-center font-semibold text-[#F43F5E]">{row.failed}</td>
                       <td className="p-4 text-center font-semibold text-[#60A5FA]">{row.rate}</td>
-                      <td className="p-4 pr-6 text-right font-bold text-[#F8FAFC]">${row.amount.toFixed(2)}</td>
+                      {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal UI Fix 💥 */}
+                      <td className="p-4 pr-6 text-right font-bold text-[#F8FAFC]">${row.amount.toFixed(4)}</td>
                     </tr>
                 ))}
                 {reportData.length > 0 && (
@@ -251,7 +257,8 @@ export default function ManagerSummary() {
                     <td className="p-4 text-center font-bold text-[#00D2FF]">{totals.success}</td>
                     <td className="p-4 text-center font-bold text-[#F43F5E]">{totals.failed}</td>
                     <td className="p-4 text-center font-bold text-[#60A5FA]">{overallRate}</td>
-                    <td className="p-4 pr-6 text-right font-bold text-[#60A5FA]">${totals.amount.toFixed(2)}</td>
+                    {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal UI Fix 💥 */}
+                    <td className="p-4 pr-6 text-right font-bold text-[#60A5FA]">${totals.amount.toFixed(4)}</td>
                   </tr>
                 )}
                 {reportData.length === 0 && (

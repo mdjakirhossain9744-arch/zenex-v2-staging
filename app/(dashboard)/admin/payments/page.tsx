@@ -26,7 +26,6 @@ export default function AdminPayments() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  // 💥 NEW: systemLiability state added
   const [stats, setStats] = useState({ totalRequests: 0, pendingAmount: 0, paidAmount: 0, totalAmount: 0, systemLiability: 0 });
   const itemsPerPage = 50;
 
@@ -177,6 +176,15 @@ export default function AdminPayments() {
     else setSelectedIds(dbRequests.map(r => r._id));
   };
 
+  // 💥 TIME FORMATTER 💥
+  const formatTime = (dateStr: string) => {
+    if (!dateStr) return "N/A";
+    return new Date(dateStr).toLocaleString('en-US', {
+      day: 'numeric', month: 'short',
+      hour: '2-digit', minute: '2-digit', hour12: true
+    });
+  };
+
   return (
     <div className="p-4 md:p-10 w-full relative z-10 pb-20 font-sans tracking-tight">
       {toastMessage && (
@@ -234,6 +242,7 @@ export default function AdminPayments() {
           </div>
         </div>
 
+        {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal 💥 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-[#101726]/90 border border-[#162749] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#60A5FA]">
             <p className="text-[10px] text-[#6C84A3] uppercase font-bold tracking-widest mb-1">Total Transactions</p>
@@ -241,15 +250,15 @@ export default function AdminPayments() {
           </div>
           <div className="bg-[#101726]/90 border border-[#162749] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#00D2FF]">
             <p className="text-[10px] text-[#6C84A3] uppercase font-bold tracking-widest mb-1">Pending Amount</p>
-            <p className="text-2xl font-black text-[#00D2FF]">$ {stats.pendingAmount.toFixed(2)}</p>
+            <p className="text-2xl font-black text-[#00D2FF]">$ {stats.pendingAmount.toFixed(4)}</p>
           </div>
           <div className="bg-[#101726]/90 border border-[#162749] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#60A5FA]">
             <p className="text-[10px] text-[#6C84A3] uppercase font-bold tracking-widest mb-1">Total Paid</p>
-            <p className="text-2xl font-black text-[#60A5FA]">$ {stats.paidAmount.toFixed(2)}</p>
+            <p className="text-2xl font-black text-[#60A5FA]">$ {stats.paidAmount.toFixed(4)}</p>
           </div>
           <div className="bg-[#101726]/90 border border-[#162749] p-5 rounded-2xl shadow-lg border-t-2 border-t-[#00D2FF]">
             <p className="text-[10px] text-[#6C84A3] uppercase font-bold tracking-widest mb-1">Users Unpaid Balance</p>
-            <p className="text-2xl font-black text-[#00D2FF]">$ {stats.systemLiability?.toFixed(2) || "0.00"}</p>
+            <p className="text-2xl font-black text-[#00D2FF]">$ {stats.systemLiability?.toFixed(4) || "0.0000"}</p>
           </div>
         </div>
 
@@ -303,13 +312,29 @@ export default function AdminPayments() {
                       }} className="w-4 h-4 cursor-pointer" /></td>
                     )}
                     
+                    {/* 💥 BOSS FIX: Detailed Time Tracker 💥 */}
                     <td className="p-4 pl-6">
                        <div className="font-mono text-[#60A5FA] font-bold text-xs">{req.wid || 'ZX-PENDING'}</div>
-                       <div className="text-[10px] font-medium text-[#6C84A3] mt-0.5">{req.date || new Date(req.createdAt).toLocaleDateString()}</div>
+                       <div className="text-[10px] font-medium text-[#6C84A3] mt-0.5">Req: {formatTime(req.createdAt)}</div>
+                       {req.status !== "PENDING" && req.status !== "PROCESSING" && (
+                         <div className={`text-[10px] font-medium mt-0.5 ${req.status === 'PAID' ? 'text-[#00D2FF]' : 'text-[#F43F5E]'}`}>
+                           End: {formatTime(req.updatedAt)}
+                         </div>
+                       )}
                     </td>
 
                     <td className="p-4"><p className="font-bold text-[#F8FAFC]">{req.name}</p><p className="text-[10px] text-[#6C84A3]">{req.email}</p></td>
-                    <td className="p-4 font-black text-[#00D2FF] text-lg">$ {req.amount}</td>
+                    
+                    {/* 💥 BOSS FIX: 110 TK Converted Display for Manual Gateways 💥 */}
+                    <td className="p-4">
+                       <div className="font-black text-[#00D2FF] text-lg">$ {Number(req.amount).toFixed(4)}</div>
+                       {["bKash", "Nagad", "Rocket"].includes(req.method) && (
+                          <div className="text-[11px] font-bold text-[#F8FAFC] bg-[#60A5FA]/20 px-2 py-0.5 rounded mt-1 inline-block border border-[#60A5FA]/30">
+                             ৳ {(Number(req.amount) * 110).toFixed(2)} BDT
+                          </div>
+                       )}
+                    </td>
+
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded text-white ${req.method === 'Binance' ? 'bg-[#00D2FF] text-[#030816]' : 'bg-[#162749]'}`}>{req.method}</span>

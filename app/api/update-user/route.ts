@@ -75,7 +75,8 @@ export async function POST(req: NextRequest) {
        if (realRequesterRole !== "admin") {
           return NextResponse.json({ message: "🔴 SECURITY: Only Admins can edit balance directly!" }, { status: 403 });
        }
-       updateData.balance = parseFloat(newBalance);
+       // 💥 THE GREAT USDT MIGRATION: 4-Decimal Precision for Balance 💥
+       updateData.balance = parseFloat(parseFloat(newBalance).toFixed(4));
     }
 
     // 💥 GENERATE NEW API KEY (Admin + Authorized Agent) 💥
@@ -173,10 +174,12 @@ export async function POST(req: NextRequest) {
 
         const checkRate = newRate !== undefined && newRate !== "" ? parseFloat(newRate) : targetUser.otpRate;
         let agentLimit = Math.max(newAgent.agentMaxRate || 0, newAgent.otpRate || 0);
-        if (agentLimit === 0) agentLimit = 0.70; 
+        
+        // 💥 BOSS RULE: NO DEFAULT LIMIT. IF IT'S 0, IT REMAINS 0 💥
+        if (agentLimit === 0) agentLimit = 0; 
 
         if (checkRate > agentLimit) {
-          return NextResponse.json({ message: `🔴 TRANSFER FAILED: User rate (৳${checkRate}) exceeds new Agent's max limit (৳${agentLimit.toFixed(2)})!` }, { status: 400 });
+          return NextResponse.json({ message: `🔴 TRANSFER FAILED: User rate ($${checkRate.toFixed(4)}) exceeds new Agent's max limit ($${agentLimit.toFixed(4)})!` }, { status: 400 });
         }
       }
 
@@ -205,11 +208,13 @@ export async function POST(req: NextRequest) {
        let maxR = agent?.agentMaxRate || 0;
        let otpR = agent?.otpRate || 0;
        let agentLimit = Math.max(maxR, otpR); 
-       if (agentLimit === 0) agentLimit = 0.70; 
+       
+       // 💥 BOSS RULE: NO DEFAULT LIMIT. IF IT'S 0, IT REMAINS 0 💥
+       if (agentLimit === 0) agentLimit = 0; 
        
        if (newRate !== undefined && newRate !== null && newRate !== "" && parseFloat(newRate) > agentLimit) {
           return NextResponse.json({ 
-            message: `🔴 SECURITY ALERT: You cannot set a rate higher than ৳ ${agentLimit.toFixed(2)}` 
+            message: `🔴 SECURITY ALERT: You cannot set a rate higher than $ ${agentLimit.toFixed(4)}` 
           }, { status: 400 });
        }
     }
@@ -223,9 +228,10 @@ export async function POST(req: NextRequest) {
     }
     
     if (newRate !== undefined && newRate !== null && newRate !== "") {
-       updateData.otpRate = parseFloat(newRate);
+       // 💥 THE GREAT USDT MIGRATION: 4-Decimal Precision for Rates 💥
+       updateData.otpRate = parseFloat(parseFloat(newRate).toFixed(4));
        if (realRequesterRole === "admin" && isTargetAgent && !handoverToEmail) {
-          updateData.agentMaxRate = parseFloat(newRate);
+          updateData.agentMaxRate = parseFloat(parseFloat(newRate).toFixed(4));
        }
     }
     

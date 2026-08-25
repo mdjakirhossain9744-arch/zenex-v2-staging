@@ -10,7 +10,8 @@ export default function UserWithdrawal() {
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
   const [role, setRole] = useState("user"); 
-  const [balance, setBalance] = useState("0.00");
+  // 💥 THE GREAT USDT MIGRATION: 4-Decimal Balance 💥
+  const [balance, setBalance] = useState("0.0000");
   const [toastMessage, setToastMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -31,6 +32,9 @@ export default function UserWithdrawal() {
   const [isSavingAuto, setIsSavingAuto] = useState(false);
   const [autoPayPin, setAutoPayPin] = useState(""); 
 
+  // 💥 VIEW DETAILS MODAL STATE 💥
+  const [selectedEntry, setSelectedEntry] = useState<any>(null);
+
   const paymentOptions = [
     { id: "bKash", type: "bKash", icon: "$" },
     { id: "Nagad", type: "Nagad", icon: "$" },
@@ -38,7 +42,8 @@ export default function UserWithdrawal() {
     { id: "Binance", type: "Binance", icon: "⚡" },
   ];
 
-  const minWithdrawAmount = selectedMethod === "Binance" ? 50 : 100;
+  // 💥 THE GREAT USDT MIGRATION: 0.50 for Binance, 1.00 for Others 💥
+  const minWithdrawAmount = selectedMethod === "Binance" ? 0.50 : 1.00;
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -82,7 +87,7 @@ export default function UserWithdrawal() {
       const userRes = await fetch("/api/get-user-details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
       const userData = await userRes.json();
       if (userData.user) {
-         setBalance(userData.user.balance.toFixed(2));
+         setBalance(userData.user.balance.toFixed(4));
          setSavedBinanceId(userData.user.binancePayId || "");
          setIsAutoWithdrawOn(userData.user.isAutoWithdraw || false);
       }
@@ -140,7 +145,7 @@ export default function UserWithdrawal() {
     }
 
     const amount = parseFloat(withdrawAmount);
-    if (!amount || amount < minWithdrawAmount) return showToast(`Minimum withdraw is $ ${minWithdrawAmount}`);
+    if (!amount || amount < minWithdrawAmount) return showToast(`Minimum withdraw is $ ${minWithdrawAmount.toFixed(4)}`);
     if (amount > parseFloat(balance)) return showToast("Insufficient liquidity!");
     if (!withdrawPin.trim()) return showToast("Please enter your 4-digit Withdraw PIN.");
 
@@ -160,6 +165,15 @@ export default function UserWithdrawal() {
         fetchRealData(userEmail, role); 
       } else { showToast(data.message); }
     } catch (error) { showToast("Server error! Try again."); }
+  };
+
+  // 💥 TIME FORMATTER FOR VIEW MODAL 💥
+  const formatTime = (dateStr: string) => {
+    if (!dateStr) return "N/A";
+    return new Date(dateStr).toLocaleString('en-US', {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    });
   };
 
   return (
@@ -205,6 +219,7 @@ export default function UserWithdrawal() {
                
                <span className="text-xs font-semibold text-[#6C84A3] uppercase tracking-widest mb-3">Available Liquidity</span>
                <div className="flex items-center gap-2">
+                 {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal Balance 💥 */}
                  <span className="text-5xl font-black text-[#F8FAFC] tracking-tighter drop-shadow-md">${balance}</span>
                </div>
             </div>
@@ -222,7 +237,8 @@ export default function UserWithdrawal() {
                      </div>
                      <div>
                         <h3 className="text-base font-bold text-[#F8FAFC] uppercase tracking-wide">Automated Settlement</h3>
-                        <p className="text-[10px] text-[#60A5FA] uppercase tracking-widest font-semibold mt-1">Instant Payouts at $150</p>
+                        {/* 💥 THE GREAT USDT MIGRATION: $2.00 Auto-Withdraw Text 💥 */}
+                        <p className="text-[10px] text-[#60A5FA] uppercase tracking-widest font-semibold mt-1">Instant Payouts at $2.00</p>
                      </div>
                   </div>
                </div>
@@ -233,13 +249,27 @@ export default function UserWithdrawal() {
                  </div>
                ) : (
                  <div className="pl-2">
+                   {/* 💥 BOSS EYECATCHING WARNING: AUTO WITHDRAW 💥 */}
+                   <div className="mb-5 bg-gradient-to-r from-[#101726] to-[#0B152A] p-4 rounded-xl border-l-4 border-l-[#F59E0B] border-t border-r border-b border-[#162749] shadow-md">
+                     <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">💰</span>
+                        <h4 className="text-xs font-bold text-[#F8FAFC] tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#FCD34D] to-[#F59E0B]">Conversion Rate: 1 USD = 110 TK</h4>
+                     </div>
+                     <div className="flex items-start gap-2 mt-2 pt-2 border-t border-[#162749]">
+                        <span className="text-[#F43F5E] mt-0.5">⚠️</span>
+                        <p className="text-[9px] md:text-[10px] text-[#6C84A3] font-medium leading-relaxed">
+                          <strong className="text-[#F43F5E]">CRITICAL:</strong> You MUST use a <strong className="text-[#00D2FF]">Binance SOL (Solana) Address</strong>. 0% Fee from our side. If you use other wallets, the blockchain may deduct up to <strong className="text-[#F43F5E]">80% Network Fee</strong>. We are not responsible for lost funds due to wrong network usage!
+                        </p>
+                     </div>
+                   </div>
+
                    <div className="mb-5">
                       <label className="block text-[10px] font-semibold text-[#6C84A3] uppercase tracking-widest mb-2">USDT (Solana) Target Address</label>
                       <input type="text" value={savedBinanceId} onChange={(e) => setSavedBinanceId(e.target.value)} placeholder="e.g. HN7cAB... (Must be Solana Network)" className="w-full bg-[#101726] border border-[#162749] rounded-xl px-4 py-3 text-[#F8FAFC] font-mono text-sm focus:outline-none focus:border-[#00D2FF] transition-all placeholder:text-[#6C84A3]/50" />
                    </div>
 
                    <div className="flex items-center justify-between mb-5 bg-[#101726] p-3.5 rounded-xl border border-[#162749]">
-                      <span className="text-xs font-bold text-[#F8FAFC] tracking-wide">Engage Auto-Withdraw at $150</span>
+                      <span className="text-xs font-bold text-[#F8FAFC] tracking-wide">Engage Auto-Withdraw at $2.00</span>
                       <button onClick={() => setIsAutoWithdrawOn(!isAutoWithdrawOn)} className={`relative w-12 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${isAutoWithdrawOn ? 'bg-[#00D2FF]' : 'bg-[#162749]'}`}>
                         <div className={`w-4 h-4 bg-[#F8FAFC] rounded-full transition-transform duration-300 shadow-md ${isAutoWithdrawOn ? 'translate-x-6' : 'translate-x-0'}`}></div>
                       </button>
@@ -307,6 +337,22 @@ export default function UserWithdrawal() {
                      })}
                    </div>
 
+                   {/* 💥 BOSS EYECATCHING WARNING: MANUAL WITHDRAW (BINANCE ONLY) 💥 */}
+                   {selectedMethod === "Binance" && (
+                     <div className="mb-5 bg-gradient-to-r from-[#101726] to-[#0B152A] p-4 rounded-xl border-l-4 border-l-[#F59E0B] border-t border-r border-b border-[#162749] shadow-md animate-fade-in">
+                       <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">💰</span>
+                          <h4 className="text-xs font-bold text-[#F8FAFC] tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#FCD34D] to-[#F59E0B]">Conversion Rate: 1 USD = 110 TK</h4>
+                       </div>
+                       <div className="flex items-start gap-2 mt-2 pt-2 border-t border-[#162749]">
+                          <span className="text-[#F43F5E] mt-0.5">⚠️</span>
+                          <p className="text-[9px] md:text-[10px] text-[#6C84A3] font-medium leading-relaxed">
+                            <strong className="text-[#F43F5E]">CRITICAL:</strong> You MUST use a <strong className="text-[#00D2FF]">Binance SOL (Solana) Address</strong>. 0% Fee from our side. If you use other wallets, the blockchain may deduct up to <strong className="text-[#F43F5E]">80% Network Fee</strong>. We are not responsible for lost funds due to wrong network usage!
+                          </p>
+                       </div>
+                     </div>
+                   )}
+
                    {selectedMethod && (
                      <div className="mb-6 animate-fade-in">
                         <label className="block text-[10px] font-semibold text-[#6C84A3] uppercase tracking-widest mb-2">Target {selectedMethod} {selectedMethod === "Binance" ? "USDT (Solana) Address" : "Number"}</label>
@@ -316,11 +362,12 @@ export default function UserWithdrawal() {
 
                    <div className="mb-6">
                       <label className="flex justify-between text-[10px] font-semibold text-[#6C84A3] uppercase tracking-widest mb-2">
-                        <span>Withdrawal Amount</span> <span className="text-[#60A5FA]">Min: $ {minWithdrawAmount}</span>
+                        {/* 💥 THE GREAT USDT MIGRATION: 4-Decimal Limit Display 💥 */}
+                        <span>Withdrawal Amount</span> <span className="text-[#60A5FA]">Min: $ {minWithdrawAmount.toFixed(4)}</span>
                       </label>
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-[#6C84A3]">$</span>
-                        <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder={`${minWithdrawAmount}.00`} className="w-full bg-[#101726] border border-[#162749] rounded-xl pl-10 pr-20 py-3.5 text-[#F8FAFC] text-lg font-bold focus:outline-none focus:border-[#00D2FF] transition-all placeholder:text-[#6C84A3]/40" />
+                        <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder={`${minWithdrawAmount.toFixed(4)}`} className="w-full bg-[#101726] border border-[#162749] rounded-xl pl-10 pr-20 py-3.5 text-[#F8FAFC] text-lg font-bold focus:outline-none focus:border-[#00D2FF] transition-all placeholder:text-[#6C84A3]/40" />
                         <button onClick={() => setWithdrawAmount(balance)} className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-[#162749] text-[#F8FAFC] text-[10px] font-semibold uppercase tracking-widest px-3 py-1.5 rounded-lg hover:bg-[#60A5FA] hover:text-[#030816] transition-colors">MAX</button>
                       </div>
                    </div>
@@ -370,7 +417,7 @@ export default function UserWithdrawal() {
                             </span>
                          </div>
                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-bold text-[#F8FAFC] tracking-wide">${item.amount}</span>
+                            <span className="text-sm font-bold text-[#F8FAFC] tracking-wide">${Number(item.amount).toFixed(4)}</span>
                             <span className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-widest border ${
                                item.status === "PENDING" || item.status === "PROCESSING" ? "bg-[#60A5FA]/10 text-[#60A5FA] border-[#60A5FA]/20" : 
                                item.status === "PAID" ? "bg-[#00D2FF]/10 text-[#00D2FF] border-[#00D2FF]/20" : 
@@ -385,11 +432,15 @@ export default function UserWithdrawal() {
                          <div className="flex items-center gap-2 text-[9px] font-semibold text-[#6C84A3] uppercase tracking-widest">
                             <span className="font-mono">{item.wid || "ZX-PENDING"}</span>
                             <span>•</span>
-                            <span>{item.date || new Date(item.createdAt).toLocaleDateString()}</span>
+                            <span>{new Date(item.createdAt).toLocaleDateString()}</span>
                          </div>
-                         <div className={`text-[9px] font-semibold truncate max-w-[140px] sm:max-w-[200px] tracking-wide ${item.status === 'REJECTED' ? 'text-[#F43F5E]' : item.status === 'PAID' ? 'text-[#00D2FF]' : 'text-[#60A5FA]'}`} title={item.adminNote}>
-                            {item.adminNote || (item.status === 'PENDING' ? "Processing..." : "")}
-                         </div>
+                         {/* 💥 BOSS VIEW BUTTON: Opens the Premium Modal 💥 */}
+                         <button 
+                            onClick={() => setSelectedEntry(item)}
+                            className="bg-[#60A5FA]/10 hover:bg-[#60A5FA]/20 text-[#60A5FA] border border-[#60A5FA]/30 px-3 py-1 rounded text-[10px] font-bold uppercase tracking-widest transition-all"
+                         >
+                            View
+                         </button>
                       </div>
                       
                    </div>
@@ -398,6 +449,90 @@ export default function UserWithdrawal() {
             </div>
          </div>
       </div>
+
+      {/* 💥 PREMIUM VIEW DETAILS MODAL 💥 */}
+      {selectedEntry && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+             className="absolute inset-0 bg-[#030816]/80 backdrop-blur-sm cursor-pointer"
+             onClick={() => setSelectedEntry(null)}
+          ></div>
+          
+          {/* Modal Content */}
+          <div className="relative bg-[#0B152A] border border-[#162749] rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] w-full max-w-md animate-fade-in overflow-hidden">
+             
+             {/* Dynamic Top Border based on status */}
+             <div className={`h-1 w-full ${selectedEntry.status === 'PAID' ? 'bg-[#00D2FF]' : selectedEntry.status === 'REJECTED' ? 'bg-[#F43F5E]' : 'bg-[#60A5FA]'}`}></div>
+
+             <div className="p-6">
+                <div className="flex justify-between items-start mb-6 border-b border-[#162749] pb-4">
+                   <div>
+                      <h2 className="text-lg font-bold text-[#F8FAFC] tracking-wide uppercase">Transaction Details</h2>
+                      <p className="text-[10px] font-mono text-[#6C84A3] mt-1">{selectedEntry.wid || "ZX-PENDING"}</p>
+                   </div>
+                   <button onClick={() => setSelectedEntry(null)} className="text-[#6C84A3] hover:text-[#F43F5E] transition-colors">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                   </button>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                   <div className="flex justify-between items-center bg-[#101726] p-3 rounded-lg border border-[#162749]">
+                      <span className="text-[10px] text-[#6C84A3] uppercase tracking-widest font-semibold">Amount Requested</span>
+                      <span className="text-lg font-black text-[#F8FAFC] drop-shadow-md">${Number(selectedEntry.amount).toFixed(4)}</span>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-[#101726] p-3 rounded-lg border border-[#162749]">
+                         <span className="block text-[10px] text-[#6C84A3] uppercase tracking-widest font-semibold mb-1">Method</span>
+                         <span className="text-xs font-bold text-[#F8FAFC] tracking-wider">{selectedEntry.method}</span>
+                      </div>
+                      <div className="bg-[#101726] p-3 rounded-lg border border-[#162749]">
+                         <span className="block text-[10px] text-[#6C84A3] uppercase tracking-widest font-semibold mb-1">Status</span>
+                         <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest border ${
+                               selectedEntry.status === "PENDING" || selectedEntry.status === "PROCESSING" ? "bg-[#60A5FA]/10 text-[#60A5FA] border-[#60A5FA]/20" : 
+                               selectedEntry.status === "PAID" ? "bg-[#00D2FF]/10 text-[#00D2FF] border-[#00D2FF]/20" : 
+                               "bg-[#F43F5E]/10 text-[#F43F5E] border-[#F43F5E]/20"
+                            }`}>
+                               {selectedEntry.status}
+                         </span>
+                      </div>
+                   </div>
+
+                   <div className="bg-[#101726] p-3 rounded-lg border border-[#162749]">
+                      <span className="block text-[10px] text-[#6C84A3] uppercase tracking-widest font-semibold mb-1">Target Account / Address</span>
+                      <span className="text-xs font-mono font-bold text-[#60A5FA] break-all">{selectedEntry.accountNumber}</span>
+                   </div>
+
+                   <div className="bg-[#101726] p-3 rounded-lg border border-[#162749]">
+                      <span className="block text-[10px] text-[#6C84A3] uppercase tracking-widest font-semibold mb-1">System Remarks</span>
+                      <span className={`text-xs font-semibold ${selectedEntry.status === 'REJECTED' ? 'text-[#F43F5E]' : selectedEntry.status === 'PAID' ? 'text-[#00D2FF]' : 'text-[#6C84A3]'}`}>
+                         {selectedEntry.adminNote || (selectedEntry.status === 'PENDING' ? "Processing your request securely..." : "No remarks.")}
+                      </span>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                         <span className="block text-[9px] text-[#6C84A3] uppercase tracking-widest font-semibold mb-0.5">Requested At</span>
+                         <span className="text-[10px] font-mono text-[#F8FAFC]">{formatTime(selectedEntry.createdAt)}</span>
+                      </div>
+                      {selectedEntry.status === "PAID" && (
+                         <div className="text-right">
+                            <span className="block text-[9px] text-[#6C84A3] uppercase tracking-widest font-semibold mb-0.5">Completed At</span>
+                            <span className="text-[10px] font-mono text-[#00D2FF]">{formatTime(selectedEntry.updatedAt)}</span>
+                         </div>
+                      )}
+                   </div>
+                </div>
+
+                <button onClick={() => setSelectedEntry(null)} className="w-full bg-[#162749] hover:bg-[#60A5FA] text-[#F8FAFC] hover:text-[#030816] font-bold text-xs py-3 rounded-xl transition-all uppercase tracking-widest">
+                   Close Details
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

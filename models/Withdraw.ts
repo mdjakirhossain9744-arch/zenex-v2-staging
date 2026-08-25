@@ -31,6 +31,8 @@ const withdrawSchema = new Schema(
 // 💥 MASTER INDEX: এডমিন এবং ইউজারের জন্য লেটেস্ট উইথড্র দ্রুত বের করার ট্রিক 💥
 withdrawSchema.index({ email: 1, createdAt: -1 });
 withdrawSchema.index({ status: 1, createdAt: -1 });
+// 💥 BOSS FIX: History tab fast sorting by latest action 💥
+withdrawSchema.index({ status: 1, updatedAt: -1 });
 
 const Withdraw = models.Withdraw || mongoose.model("Withdraw", withdrawSchema);
 export default Withdraw;
