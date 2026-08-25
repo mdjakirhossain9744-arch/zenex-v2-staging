@@ -38,7 +38,6 @@ export default function AccessList() {
   const formatTime = (dateStr: string) => {
     if (!dateStr) return "N/A";
     try {
-      // Converting "YYYY-MM-DD HH:MM:SS" string to explicit UTC by replacing space with 'T' and adding 'Z'
       const utcDate = new Date(dateStr.replace(' ', 'T') + 'Z');
       return utcDate.toLocaleString('en-US', {
         month: 'short', day: '2-digit',
@@ -62,22 +61,22 @@ export default function AccessList() {
   };
 
   return (
-    <div className="relative w-full min-h-screen py-6 md:py-10 flex flex-col items-center justify-start overflow-hidden bg-transparent font-sans">
+    <div className="relative w-full h-screen p-4 md:p-8 flex items-center justify-center overflow-hidden bg-transparent font-sans">
       
       {/* 💥 CYBER GLOW BACKGROUND 💥 */}
       <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[50%] bg-[#00D2FF] rounded-full blur-[250px] opacity-[0.05] pointer-events-none"></div>
       <div className="absolute bottom-[-20%] left-[-10%] w-[40%] h-[40%] bg-[#60A5FA] rounded-full blur-[200px] opacity-[0.03] pointer-events-none"></div>
 
-      {/* 💥 FULL PAGE WIDTH CONTAINER 💥 */}
-      <div className="relative z-10 w-full max-w-[95%] xl:max-w-[1600px] p-2 md:p-6">
+      {/* 💥 FULL PAGE WIDTH & HEIGHT CONTAINER 💥 */}
+      <div className="relative z-10 w-full h-full max-w-[1600px] flex flex-col">
         
-        {/* 💥 MAIN MODULE CARD 💥 */}
-        <div className="bg-[#0B152A]/90 border border-[#162749] backdrop-blur-2xl p-4 md:p-8 rounded-3xl shadow-[0_0_50px_rgba(0,210,255,0.05),inset_0_1px_4px_rgba(0,210,255,0.05)] w-full relative overflow-hidden group">
+        {/* 💥 MAIN MODULE CARD (FIXED HEIGHT) 💥 */}
+        <div className="bg-[#0B152A]/90 border border-[#162749] backdrop-blur-2xl p-4 md:p-8 rounded-3xl shadow-[0_0_50px_rgba(0,210,255,0.05),inset_0_1px_4px_rgba(0,210,255,0.05)] w-full h-full flex flex-col relative overflow-hidden group">
            
            {/* 💥 SCANNER LINE ANIMATION 💥 */}
            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00D2FF] to-transparent animate-[scan_2.5s_ease-in-out_infinite] shadow-[0_0_15px_#00D2FF]"></div>
 
-           <div className="flex flex-col items-center text-center mb-8 relative">
+           <div className="flex-shrink-0 flex flex-col items-center text-center mb-6 relative">
               <div className="w-16 h-16 bg-[#101726] border border-[#162749] rounded-full flex items-center justify-center relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] mb-4">
                  {/* 💥 SPINNING HUD RINGS 💥 */}
                  <div className="absolute inset-0 border-[2px] border-transparent border-t-[#00D2FF] border-r-[#00D2FF]/30 rounded-full animate-[spin_3s_linear_infinite]"></div>
@@ -97,7 +96,7 @@ export default function AccessList() {
            </div>
 
            {/* 💥 SEARCH FORM 💥 */}
-           <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8">
+           <form onSubmit={handleSearch} className="flex-shrink-0 flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
                  <input 
                     type="text" 
@@ -125,8 +124,8 @@ export default function AccessList() {
               </button>
            </form>
 
-           {/* 💥 RESULTS AREA (FULL WIDTH & RESPONSIVE) 💥 */}
-           <div className="bg-[#101726] border border-[#162749] rounded-2xl overflow-hidden min-h-[400px] flex flex-col relative shadow-inner">
+           {/* 💥 RESULTS AREA (SCROLLABLE INSIDE) 💥 */}
+           <div className="flex-1 min-h-0 bg-[#101726] border border-[#162749] rounded-2xl flex flex-col relative shadow-inner overflow-hidden">
               
               {loading && (
                  <div className="absolute inset-0 z-20 bg-[#101726]/80 backdrop-blur-sm flex flex-col items-center justify-center">
@@ -136,7 +135,7 @@ export default function AccessList() {
               )}
 
               {!loading && hasSearched && results.length === 0 && (
-                 <div className="flex-1 flex flex-col items-center justify-center text-[#6C84A3] p-10">
+                 <div className="h-full flex flex-col items-center justify-center text-[#6C84A3] p-10">
                     <svg className="w-16 h-16 mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
@@ -145,7 +144,7 @@ export default function AccessList() {
               )}
 
               {!loading && !hasSearched && (
-                 <div className="flex-1 flex flex-col items-center justify-center text-[#475569] p-10">
+                 <div className="h-full flex flex-col items-center justify-center text-[#475569] p-10">
                     <svg className="w-16 h-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
@@ -155,9 +154,9 @@ export default function AccessList() {
               )}
 
               {!loading && results.length > 0 && (
-                 <div className="overflow-x-auto w-full pb-4 scrollbar-thin scrollbar-thumb-[#162749] scrollbar-track-transparent">
+                 <div className="flex-1 w-full h-full overflow-auto scrollbar-thin scrollbar-thumb-[#162749] scrollbar-track-transparent">
                     <table className="w-full text-left text-sm whitespace-nowrap min-w-[1000px]">
-                       <thead className="text-xs text-[#6C84A3] uppercase tracking-wider border-b border-[#162749] bg-[#0B152A]">
+                       <thead className="sticky top-0 z-10 text-xs text-[#6C84A3] uppercase tracking-wider bg-[#0B152A] shadow-[0_1px_0_#162749]">
                           <tr>
                              <th className="px-6 py-4 font-semibold w-[15%]">Service</th>
                              <th className="px-6 py-4 font-semibold w-[20%]">Country / Operator</th>
@@ -208,7 +207,7 @@ export default function AccessList() {
            </div>
 
            {/* 💥 RETURN BUTTON 💥 */}
-           <div className="text-center mt-8">
+           <div className="flex-shrink-0 text-center mt-6">
               <Link href="/" className="inline-flex items-center gap-2 bg-[#0B152A] border border-[#162749] hover:border-[#60A5FA]/50 text-[#6C84A3] hover:text-[#60A5FA] px-6 py-3 rounded-xl font-bold transition-all text-xs md:text-sm tracking-widest uppercase shadow-sm group/btn">
                  <svg className="w-4 h-4 md:w-5 md:h-5 text-[#6C84A3] group-hover/btn:text-[#60A5FA] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -229,6 +228,7 @@ export default function AccessList() {
           100% { top: 100%; opacity: 0; }
         }
         .scrollbar-thin::-webkit-scrollbar {
+          width: 6px;
           height: 6px;
         }
         .scrollbar-thin::-webkit-scrollbar-track {
