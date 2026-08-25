@@ -16,9 +16,8 @@ export default function AccessList() {
     setHasSearched(true);
     
     try {
-      // 💥 API CALL TO MICROSERVICE 💥
-      // Note: In production, change localhost:5000 to your actual Microservice Domain/IP
-      const API_BASE = process.env.NEXT_PUBLIC_MICROSERVICE_URL || "http://localhost:5000";
+      // 💥 API CALL TO LIVE MICROSERVICE (BUG FIXED) 💥
+      const API_BASE = "http://135.125.226.195:5000";
       const res = await fetch(`${API_BASE}/v1/access-list?service=${service}&country=${country}`);
       const data = await res.json();
       
